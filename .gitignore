@@ -1,0 +1,13 @@
+# personal data — never commit
+2026new/
+2026 Health/
+oldtimer example/
+CLAUDE.md
+.claude/
+
+# build artifacts
+timerv2/dist/
+timerv2/build/
+timerv2/*.spec
+__pycache__/
+*.pyc
