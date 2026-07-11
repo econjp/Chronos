@@ -60,6 +60,18 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v5.5 (feedback engine v1):
+  - MORNING VERDICT: a new day file opens with yesterday's numbers AND one
+    honest rule-based line ("busy but scattered (4.2h, only 31% signal) —
+    pick the signal task FIRST today.").
+  - TODO CARRY-OVER: yesterday's TODO lines are copied under the new day's
+    header, so the morning file opens with your own instructions.
+  - signal trend arrow in the totals line (last 7 days vs previous 7).
+  - PER-TASK TODAY counter in the title ("0:21 — Building · today 1.42h") —
+    the session clock resets between sessions, this doesn't.
+  - the break pill escalates after 15 min: "move, don't scroll!"
+  - easter egg: double-click the big clock.
+
 New in v5.4:
   - single-instance guard (named mutex), atomic merge-on-save settings,
     diary-folder change carries today's file along (see 2026-07-11 incident).
@@ -632,14 +644,14 @@ class App(tk.Tk):
         t = (task or "").lower()
         return any(k in t for k in kws)
 
-    def _day_signal(self, day, kws=None):
+    def _day_signal(self, day, kws=None, rows=None):
         """(signal_min, work_min) for one day given its keywords."""
         if kws is None:
             kws = self._signal_kws(day)
         sig = work = 0
         if kws:
             iso = day.isoformat()
-            for r in read_rows():
+            for r in (rows if rows is not None else read_rows()):
                 if r[0] != iso or r[1] == "break":
                     continue
                 try:
@@ -834,6 +846,8 @@ class App(tk.Tk):
 
         self.clock = ttk.Label(self.top, text="0:00:00", font=("Segoe UI", 22))
         self.clock.pack(side="left")
+        self._quote_i = 0
+        self.clock.bind("<Double-Button-1>", self._signal_quote)
 
         self.compact_btn = ttk.Button(self.top, text="—", width=3,
                                       command=self._toggle_compact)
@@ -879,6 +893,16 @@ class App(tk.Tk):
         self.status = ttk.Label(self, text="", anchor="w")
         self.status.pack(fill="x", side="bottom", padx=8, pady=(0, 4))
         self._set_status_hint()
+
+    QUOTES = ["Zero noise. 100% signal.",
+              "Every genius in history ran at ~100% signal.",
+              "The phone is the anti-signal device.",
+              "Tired? Move. Don't scroll.",
+              "The day file doesn't lie."]
+
+    def _signal_quote(self, event=None):
+        self.status.config(text=self.QUOTES[self._quote_i % len(self.QUOTES)])
+        self._quote_i += 1
 
     def _set_status_hint(self):
         self.status.config(text=f"{self.hotkey_name()} start/stop (works everywhere) · "
@@ -1000,7 +1024,10 @@ class App(tk.Tk):
         self._refresh_totals()
         if self.state == "working":
             self._hide_pill()      # snappier than waiting for the next tick
-            self.status.config(text=f"Working — {self.active_task or '(no task)'}")
+            note = ""
+            if self.active_task and getattr(self, "task_today_min", 0):
+                note = f" · {self.task_today_min / 60:.2f}h on it today"
+            self.status.config(text=f"Working — {self.active_task or '(no task)'}{note}")
         elif self.settings.get("float_break", True):
             self.status.config(text="On break — the floating clock counts it; "
                                     "click it to get back to work.")
@@ -1092,8 +1119,13 @@ class App(tk.Tk):
         if self.state == "working":
             secs = self._session_secs()
             self.clock.config(text=hms_padded(secs))
-            self.title(f"{secs // 3600}:{secs % 3600 // 60:02} — "
-                       f"{self.task_var.get().strip() or APP_NAME}")
+            title = (f"{secs // 3600}:{secs % 3600 // 60:02} — "
+                     f"{self.task_var.get().strip() or APP_NAME}")
+            if self.active_task and self.work_start:
+                tot = (getattr(self, "task_today_min", 0) * 60
+                       + int((dt.datetime.now() - self.work_start).total_seconds()))
+                title += f" · today {tot / 3600:.2f}h"
+            self.title(title)
             self._watch_idle()
         elif self.state == "break":
             bsecs = int((dt.datetime.now() - self.break_start).total_seconds())
@@ -1163,9 +1195,12 @@ class App(tk.Tk):
                 y = self.winfo_screenheight() - p.winfo_reqheight() - 90
                 p.geometry(f"+{x}+{y}")
             self.pill = p
+        over = bsecs > self.BREAK_WARN_SECS
         self.pill_lbl.config(
-            text=f"☕ break {bsecs // 60}:{bsecs % 60:02} — click to work",
-            bg="#a03030" if bsecs > self.BREAK_WARN_SECS else "#505050")
+            text=(f"☕ break {bsecs // 60}:{bsecs % 60:02} — move, don't scroll!"
+                  if over else
+                  f"☕ break {bsecs // 60}:{bsecs % 60:02} — click to work"),
+            bg="#a03030" if over else "#505050")
 
     @staticmethod
     def _pos_on_screen(pos):
@@ -1299,7 +1334,8 @@ class App(tk.Tk):
         w, b = day_totals(today_iso)
         monday = self.today - dt.timedelta(days=self.today.weekday())
         week = 0
-        for r in read_rows():
+        rows = read_rows()
+        for r in rows:
             if r[1] == "break":
                 continue
             try:
@@ -1308,23 +1344,48 @@ class App(tk.Tk):
                     week += int(r[4])
             except ValueError:
                 continue
+        # cumulative minutes on the active task today (title shows it live)
+        at = (self.active_task or "").strip().lower()
+        self.task_today_min = sum(
+            int(r[4]) for r in rows
+            if at and r[0] == today_iso and r[1] != "break"
+            and r[5].strip().lower() == at and r[4].isdigit())
         text = (f"{self.today.isoformat()} — today {w / 60:.2f} h work"
                 + (f" / {b / 60:.2f} h breaks" if b else "")
                 + f"   |   week {week / 60:.2f} h")
         # signal %: today by today's SIGNAL line, week per each day's own line
         kws_today = self._signal_kws()
         if kws_today and w:
-            sig_today, _ = self._day_signal(self.today, kws_today)
+            sig_today, _ = self._day_signal(self.today, kws_today, rows)
             wk_sig = wk_work = 0
             d = monday
             while d <= self.today:
-                s, tot = self._day_signal(d, kws_today if d == self.today else None)
+                s, tot = self._day_signal(
+                    d, kws_today if d == self.today else None, rows)
                 wk_sig += s
                 wk_work += tot
                 d += dt.timedelta(days=1)
             text += f"   |   signal {round(100 * sig_today / w)}%"
             if wk_work and wk_work != w:
                 text += f" (wk {round(100 * wk_sig / wk_work)}%)"
+
+            def period_pct(lo, hi):
+                s = tot = 0
+                d = lo
+                while d <= hi:
+                    kw = kws_today if d == self.today else None
+                    ds, dw = self._day_signal(d, kw, rows)
+                    s += ds
+                    tot += dw
+                    d += dt.timedelta(days=1)
+                return 100 * s / tot if tot else None
+
+            cur = period_pct(self.today - dt.timedelta(days=6), self.today)
+            prev = period_pct(self.today - dt.timedelta(days=13),
+                              self.today - dt.timedelta(days=7))
+            if cur is not None and prev is not None:
+                text += " ↑" if cur - prev >= 5 else (
+                        " ↓" if cur - prev <= -5 else " →")
         dl_name = self.settings.get("dl_name")
         if dl_name:
             try:
@@ -1483,17 +1544,75 @@ class App(tk.Tk):
             with open(p, encoding="utf-8") as f:
                 self.diary.insert("1.0", f.read())
         elif create:
-            header = f"=== {self.today:%A %d.%m.%Y} ==="
-            yw, yb = day_totals((self.today - dt.timedelta(days=1)).isoformat())
-            if yw or yb:
-                header += (f"\n(yesterday: {yw // 60}h{yw % 60:02}m work"
-                           f" / {yb // 60}h{yb % 60:02}m breaks)")
-            header += f"\nSIGNAL: {self._carry_signal()}"
-            self.diary.insert("1.0", header + "\n\n")
+            self.diary.insert("1.0", self._new_day_header() + "\n\n")
             self._save_diary()
         self.diary.mark_set("insert", "end")
         self.diary.edit_modified(False)
         self._maybe_insert_health()
+
+    def _new_day_header(self):
+        """Header + yesterday's numbers + a rule-based verdict + carried
+        TODOs — the morning brief, straight into the file per the sacred
+        rule (everything visible in the day txt)."""
+        yday = self.today - dt.timedelta(days=1)
+        parts = [f"=== {self.today:%A %d.%m.%Y} ==="]
+        yw, yb = day_totals(yday.isoformat())
+        if yw or yb:
+            ysig, ywork = self._day_signal(yday)
+            line = (f"(yesterday: {yw // 60}h{yw % 60:02}m work"
+                    f" / {yb // 60}h{yb % 60:02}m breaks")
+            if ywork:
+                line += f", signal {round(100 * ysig / ywork)}%"
+            parts.append(line + ")")
+            v = self._verdict(yw, ysig, ywork)
+            if v:
+                parts.append(v)
+        parts.append(f"SIGNAL: {self._carry_signal()}")
+        todos = self._carry_todos(yday)
+        if todos:
+            parts += ["", "TODO (carried from yesterday):"] + todos
+        return "\n".join(parts)
+
+    @staticmethod
+    def _verdict(work_min, sig_min, sig_work):
+        """One honest line about yesterday. Rule-based, no flattery."""
+        h = work_min / 60
+        if sig_work:
+            pct = 100 * sig_min / sig_work
+            if h >= 5 and pct >= 60:
+                return (f"verdict: strong day ({h:.1f}h, {pct:.0f}% signal)"
+                        " — repeat it.")
+            if h >= 3 and pct < 40:
+                return (f"verdict: busy but scattered ({h:.1f}h, only "
+                        f"{pct:.0f}% signal) — pick the signal task FIRST today.")
+        if h < 3:
+            return f"verdict: light day ({h:.1f}h tracked) — what stole it?"
+        return None
+
+    def _carry_todos(self, yday):
+        """Lines containing TODO from yesterday's file, plus the indented
+        block after a 'TODO:' style line. Carried TODOs chain day to day
+        until deleted."""
+        try:
+            with open(self.diary_path(yday), encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        except OSError:
+            return []
+        skip = ("start;", "stop;", "reset;", "---", "===")
+        out, grab = [], False
+        for ln in lines:
+            s = ln.strip()
+            low = s.lower()
+            if grab:
+                if s and not low.startswith(skip):
+                    out.append(ln)
+                    continue
+                grab = False
+            if "todo" in low and not low.startswith(skip):
+                if not low.startswith("todo (carried"):
+                    out.append(ln)
+                grab = low.endswith(":") or low == "todo"
+        return out[:12]
 
     def _carry_signal(self):
         """Yesterday's SIGNAL line text (original case), or ''."""
