@@ -60,6 +60,23 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v5.9 (the pieces feed each other):
+  - MORNING PLAN: the new day header now states today's mission —
+    "plan today: Thesis 5.4h = 5.4h needed · 4.0h available ⚠ tight".
+    Deadline scopes x capacity x calendar, decided before you decide.
+  - CALENDAR-AWARE CAPACITY: File > "Calendar busy-time (.ics)" — export
+    your Outlook calendar once in a while; meeting hours are subtracted
+    from available capacity everywhere (week plan, morning plan).
+    Recurring events and all-day events are skipped (stated, not hidden).
+  - OFF DAYS: list vacation dates in the Week plan window — zero capacity.
+  - ESTIMATE LEARNING: the Tasks window reads your own "--- Done: x
+    (est 2h, actual 3.4h)" history and tells you your personal multiplier
+    ("your actuals run ×1.7 your estimates").
+  - MEETING MODE (Tools): pauses idle detection for 90 min — lectures,
+    meetings, long reading. Invoke again to cancel.
+  - MONTH HEATMAP (View): GitHub-style grid of the last 16 weeks' daily
+    hours. Streaks and dead weeks, visible.
+
 New in v5.8 (the planning engine):
   - DEADLINES V2: each deadline can carry a start date and a TOTAL-HOURS
     scope. With a scope the burn-down becomes real (ideal line start->due
@@ -410,6 +427,54 @@ def health_line(rec):
     return f"({', '.join(parts)})" if parts else ""
 
 
+# ---------------- calendar (.ics) busy-time import ----------------
+
+def parse_ics_busy(path, start, end):
+    """{date_iso: busy_hours} from an exported .ics, window [start, end].
+    Skips all-day events and recurring (RRULE) events — good enough for
+    'subtract my meetings from capacity', not a calendar client."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return {}
+    text = text.replace("\r\n ", "").replace("\n ", "")   # unfold folds
+    utc_off = dt.datetime.now().astimezone().utcoffset() or dt.timedelta()
+    busy = {}
+    for block in text.split("BEGIN:VEVENT")[1:]:
+        block = block.split("END:VEVENT")[0]
+        if "RRULE:" in block:
+            continue
+
+        def field(name):
+            m = re.search(rf"^{name}[^:\n]*:([^\s]+)", block, re.M)
+            return m.group(1).strip() if m else None
+
+        def parse(v):
+            if v is None or len(v) <= 8:      # missing or all-day
+                return None
+            naive = dt.datetime.strptime(v[:15], "%Y%m%dT%H%M%S")
+            return naive + utc_off if v.rstrip().endswith("Z") else naive
+
+        try:
+            sdt, edt = parse(field("DTSTART")), parse(field("DTEND"))
+        except ValueError:
+            continue
+        if not sdt or not edt or edt <= sdt:
+            continue
+        cur = sdt
+        while cur < edt:                       # split multi-day per day
+            nxt = dt.datetime.combine(cur.date() + dt.timedelta(days=1),
+                                      dt.time())
+            seg_end = min(edt, nxt)
+            if start <= cur.date() <= end:
+                iso = cur.date().isoformat()
+                busy[iso] = busy.get(iso, 0.0) + (
+                    seg_end - cur).total_seconds() / 3600
+            cur = seg_end
+    return busy
+
+
 # ---------------- old-format line builders ----------------
 
 def hms_unpadded(secs):
@@ -729,6 +794,7 @@ class App(tk.Tk):
         filem.add_command(label="Open data folder", command=self._open_folder)
         filem.add_command(label="Change diary folder…", command=self._change_diary_dir)
         filem.add_command(label="Health import folder…", command=self._set_health_dir)
+        filem.add_command(label="Calendar busy-time (.ics)…", command=self._set_ics)
         filem.add_separator()
         filem.add_command(label="Exit", command=self._on_close)
         m.add_cascade(label="File", menu=filem)
@@ -740,6 +806,7 @@ class App(tk.Tk):
         viewm.add_command(label="Week plan / capacity…", command=self._capacity_win)
         viewm.add_separator()
         viewm.add_command(label="Trend (8 weeks)", command=self._trend)
+        viewm.add_command(label="Month heatmap", command=self._heatmap)
         viewm.add_command(label="Deadline burn-down", command=self._burndown)
         viewm.add_command(label="Health × focus (14 days)", command=self._health_view)
         viewm.add_command(label="Search all days…", command=self._search_diary)
@@ -763,6 +830,8 @@ class App(tk.Tk):
         self.float_var = tk.BooleanVar(value=self.settings.get("float_break", True))
         toolsm.add_checkbutton(label="Floating break timer",
                                variable=self.float_var, command=self._save_prefs)
+        toolsm.add_command(label="Meeting mode (idle off 90 min)",
+                           command=self._meeting_mode)
         toolsm.add_separator()
         toolsm.add_command(label="Global hotkey…", command=self._set_hotkey)
         toolsm.add_command(label="Deadline countdown…", command=self._set_deadline)
@@ -1392,7 +1461,22 @@ class App(tk.Tk):
             self.pill.destroy()
             self.pill = None
 
+    def _meeting_mode(self):
+        now = dt.datetime.now()
+        if getattr(self, "idle_off_until", None) and now < self.idle_off_until:
+            self.idle_off_until = None
+            self.status.config(text="Meeting mode off — idle detection back on.")
+        else:
+            self.idle_off_until = now + dt.timedelta(minutes=90)
+            self.status.config(text=f"Meeting mode: idle detection paused "
+                                    f"until {self.idle_off_until:%H:%M}. "
+                                    "Invoke again to cancel.")
+
     def _watch_idle(self):
+        off = getattr(self, "idle_off_until", None)
+        if off and dt.datetime.now() < off:
+            self.idle_since = None
+            return
         thr = int(self.settings.get("idle_min", 10))
         if not thr or self.prompting:
             return
@@ -1792,11 +1876,38 @@ class App(tk.Tk):
             v = self._verdict(yw, ysig, ywork)
             if v:
                 parts.append(v)
+        plan = self._plan_line()
+        if plan:
+            parts.append(plan)
         parts.append(f"SIGNAL: {self._carry_signal()}")
         todos = self._carry_todos(yday)
         if todos:
             parts += ["", "TODO (carried from yesterday):"] + todos
         return "\n".join(parts)
+
+    def _plan_line(self):
+        """Today's mission: needed h/day per scoped deadline vs today's
+        net capacity (weekday hours minus meetings, zero on off days)."""
+        parts, need = [], 0.0
+        for dl in self.deadlines():
+            try:
+                p = self._dl_progress(dl)
+            except (ValueError, KeyError):
+                continue
+            if p["left"] >= 0 and p.get("total_h") and p["remaining_h"] > 0:
+                parts.append(f"{dl['name']} {p['needed_per_day']:.1f}h")
+                need += p["needed_per_day"]
+        if not parts:
+            return None
+        avail = self._day_capacity(self.today)
+        busy = self._busy_data().get(self.today.isoformat(), 0.0)
+        line = ("plan today: " + " + ".join(parts)
+                + f" = {need:.1f}h needed · {avail:.1f}h available")
+        if busy:
+            line += f" ({busy:.1f}h in meetings)"
+        line += (" ✓" if avail >= need else
+                 " ⚠ tight — start early, cut the admin")
+        return line
 
     @staticmethod
     def _verdict(work_min, sig_min, sig_work):
@@ -2245,12 +2356,48 @@ class App(tk.Tk):
         cap = self.settings.get("capacity", self.DEFAULT_CAP)
         return [float(x) for x in cap] if len(cap) == 7 else self.DEFAULT_CAP
 
+    def _busy_data(self):
+        """Calendar busy hours per date, cached on the ics file's mtime."""
+        path = self.settings.get("ics_path")
+        if not path or not os.path.exists(path):
+            return {}
+        key = (path, os.path.getmtime(path), dt.date.today().isoformat())
+        cache = getattr(self, "_busy_cache", None)
+        if cache and cache[0] == key:
+            return cache[1]
+        data = parse_ics_busy(path, dt.date.today(),
+                              dt.date.today() + dt.timedelta(days=90))
+        self._busy_cache = (key, data)
+        return data
+
+    def _set_ics(self):
+        p = filedialog.askopenfilename(
+            parent=self, filetypes=[("Calendar", "*.ics")],
+            title="Exported calendar (.ics) — busy time reduces capacity")
+        if not p:
+            return
+        self.settings["ics_path"] = p
+        save_settings(self.settings)
+        self._busy_cache = None
+        busy = self._busy_data()
+        nxt14 = sum(h for iso, h in busy.items()
+                    if iso <= (dt.date.today() + dt.timedelta(days=14)).isoformat())
+        self.status.config(text=f"Calendar linked — {nxt14:.1f}h of meetings "
+                                "in the next 14 days now reduce capacity.")
+
+    def _day_capacity(self, d):
+        """Net available hours on one date: weekday capacity minus
+        calendar busy time; zero on off days."""
+        if d.isoformat() in self.settings.get("off_dates", []):
+            return 0.0
+        return max(0.0, self._capacity()[d.weekday()]
+                   - self._busy_data().get(d.isoformat(), 0.0))
+
     def _avail_hours(self, until):
-        """Capacity hours from today through `until` (inclusive)."""
-        cap = self._capacity()
+        """Net capacity hours from today through `until` (inclusive)."""
         d, total = dt.date.today(), 0.0
         while d <= until:
-            total += cap[d.weekday()]
+            total += self._day_capacity(d)
             d += dt.timedelta(days=1)
         return total
 
@@ -2258,6 +2405,14 @@ class App(tk.Tk):
         """The honest verdict: available hours vs deadline demand."""
         rows = read_rows()
         lines, reqs, far = [], [], None
+        busy = self._busy_data()
+        if busy:
+            nxt14 = sum(h for iso, h in busy.items()
+                        if iso <= (dt.date.today()
+                                   + dt.timedelta(days=14)).isoformat())
+            if nxt14:
+                lines.append(f" (calendar: {nxt14:.1f}h of meetings in the "
+                             "next 14 days already subtracted)")
         for dl in self.deadlines():
             try:
                 p = self._dl_progress(dl, rows)
@@ -2310,6 +2465,11 @@ class App(tk.Tk):
             e.insert(0, f"{cap[i]:g}")
             e.grid(row=2, column=i, padx=3)
             entries.append(e)
+        ttk.Label(top, text="Off days (YYYY-MM-DD, comma-sep):").grid(
+            row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
+        off_e = ttk.Entry(top, width=40)
+        off_e.insert(0, ", ".join(self.settings.get("off_dates", [])))
+        off_e.grid(row=4, column=0, columnspan=7, sticky="we", pady=(0, 2))
         txt = tk.Text(win, wrap="word", font=("Consolas", 10), height=14,
                       width=76)
         txt.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -2326,8 +2486,16 @@ class App(tk.Tk):
             try:
                 self.settings["capacity"] = [float(e.get().replace(",", "."))
                                              for e in entries]
+                offs = []
+                for s in off_e.get().split(","):
+                    s = s.strip()
+                    if s:
+                        dt.date.fromisoformat(s)
+                        offs.append(s)
+                self.settings["off_dates"] = offs
             except ValueError:
-                messagebox.showerror(APP_NAME, "Hours must be numbers.",
+                messagebox.showerror(APP_NAME, "Hours must be numbers and "
+                                               "off days YYYY-MM-DD.",
                                      parent=win)
                 return
             save_settings(self.settings)
@@ -2422,9 +2590,41 @@ class App(tk.Tk):
         for label, cmd in (("Add", add), ("Start ▶", start),
                            ("Done ✓", done), ("Delete", delete)):
             ttk.Button(bar, text=label, command=cmd).pack(side="left", padx=(4, 0))
-        ttk.Label(win, text='Add as "write intro [2h]" — the [2h] becomes the estimate.',
-                  foreground="#777777").pack(anchor="w", padx=8, pady=(0, 6))
+        hint = 'Add as "write intro [2h]" — the [2h] becomes the estimate.'
+        f = self._estimate_factor()
+        if f:
+            hint += (f"  Your history: actuals run ×{f:.1f} your estimates"
+                     f" — [2h] realistically means {2 * f:.1f}h.")
+        ttk.Label(win, text=hint, foreground="#777777",
+                  wraplength=500).pack(anchor="w", padx=8, pady=(0, 6))
         refresh()
+
+    def _estimate_factor(self):
+        """Median actual/estimate ratio from '--- Done: x (est Yh, actual
+        Zh)' lines across all day files. None until 3+ samples exist."""
+        pat = re.compile(r"--- Done: .*\(est ([0-9.]+)h, actual ([0-9.]+)h\)")
+        ratios = []
+        try:
+            names = os.listdir(self.diary_dir())
+        except OSError:
+            return None
+        for fn in names:
+            if not fn.endswith(".txt"):
+                continue
+            try:
+                with open(os.path.join(self.diary_dir(), fn),
+                          encoding="utf-8") as f:
+                    found = pat.findall(f.read())
+            except OSError:
+                continue
+            for e, a in found:
+                e, a = float(e), float(a)
+                if e > 0 and a > 0:
+                    ratios.append(a / e)
+        if len(ratios) < 3:
+            return None
+        ratios.sort()
+        return ratios[len(ratios) // 2]
 
     # ----- deadline burn-down -----
 
@@ -2551,6 +2751,52 @@ class App(tk.Tk):
         cv.create_text(W - PAD, PAD, anchor="e", font=("Segoe UI", 8),
                        fill="#777777",
                        text="grey = target pace · blue = actual")
+
+    # ----- month heatmap -----
+
+    HEAT = ["#ebedf0", "#c6dbef", "#9ecae1", "#6baed6", "#3182bd", "#215a8f"]
+
+    def _heatmap(self):
+        per = {}
+        for r in read_rows():
+            if r[1] == "break":
+                continue
+            try:
+                per[r[0]] = per.get(r[0], 0) + int(r[4])
+            except ValueError:
+                continue
+        weeks, cell, pad = 16, 20, 34
+        this_mon = self.today - dt.timedelta(days=self.today.weekday())
+        start_mon = this_mon - dt.timedelta(weeks=weeks - 1)
+        W, H = pad * 2 + weeks * cell, pad + 7 * cell + 30
+        win = tk.Toplevel(self)
+        win.title("Daily hours — last 16 weeks")
+        cv = tk.Canvas(win, width=W, height=H, background="white",
+                       highlightthickness=0)
+        cv.pack(padx=8, pady=8)
+        seen_month = None
+        for w in range(weeks):
+            for wd in range(7):
+                d = start_mon + dt.timedelta(weeks=w, days=wd)
+                if d > self.today:
+                    continue
+                h = per.get(d.isoformat(), 0) / 60
+                shade = next(i for i, lim in
+                             enumerate((0.01, 2, 4, 6, 8, 99)) if h < lim)
+                x, y = pad + w * cell, pad + wd * cell
+                cv.create_rectangle(x, y, x + cell - 3, y + cell - 3,
+                                    fill=self.HEAT[shade], outline="")
+                if wd == 0 and d.strftime("%b") != seen_month:
+                    seen_month = d.strftime("%b")
+                    cv.create_text(x, pad - 8, text=seen_month, anchor="w",
+                                   font=("Segoe UI", 8), fill="#666666")
+        for wd, lbl in ((0, "Mon"), (3, "Thu"), (6, "Sun")):
+            cv.create_text(pad - 6, pad + wd * cell + cell / 2 - 1,
+                           text=lbl, anchor="e", font=("Segoe UI", 7),
+                           fill="#888888")
+        cv.create_text(pad, H - 12, anchor="w", font=("Segoe UI", 8),
+                       fill="#666666",
+                       text="shade steps: 0 · <2h · <4h · <6h · <8h · 8h+")
 
     # ----- calendar export -----
 

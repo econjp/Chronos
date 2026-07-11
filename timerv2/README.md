@@ -42,6 +42,35 @@ the h/day now required) — and **⚠** appears when you're behind the
 start→due line. Without a scope, the weekly-target pace logic applies.
 The dot is green while you're working on any of them.
 
+### Morning plan (v5.9)
+
+Each new day file opens with today's mission, computed for you:
+`plan today: Thesis 5.4h = 5.4h needed · 4.0h available (1.5h in
+meetings) ⚠ tight — start early, cut the admin`. Deadline scopes ×
+weekday capacity × calendar, decided before you've had coffee.
+
+### Calendar & off days (v5.9)
+
+File → *Calendar busy-time (.ics)* → point at an exported Outlook/Google
+calendar file: meeting hours are subtracted from capacity everywhere
+(re-read automatically when you re-export over the same file). Recurring
+and all-day events are skipped — re-export fresh rather than trusting
+old recurrences. Vacation dates go in the Week plan window → zero
+capacity those days. Tools → **Meeting mode** pauses idle detection for
+90 min (lectures, long reads).
+
+### Estimate learning (v5.9)
+
+Every `Done ✓` writes est-vs-actual into the day file; once 3+ exist the
+Tasks window tells you your personal multiplier: *"your actuals run ×1.5
+your estimates — [2h] realistically means 3h."* Your own history, no
+judgment, just math.
+
+### Month heatmap (v5.9)
+
+View → Month heatmap: 16 weeks of daily hours, GitHub-style. Streaks and
+dead weeks at a glance.
+
 ### Week plan / capacity (v5.8)
 
 View → Week plan: set your realistic hours per weekday once. The window
