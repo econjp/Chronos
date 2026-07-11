@@ -34,10 +34,18 @@ appears — visible over the browser, turns red after 15 min, one click
 resumes work. **Drag it once to where you want it (any monitor) and it
 remembers that spot for every future break.** Disable in Tools.
 
-### Day timeline (v5.2)
+### Day timeline (v5.2, sleep band v5.4)
 
-A thin 00–24 bar under the task row: blue = focus, orange = breaks, ticks
-every 3 h. The shape of your day at a glance.
+A thin 00–24 bar under the task row: blue = focus, green = signal work,
+orange = breaks, ticks every 3 h. The shape of your day at a glance.
+
+A dark **"zzz (est.)"** band shows last night's sleep — *estimated*: bed ≈
+your last logged event + 1 h (00:00 if the evening wasn't logged late),
+band length = the imported sleep total, clipped to end before your first
+activity. The gap between midnight and the band start is your visible
+doomscroll tax; the gap between band end and your first session is the
+morning-efficiency one. Real bed/wake times (better export app) will
+replace the estimate when available.
 
 ### Hotkeys
 

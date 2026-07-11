@@ -60,6 +60,16 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v5.4:
+  - single-instance guard (named mutex), atomic merge-on-save settings,
+    diary-folder change carries today's file along (see 2026-07-11 incident).
+  - ESTIMATED SLEEP BAND on the day timeline: dark band from ~bed to ~wake,
+    derived from last night's imported sleep total + your logging pattern
+    (bed ~= last logged event + 1 h, else 00:00; clipped to first activity).
+    Labeled "zzz (est.)" — it's an estimate until an export with real
+    bed/wake times is available. The incentive: the gap between your last
+    evening log and the band start is your doomscroll tax, visible.
+
 New in v5.3:
   - SIGNAL METER: each new day file gets a "SIGNAL: ..." line (carried over
     from yesterday — edit it right in the text, comma-separated keywords,
@@ -1370,6 +1380,43 @@ class App(tk.Tk):
     # ----- day timeline (00-24 bar) -----
 
     TL_WORK, TL_BREAK, TL_SIGNAL = "#4a6fa5", "#e0a44c", "#3a8a3a"
+    TL_SLEEP = "#454569"
+
+    def _sleep_band(self):
+        """ESTIMATED sleep band for today's 00-24 bar, as clock-minute
+        (start, end), or None. We only have last night's sleep TOTAL from
+        the health import, so: bed ~= last logged event yesterday + 1 h
+        (default 00:00 if the evening wasn't logged late), band length =
+        the imported total, clipped so it ends before today's first
+        logged activity. Clearly an estimate — labeled as such on the bar."""
+        rec = self._health_data().get(self.today.isoformat())
+        if not rec or not rec.get("sleep_h"):
+            return None
+        sleep_min = int(rec["sleep_h"] * 60)
+        yday_iso = (self.today - dt.timedelta(days=1)).isoformat()
+        today_iso = self.today.isoformat()
+        last = first = None      # minutes since yesterday 00:00 / today 00:00
+        for r in read_rows():
+            try:
+                if r[0] == yday_iso:
+                    h, m = map(int, r[3].split(":"))
+                    t = h * 60 + m + (1440 if h < 12 else 0)
+                    last = max(last or 0, t)
+                elif r[0] == today_iso:
+                    h, m = map(int, r[2].split(":"))
+                    if h >= self.rollover_hour():   # skip past-midnight tail
+                        first = min(first if first is not None else 9999,
+                                    h * 60 + m)
+            except ValueError:
+                continue
+        bed = last + 60 if last and last >= 21 * 60 else 1440   # default 00:00
+        wake = bed + sleep_min
+        if first is not None and wake > 1440 + first:
+            wake = 1440 + first
+            bed = wake - sleep_min
+        if wake <= 1440:         # entire band before midnight — nothing to draw
+            return None
+        return max(0, bed - 1440), wake - 1440
 
     def _draw_timeline(self):
         cv = self.timeline
@@ -1387,6 +1434,13 @@ class App(tk.Tk):
                                 outline="")
 
         cv.create_rectangle(0, 1, W, H, fill="#ececec", outline="#cccccc")
+        band = self._sleep_band()
+        if band:
+            x0, x1 = W * band[0] / 1440, W * band[1] / 1440
+            cv.create_rectangle(x0, 1, x1, H, fill=self.TL_SLEEP, outline="")
+            if x1 - x0 > 55:
+                cv.create_text((x0 + x1) / 2, (H + 1) / 2, text="zzz (est.)",
+                               fill="#c8c8dc", font=("Segoe UI", 7))
         kws = self._signal_kws()
 
         def work_color(task):
