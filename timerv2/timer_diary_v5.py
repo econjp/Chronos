@@ -60,6 +60,13 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v5.7 (pacing):
+  - VELOCITY: starting a task shows your real pace in the status bar —
+    "pace 2.31h/active-day (5d of last 14)" — computed from csv history,
+    so estimates meet reality before the time-box even starts.
+  - DEADLINE BURN-DOWN (View menu): ideal cumulative line at your weekly
+    target vs the actual line, red gap when trailing. The panic view.
+
 New in v5.6 (task engine):
   - TIME-BOX a task by typing e.g. "email: EU [15m]" — when today's total
     on that task blows the box, the clock turns red, it beeps, and
@@ -716,6 +723,7 @@ class App(tk.Tk):
         viewm.add_command(label="Weekly summary", command=lambda: self._summary("week"))
         viewm.add_command(label="Monthly summary", command=lambda: self._summary("month"))
         viewm.add_command(label="Trend (8 weeks)", command=self._trend)
+        viewm.add_command(label="Deadline burn-down", command=self._burndown)
         viewm.add_command(label="Health × focus (14 days)", command=self._health_view)
         viewm.add_command(label="Search all days…", command=self._search_diary)
         viewm.add_separator()
@@ -1058,6 +1066,10 @@ class App(tk.Tk):
             note = ""
             if self.active_task and getattr(self, "task_today_min", 0):
                 note = f" · {self.task_today_min / 60:.2f}h on it today"
+            if self.active_task:
+                v = self._task_velocity(self.active_task)
+                if v:
+                    note += f" · pace {v[0] / 60:.2f}h/active-day ({v[1]}d of last 14)"
             self.status.config(text=f"Working — {self.active_task or '(no task)'}{note}")
         elif self.settings.get("float_break", True):
             self.status.config(text="On break — the floating clock counts it; "
@@ -1120,6 +1132,26 @@ class App(tk.Tk):
         self._refresh_totals()
         self.status.config(text=f"Switched to {self.active_task or '(no task)'}")
         self.diary.focus_set()
+
+    def _task_velocity(self, task, days=14):
+        """(avg_min_per_active_day, active_days) over the last N days,
+        or None if the task has no history. Real pace, not wishes."""
+        t = task.strip().lower()
+        cutoff = self.today - dt.timedelta(days=days - 1)
+        per_day = {}
+        for r in read_rows():
+            if r[1] == "break" or r[5].strip().lower() != t:
+                continue
+            try:
+                d = dt.date.fromisoformat(r[0])
+                m = int(r[4])
+            except ValueError:
+                continue
+            if cutoff <= d <= self.today:
+                per_day[d] = per_day.get(d, 0) + m
+        if not per_day:
+            return None
+        return sum(per_day.values()) / len(per_day), len(per_day)
 
     def _log_work_until(self, end):
         """Close the current work interval at `end` (Stop line + csv)."""
@@ -2136,6 +2168,92 @@ class App(tk.Tk):
                 cv.create_text((x0 + x1) / 2, y0 - 10, text=f"{m / 60:.1f}h",
                                font=("Segoe UI", 8))
         cv.create_line(PAD, H - PAD, W - PAD, H - PAD)
+
+    # ----- deadline burn-down -----
+
+    def _burndown_series(self, dl, days_back=14):
+        """(dates, ideal_h, actual_h) — ideal = linear weekly-target pace,
+        actual = cumulative matched work; actual stops at today."""
+        end = dt.date.fromisoformat(dl["date"])
+        start = self.today - dt.timedelta(days=days_back - 1)
+        match = dl.get("match", "").lower()
+        per_day = {}
+        for r in read_rows():
+            if r[1] == "break" or (match and match not in r[5].lower()):
+                continue
+            try:
+                d = dt.date.fromisoformat(r[0])
+                per_day[d] = per_day.get(d, 0) + int(r[4])
+            except ValueError:
+                continue
+        dates, ideal, actual = [], [], []
+        cum = 0
+        d = start
+        rate = float(dl.get("target_h") or 0) / 7
+        while d <= max(end, self.today):
+            dates.append(d)
+            ideal.append(rate * ((d - start).days + 1))
+            if d <= self.today:
+                cum += per_day.get(d, 0)
+                actual.append(cum / 60)
+            d += dt.timedelta(days=1)
+        return dates, ideal, actual
+
+    def _burndown(self):
+        dls = [d for d in self.deadlines() if float(d.get("target_h") or 0)]
+        if not dls:
+            messagebox.showinfo(APP_NAME, "Set a deadline with a weekly "
+                                          "target first (Tools menu).")
+            return
+        dl = dls[0]
+        try:
+            dates, ideal, actual = self._burndown_series(dl)
+        except ValueError:
+            messagebox.showerror(APP_NAME, f"Bad date on '{dl['name']}'.")
+            return
+        left = (dt.date.fromisoformat(dl["date"]) - dt.date.today()).days
+        win = tk.Toplevel(self)
+        win.title(f"{dl['name']} — {left}d left · target {dl['target_h']:g}h/wk")
+        W, H, PAD = 560, 320, 40
+        cv = tk.Canvas(win, width=W, height=H, background="white",
+                       highlightthickness=0)
+        cv.pack(padx=8, pady=8)
+        mx = max(ideal[-1], (actual[-1] if actual else 0), 1)
+        n = len(dates)
+
+        def xy(i, v):
+            return (PAD + (W - 2 * PAD) * i / max(n - 1, 1),
+                    H - PAD - (H - 2 * PAD) * v / mx)
+
+        cv.create_line(PAD, H - PAD, W - PAD, H - PAD)
+        cv.create_line(PAD, PAD, PAD, H - PAD)
+        for pts, color, wdt in (
+                ([xy(i, v) for i, v in enumerate(ideal)], "#999999", 1),
+                ([xy(i, v) for i, v in enumerate(actual)], "#4a6fa5", 2)):
+            for a, b in zip(pts, pts[1:]):
+                cv.create_line(*a, *b, fill=color, width=wdt)
+        # the gap, in red, at today
+        i_today = len(actual) - 1
+        if i_today >= 0:
+            gap = ideal[i_today] - actual[i_today]
+            xa, ya = xy(i_today, actual[i_today])
+            _, yi = xy(i_today, ideal[i_today])
+            if gap > 0.1:
+                cv.create_line(xa, ya, xa, yi, fill="#c03030", width=2)
+                cv.create_text(min(xa + 6, W - 60), (ya + yi) / 2, anchor="w",
+                               text=f"-{gap:.1f}h behind", fill="#c03030",
+                               font=("Segoe UI", 9, "bold"))
+            else:
+                cv.create_text(xa, ya - 12, text="on pace ✓", fill="#2e8b2e",
+                               font=("Segoe UI", 9, "bold"))
+        for i in (0, n - 1):
+            cv.create_text(*xy(i, 0)[:1], H - PAD + 12,
+                           text=f"{dates[i]:%d.%m}", font=("Segoe UI", 8))
+        cv.create_text(PAD - 4, PAD, text=f"{mx:.0f}h", anchor="e",
+                       font=("Segoe UI", 8))
+        cv.create_text(W - PAD, PAD, anchor="e", font=("Segoe UI", 8),
+                       fill="#777777",
+                       text="grey = target pace · blue = actual")
 
     # ----- calendar export -----
 

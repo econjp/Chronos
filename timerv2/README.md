@@ -26,6 +26,13 @@ total on that task blows the box, the big clock turns **red**, it beeps,
 and `!!! time-box exceeded !!!` lands in the day file. For admin tasks
 that balloon. The csv/dropdown store the clean task name.
 
+### Pacing (v5.7)
+
+Starting a task shows your **real velocity** in the status bar — "pace
+2.31h/active-day (5d of last 14)" — history, not hopes. View → **Deadline
+burn-down** draws the target-pace line vs your actual cumulative hours;
+the red vertical gap is how far behind you are, in hours.
+
 ### Deadlines (multi, v5.6)
 
 Tools → Deadline countdowns: up to 4, each with a date, task keyword and
