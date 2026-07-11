@@ -33,12 +33,32 @@ Starting a task shows your **real velocity** in the status bar — "pace
 burn-down** draws the target-pace line vs your actual cumulative hours;
 the red vertical gap is how far behind you are, in hours.
 
-### Deadlines (multi, v5.6)
+### Deadlines (v2 in v5.8)
 
-Tools → Deadline countdowns: up to 4, each with a date, task keyword and
-weekly target. The totals line shows them all (`Thesis 11d 2.50/20h`);
-**⚠** appears when you're behind linear weekly pace with under 3 weeks
-left. The dot is green while you're working on any of them.
+Tools → Deadline countdowns: up to 4, each with an optional **start date
+and total-hours scope** plus a task keyword. With a scope the totals line
+turns into the real story — `Thesis 10d 6.0/60h · 5.4h/d` (done/scope and
+the h/day now required) — and **⚠** appears when you're behind the
+start→due line. Without a scope, the weekly-target pace logic applies.
+The dot is green while you're working on any of them.
+
+### Week plan / capacity (v5.8)
+
+View → Week plan: set your realistic hours per weekday once. The window
+then compares available hours until each due date against what your
+deadlines demand: `✓ Thesis — needs 54.0h, 66.0h available → slack
++12.0h`, plus the combined verdict — "12h of real slack, the friend on
+Tuesday is fine" or "⚠ overbooked by 9h: cut scope or say no to
+something". (Calendar import may come later; weekday capacity is the
+80% version.)
+
+### Tasks / backlog (v5.8)
+
+View → Tasks: add tasks as `write intro [2h]` (the `[2h]` becomes the
+estimate), see actual hours accumulate against it, **Start ▶** puts it
+straight into the timer, **Done ✓** removes it and writes
+`--- Done: write intro (est 2h, actual 3.40h)` into the day file — your
+estimate-vs-reality history, accruing for free.
 
 ### Tasks (v5.1)
 

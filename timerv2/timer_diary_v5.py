@@ -60,6 +60,20 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v5.8 (the planning engine):
+  - DEADLINES V2: each deadline can carry a start date and a TOTAL-HOURS
+    scope. With a scope the burn-down becomes real (ideal line start->due
+    covering the scope) and the app states "needs 4.3h/day from now".
+  - burn-down works for EVERY deadline (picker when there are several).
+  - CAPACITY PLANNER (View > Week plan): set your realistic hours per
+    weekday once; the app compares available hours until each due date
+    against what the deadlines demand and prints the honest verdict —
+    "slack +6h" or "overbooked by 9h: cut something".
+  - TASK BACKLOG (View > Tasks): add tasks as "name [2h]", see actual
+    hours accumulate against the estimate, Start straight from the list,
+    mark Done -> "--- Done: task (est 2h, actual 1.4h)" lands in the day
+    file. Estimate-vs-actual history starts accruing for future learning.
+
 New in v5.7 (pacing):
   - VELOCITY: starting a task shows your real pace in the status bar —
     "pace 2.31h/active-day (5d of last 14)" — computed from csv history,
@@ -722,6 +736,9 @@ class App(tk.Tk):
         viewm = tk.Menu(m, tearoff=0)
         viewm.add_command(label="Weekly summary", command=lambda: self._summary("week"))
         viewm.add_command(label="Monthly summary", command=lambda: self._summary("month"))
+        viewm.add_command(label="Tasks / backlog…", command=self._tasks_win)
+        viewm.add_command(label="Week plan / capacity…", command=self._capacity_win)
+        viewm.add_separator()
         viewm.add_command(label="Trend (8 weeks)", command=self._trend)
         viewm.add_command(label="Deadline burn-down", command=self._burndown)
         viewm.add_command(label="Health × focus (14 days)", command=self._health_view)
@@ -776,38 +793,44 @@ class App(tk.Tk):
         win.title("Deadline countdowns")
         win.resizable(False, False)
         win.grab_set()
-        cols = ("Name (empty = off)", "Date (YYYY-MM-DD)",
-                "Tasks containing", "h/week (0 = off)")
+        cols = ("Name (empty = off)", "Start (opt)", "Due (YYYY-MM-DD)",
+                "Total h (opt)", "h/week (opt)", "Tasks containing")
+        keys = ("name", "start", "date", "total_h", "target_h", "match")
         for c, lbl in enumerate(cols):
-            ttk.Label(win, text=lbl).grid(row=0, column=c, padx=5, pady=(8, 2))
+            ttk.Label(win, text=lbl).grid(row=0, column=c, padx=4, pady=(8, 2))
         cur = self.deadlines()
         grid = []
         for i in range(4):
             row = []
             d = cur[i] if i < len(cur) else {}
-            for c, key in enumerate(("name", "date", "match", "target_h")):
-                e = ttk.Entry(win, width=16 if c < 3 else 10)
+            for c, key in enumerate(keys):
+                e = ttk.Entry(win, width=13 if c in (0, 5) else 10)
                 v = d.get(key, "")
                 e.insert(0, str(v) if v else "")
-                e.grid(row=i + 1, column=c, padx=5, pady=2)
+                e.grid(row=i + 1, column=c, padx=4, pady=2)
                 row.append(e)
             grid.append(row)
 
         def save():
             out = []
             for row in grid:
-                name = row[0].get().strip()
-                if not name:
+                vals = {k: row[c].get().strip() for c, k in enumerate(keys)}
+                if not vals["name"]:
                     continue
                 try:
-                    dt.date.fromisoformat(row[1].get().strip())
-                    target = float(row[3].get().strip() or 0)
+                    dt.date.fromisoformat(vals["date"])
+                    if vals["start"]:
+                        dt.date.fromisoformat(vals["start"])
+                    total = float(vals["total_h"] or 0)
+                    target = float(vals["target_h"] or 0)
                 except ValueError:
                     messagebox.showerror(
-                        APP_NAME, f"Check date / target for '{name}'.", parent=win)
+                        APP_NAME, f"Check dates / hours for '{vals['name']}'.",
+                        parent=win)
                     return
-                out.append({"name": name, "date": row[1].get().strip(),
-                            "match": row[2].get().strip(), "target_h": target})
+                out.append({"name": vals["name"], "start": vals["start"],
+                            "date": vals["date"], "total_h": total,
+                            "target_h": target, "match": vals["match"]})
             self.settings["deadlines"] = out
             self.settings["dl_name"] = ""      # retire the legacy single form
             save_settings(self.settings)
@@ -815,7 +838,47 @@ class App(tk.Tk):
             win.destroy()
 
         ttk.Button(win, text="Save", command=save).grid(
-            row=5, column=3, sticky="e", padx=5, pady=8)
+            row=5, column=5, sticky="e", padx=4, pady=8)
+
+    def _dl_progress(self, dl, rows=None):
+        """Progress numbers for one deadline: matched hours done since its
+        start (or all time), days left, and — when a total-hours scope is
+        set — remaining hours, needed h/day, and whether we're behind the
+        straight start->due line."""
+        due = dt.date.fromisoformat(dl["date"])
+        start = None
+        if dl.get("start"):
+            try:
+                start = dt.date.fromisoformat(dl["start"])
+            except ValueError:
+                pass
+        match = dl.get("match", "").lower()
+        done = 0
+        for r in (rows if rows is not None else read_rows()):
+            if r[1] == "break" or (match and match not in r[5].lower()):
+                continue
+            try:
+                d = dt.date.fromisoformat(r[0])
+                m = int(r[4])
+            except ValueError:
+                continue
+            if (start is None or d >= start) and d <= self.today:
+                done += m
+        out = {"due": due, "start": start, "done_h": done / 60,
+               "left": (due - dt.date.today()).days}
+        total = float(dl.get("total_h") or 0)
+        if total:
+            rem = max(0.0, total - done / 60)
+            out["total_h"] = total
+            out["remaining_h"] = rem
+            out["needed_per_day"] = rem / max(out["left"], 1)
+            if start:
+                span = max((due - start).days, 1)
+                elapsed = min(max((dt.date.today() - start).days + 1, 0), span)
+                out["behind"] = done / 60 < total * elapsed / span - 0.1
+            else:
+                out["behind"] = False
+        return out
 
     def _set_idle(self):
         cur = int(self.settings.get("idle_min", 10))
@@ -1500,27 +1563,32 @@ class App(tk.Tk):
         on_any = False
         for dl in dls:
             try:
-                left = (dt.date.fromisoformat(dl["date"]) - dt.date.today()).days
+                p = self._dl_progress(dl, rows)
                 match = dl.get("match", "").lower()
-                wk_m = 0
-                for r in rows:
-                    if r[1] == "break":
-                        continue
-                    try:
-                        d = dt.date.fromisoformat(r[0])
-                    except ValueError:
-                        continue
-                    if (monday <= d <= self.today
-                            and (not match or match in r[5].lower())):
-                        wk_m += int(r[4])
-                seg = f"{dl['name']} {left}d"
-                target = float(dl.get("target_h") or 0)
-                if target:
-                    seg += f" {wk_m / 60:.2f}/{target:g}h"
-                    # behind linear weekly pace with <3 weeks left -> alarm
-                    expected = target * 60 * (self.today.weekday() + 1) / 7
-                    if left <= 21 and wk_m < 0.75 * expected:
+                seg = f"{dl['name']} {p['left']}d"
+                if p.get("total_h"):
+                    seg += (f" {p['done_h']:.1f}/{p['total_h']:g}h"
+                            f" · {p['needed_per_day']:.1f}h/d")
+                    if p["behind"] or p["needed_per_day"] > 8:
                         seg = "⚠" + seg
+                else:
+                    target = float(dl.get("target_h") or 0)
+                    if target:
+                        wk_m = 0
+                        for r in rows:
+                            if r[1] == "break":
+                                continue
+                            try:
+                                d = dt.date.fromisoformat(r[0])
+                            except ValueError:
+                                continue
+                            if (monday <= d <= self.today
+                                    and (not match or match in r[5].lower())):
+                                wk_m += int(r[4])
+                        seg += f" {wk_m / 60:.2f}/{target:g}h"
+                        expected = target * 60 * (self.today.weekday() + 1) / 7
+                        if p["left"] <= 21 and wk_m < 0.75 * expected:
+                            seg = "⚠" + seg
                 text += "   |   " + seg
                 if not match or match in (self.active_task or "").lower():
                     on_any = True
@@ -2169,13 +2237,212 @@ class App(tk.Tk):
                                font=("Segoe UI", 8))
         cv.create_line(PAD, H - PAD, W - PAD, H - PAD)
 
+    # ----- capacity planner -----
+
+    DEFAULT_CAP = [6, 6, 6, 6, 6, 5, 3]     # realistic h per Mon..Sun
+
+    def _capacity(self):
+        cap = self.settings.get("capacity", self.DEFAULT_CAP)
+        return [float(x) for x in cap] if len(cap) == 7 else self.DEFAULT_CAP
+
+    def _avail_hours(self, until):
+        """Capacity hours from today through `until` (inclusive)."""
+        cap = self._capacity()
+        d, total = dt.date.today(), 0.0
+        while d <= until:
+            total += cap[d.weekday()]
+            d += dt.timedelta(days=1)
+        return total
+
+    def _capacity_lines(self):
+        """The honest verdict: available hours vs deadline demand."""
+        rows = read_rows()
+        lines, reqs, far = [], [], None
+        for dl in self.deadlines():
+            try:
+                p = self._dl_progress(dl, rows)
+            except (ValueError, KeyError):
+                continue
+            if p["left"] < 0:
+                continue
+            if p.get("total_h"):
+                req = p["remaining_h"]
+            elif float(dl.get("target_h") or 0):
+                req = float(dl["target_h"]) * (p["left"] + 1) / 7
+            else:
+                lines.append(f" {dl['name']}: no scope or weekly target set "
+                             "— excluded from the math")
+                continue
+            avail = self._avail_hours(p["due"])
+            slack = avail - req
+            mark = "✓" if slack >= 0 else "⚠"
+            lines.append(f" {mark} {dl['name']} — due {p['due']:%d.%m} "
+                         f"({p['left']}d): needs {req:.1f}h, "
+                         f"{avail:.1f}h available → slack {slack:+.1f}h")
+            reqs.append(req)
+            far = max(far or p["due"], p["due"])
+        if len(reqs) > 1 and far:
+            avail = self._avail_hours(far)
+            slack = avail - sum(reqs)
+            lines.append("")
+            if slack >= 0:
+                lines.append(f" ALL deadlines together: {sum(reqs):.1f}h needed, "
+                             f"{avail:.1f}h available → {slack:.1f}h of real slack."
+                             " The friend on Tuesday is fine.")
+            else:
+                lines.append(f" ⚠ ALL deadlines together: {sum(reqs):.1f}h needed "
+                             f"but only {avail:.1f}h available → overbooked by "
+                             f"{-slack:.1f}h. Cut scope or say no to something.")
+        return lines
+
+    def _capacity_win(self):
+        win = tk.Toplevel(self)
+        win.title("Week plan — your hours vs your deadlines")
+        top = ttk.Frame(win)
+        top.pack(fill="x", padx=8, pady=8)
+        ttk.Label(top, text="Realistic work hours per day:").grid(
+            row=0, column=0, columnspan=8, sticky="w")
+        cap = self._capacity()
+        entries = []
+        for i, day in enumerate(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")):
+            ttk.Label(top, text=day).grid(row=1, column=i, padx=3)
+            e = ttk.Entry(top, width=4)
+            e.insert(0, f"{cap[i]:g}")
+            e.grid(row=2, column=i, padx=3)
+            entries.append(e)
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10), height=14,
+                      width=76)
+        txt.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+        def render():
+            txt.config(state="normal")
+            txt.delete("1.0", "end")
+            body = self._capacity_lines() or [
+                " No deadlines set — Tools > Deadline countdowns…"]
+            txt.insert("1.0", "\n".join(body))
+            txt.config(state="disabled")
+
+        def save():
+            try:
+                self.settings["capacity"] = [float(e.get().replace(",", "."))
+                                             for e in entries]
+            except ValueError:
+                messagebox.showerror(APP_NAME, "Hours must be numbers.",
+                                     parent=win)
+                return
+            save_settings(self.settings)
+            render()
+
+        ttk.Button(top, text="Save", command=save).grid(row=2, column=7, padx=6)
+        render()
+
+    # ----- task backlog -----
+
+    def _tasks_win(self):
+        win = tk.Toplevel(self)
+        win.title("Tasks — estimate, start, finish")
+        win.geometry("520x360")
+        cols = ("task", "est", "actual")
+        tree = ttk.Treeview(win, columns=cols, show="headings")
+        for c, wdt in zip(cols, (280, 70, 90)):
+            tree.heading(c, text=c)
+            tree.column(c, width=wdt, anchor="w")
+        tree.pack(fill="both", expand=True, padx=8, pady=(8, 4))
+
+        def task_actual_h(name, added):
+            t, tot = name.strip().lower(), 0
+            for r in read_rows():
+                if (r[1] != "break" and r[5].strip().lower() == t
+                        and r[0] >= added):
+                    try:
+                        tot += int(r[4])
+                    except ValueError:
+                        pass
+            return tot / 60
+
+        def refresh():
+            tree.delete(*tree.get_children())
+            for i, t in enumerate(self.settings.get("tasks", [])):
+                est = t.get("est_h")
+                tree.insert("", "end", iid=str(i), values=(
+                    t["name"], f"{est:g}h" if est else "—",
+                    f"{task_actual_h(t['name'], t['added']):.2f}h"))
+
+        bar = ttk.Frame(win)
+        bar.pack(fill="x", padx=8, pady=(0, 8))
+        entry = ttk.Entry(bar)
+        entry.pack(side="left", fill="x", expand=True)
+
+        def add(event=None):
+            raw = entry.get().strip()
+            if not raw:
+                return
+            name, box = self._parse_box(raw)
+            self.settings.setdefault("tasks", []).append(
+                {"name": name, "est_h": (box / 3600 if box else 0),
+                 "added": self.today.isoformat()})
+            save_settings(self.settings)
+            entry.delete(0, "end")
+            refresh()
+
+        def picked():
+            sel = tree.selection()
+            return int(sel[0]) if sel else None
+
+        def start():
+            i = picked()
+            if i is None:
+                return
+            self.task_var.set(self.settings["tasks"][i]["name"])
+            win.destroy()
+            self._go()
+
+        def done():
+            i = picked()
+            if i is None:
+                return
+            t = self.settings["tasks"].pop(i)
+            save_settings(self.settings)
+            line = f"--- Done: {t['name']}"
+            if t.get("est_h"):
+                line += (f" (est {t['est_h']:g}h, actual "
+                         f"{task_actual_h(t['name'], t['added']):.2f}h)")
+            self._append_text(line)
+            refresh()
+
+        def delete():
+            i = picked()
+            if i is None:
+                return
+            del self.settings["tasks"][i]
+            save_settings(self.settings)
+            refresh()
+
+        entry.bind("<Return>", add)
+        for label, cmd in (("Add", add), ("Start ▶", start),
+                           ("Done ✓", done), ("Delete", delete)):
+            ttk.Button(bar, text=label, command=cmd).pack(side="left", padx=(4, 0))
+        ttk.Label(win, text='Add as "write intro [2h]" — the [2h] becomes the estimate.',
+                  foreground="#777777").pack(anchor="w", padx=8, pady=(0, 6))
+        refresh()
+
     # ----- deadline burn-down -----
 
     def _burndown_series(self, dl, days_back=14):
-        """(dates, ideal_h, actual_h) — ideal = linear weekly-target pace,
-        actual = cumulative matched work; actual stops at today."""
+        """(dates, ideal_h, actual_h). With a total-hours scope the ideal
+        line runs start->due covering the scope; otherwise it's the linear
+        weekly-target pace over the last `days_back` days. Actual stops
+        at today."""
         end = dt.date.fromisoformat(dl["date"])
-        start = self.today - dt.timedelta(days=days_back - 1)
+        total = float(dl.get("total_h") or 0)
+        start = None
+        if total and dl.get("start"):
+            try:
+                start = dt.date.fromisoformat(dl["start"])
+            except ValueError:
+                pass
+        if start is None:
+            start = self.today - dt.timedelta(days=days_back - 1)
         match = dl.get("match", "").lower()
         per_day = {}
         for r in read_rows():
@@ -2189,10 +2456,12 @@ class App(tk.Tk):
         dates, ideal, actual = [], [], []
         cum = 0
         d = start
+        span = max((end - start).days + 1, 1)
         rate = float(dl.get("target_h") or 0) / 7
         while d <= max(end, self.today):
             dates.append(d)
-            ideal.append(rate * ((d - start).days + 1))
+            i = (d - start).days + 1
+            ideal.append(total * min(i, span) / span if total else rate * i)
             if d <= self.today:
                 cum += per_day.get(d, 0)
                 actual.append(cum / 60)
@@ -2200,20 +2469,48 @@ class App(tk.Tk):
         return dates, ideal, actual
 
     def _burndown(self):
-        dls = [d for d in self.deadlines() if float(d.get("target_h") or 0)]
+        dls = [d for d in self.deadlines()
+               if float(d.get("target_h") or 0) or float(d.get("total_h") or 0)]
         if not dls:
-            messagebox.showinfo(APP_NAME, "Set a deadline with a weekly "
-                                          "target first (Tools menu).")
+            messagebox.showinfo(APP_NAME, "Set a deadline with a total-hours "
+                                          "scope or weekly target first (Tools).")
             return
-        dl = dls[0]
+        if len(dls) == 1:
+            self._draw_burndown(dls[0])
+            return
+        win = tk.Toplevel(self)
+        win.title("Burn-down")
+        win.resizable(False, False)
+        win.grab_set()
+        ttk.Label(win, text="Which deadline?").grid(row=0, column=0,
+                                                    padx=8, pady=(8, 3))
+        var = tk.StringVar(value=dls[0]["name"])
+        ttk.Combobox(win, textvariable=var, state="readonly",
+                     values=[d["name"] for d in dls]).grid(row=1, column=0,
+                                                           padx=8, pady=3)
+
+        def go():
+            win.destroy()
+            self._draw_burndown(next(d for d in dls if d["name"] == var.get()))
+
+        ttk.Button(win, text="Show", command=go).grid(row=2, column=0,
+                                                      sticky="e", padx=8, pady=8)
+
+    def _draw_burndown(self, dl):
         try:
             dates, ideal, actual = self._burndown_series(dl)
+            p = self._dl_progress(dl)
         except ValueError:
             messagebox.showerror(APP_NAME, f"Bad date on '{dl['name']}'.")
             return
-        left = (dt.date.fromisoformat(dl["date"]) - dt.date.today()).days
+        title = f"{dl['name']} — {p['left']}d left"
+        if p.get("total_h"):
+            title += (f" · {p['done_h']:.1f}/{p['total_h']:g}h"
+                      f" · needs {p['needed_per_day']:.1f}h/day")
+        elif float(dl.get("target_h") or 0):
+            title += f" · target {dl['target_h']:g}h/wk"
         win = tk.Toplevel(self)
-        win.title(f"{dl['name']} — {left}d left · target {dl['target_h']:g}h/wk")
+        win.title(title)
         W, H, PAD = 560, 320, 40
         cv = tk.Canvas(win, width=W, height=H, background="white",
                        highlightthickness=0)
