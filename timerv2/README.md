@@ -19,6 +19,20 @@ time with `build_exe.bat`.
 7. Closing (or a crash / reboot) with the timer running: choose *keep
    running* and it resumes on next launch.
 
+### Time-boxing (v5.6)
+
+Type a task as `email: EU [15m]` (or `[1h]`, `[1h 30m]`) — when today's
+total on that task blows the box, the big clock turns **red**, it beeps,
+and `!!! time-box exceeded !!!` lands in the day file. For admin tasks
+that balloon. The csv/dropdown store the clean task name.
+
+### Deadlines (multi, v5.6)
+
+Tools → Deadline countdowns: up to 4, each with a date, task keyword and
+weekly target. The totals line shows them all (`Thesis 11d 2.50/20h`);
+**⚠** appears when you're behind linear weekly pace with under 3 weeks
+left. The dot is green while you're working on any of them.
+
 ### Tasks (v5.1)
 
 Type a task (e.g. `thesis: ch4`) and press Start — a `--- Task: thesis: ch4`
@@ -44,8 +58,12 @@ your last logged event + 1 h (00:00 if the evening wasn't logged late),
 band length = the imported sleep total, clipped to end before your first
 activity. The gap between midnight and the band start is your visible
 doomscroll tax; the gap between band end and your first session is the
-morning-efficiency one. Real bed/wake times (better export app) will
-replace the estimate when available.
+morning-efficiency one. **Right-click the bar** to enter the real bed/wake
+times for last night — the label becomes "zzz (set)" (empty bed time =
+back to the estimate).
+
+The break pill escalates faster (5 min instead of 15) between **19–21** —
+the documented fatigue/doomscroll window.
 
 ### Hotkeys
 

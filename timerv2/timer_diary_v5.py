@@ -60,6 +60,19 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v5.6 (task engine):
+  - TIME-BOX a task by typing e.g. "email: EU [15m]" — when today's total
+    on that task blows the box, the clock turns red, it beeps, and
+    "!!! time-box exceeded !!!" lands in the day file. For admin tasks
+    that balloon ("the air-mattress problem").
+  - MULTIPLE DEADLINES (Tools menu): up to 4, each with date, task
+    keyword and weekly target; the totals line shows them all, with ⚠
+    when you're behind pace with <3 weeks left.
+  - FATIGUE WINDOW: 19:00-21:00 the break pill escalates at 5 min
+    (not 15) — "move or leave, don't scroll!" (the user's own dead zone).
+  - RIGHT-CLICK the timeline to set real bed/wake times for last night —
+    overrides the estimate, band label becomes "zzz (set)".
+
 New in v5.5 (feedback engine v1):
   - MORNING VERDICT: a new day file opens with yesterday's numbers AND one
     honest rule-based line ("busy but scattered (4.2h, only 31% signal) —
@@ -551,6 +564,8 @@ class App(tk.Tk):
         self.compact = False
         self.active_task = ""          # task the current work interval logs to
         self.logged_task = None        # last task written as a "--- Task:" line
+        self.task_box_secs = None      # [15m]-style time-box for active task
+        self.box_warned = False
         self.pill = None               # floating break window
         self.today = self.effective_date()
 
@@ -738,46 +753,61 @@ class App(tk.Tk):
         self.settings["float_break"] = self.float_var.get()
         save_settings(self.settings)
 
+    def deadlines(self):
+        """List of deadline dicts; migrates the old single dl_* settings."""
+        dls = self.settings.get("deadlines")
+        if dls is None and self.settings.get("dl_name"):
+            dls = [{"name": self.settings["dl_name"],
+                    "date": self.settings.get("dl_date", ""),
+                    "match": self.settings.get("dl_match", ""),
+                    "target_h": self.settings.get("dl_target_h", 0)}]
+        return dls or []
+
     def _set_deadline(self):
         win = tk.Toplevel(self)
-        win.title("Deadline countdown")
+        win.title("Deadline countdowns")
         win.resizable(False, False)
         win.grab_set()
-        fields = {}
-        defaults = [("Name (empty = off)", self.settings.get("dl_name", "")),
-                    ("Date (YYYY-MM-DD)", self.settings.get("dl_date", "")),
-                    ("Count tasks containing", self.settings.get("dl_match", "")),
-                    ("Weekly target hours (0 = off)",
-                     str(self.settings.get("dl_target_h", 0)))]
-        for i, (lbl, dv) in enumerate(defaults):
-            ttk.Label(win, text=lbl + ":").grid(row=i, column=0, sticky="e",
-                                                padx=6, pady=3)
-            e = ttk.Entry(win, width=24)
-            e.insert(0, dv)
-            e.grid(row=i, column=1, padx=6, pady=3)
-            fields[lbl] = e
+        cols = ("Name (empty = off)", "Date (YYYY-MM-DD)",
+                "Tasks containing", "h/week (0 = off)")
+        for c, lbl in enumerate(cols):
+            ttk.Label(win, text=lbl).grid(row=0, column=c, padx=5, pady=(8, 2))
+        cur = self.deadlines()
+        grid = []
+        for i in range(4):
+            row = []
+            d = cur[i] if i < len(cur) else {}
+            for c, key in enumerate(("name", "date", "match", "target_h")):
+                e = ttk.Entry(win, width=16 if c < 3 else 10)
+                v = d.get(key, "")
+                e.insert(0, str(v) if v else "")
+                e.grid(row=i + 1, column=c, padx=5, pady=2)
+                row.append(e)
+            grid.append(row)
 
         def save():
-            name = fields["Name (empty = off)"].get().strip()
-            if name:
+            out = []
+            for row in grid:
+                name = row[0].get().strip()
+                if not name:
+                    continue
                 try:
-                    dt.date.fromisoformat(fields["Date (YYYY-MM-DD)"].get().strip())
-                    float(fields["Weekly target hours (0 = off)"].get().strip() or 0)
+                    dt.date.fromisoformat(row[1].get().strip())
+                    target = float(row[3].get().strip() or 0)
                 except ValueError:
-                    messagebox.showerror(APP_NAME, "Check the date / target hours.",
-                                         parent=win)
+                    messagebox.showerror(
+                        APP_NAME, f"Check date / target for '{name}'.", parent=win)
                     return
-            self.settings["dl_name"] = name
-            self.settings["dl_date"] = fields["Date (YYYY-MM-DD)"].get().strip()
-            self.settings["dl_match"] = fields["Count tasks containing"].get().strip()
-            self.settings["dl_target_h"] = float(
-                fields["Weekly target hours (0 = off)"].get().strip() or 0)
+                out.append({"name": name, "date": row[1].get().strip(),
+                            "match": row[2].get().strip(), "target_h": target})
+            self.settings["deadlines"] = out
+            self.settings["dl_name"] = ""      # retire the legacy single form
             save_settings(self.settings)
             self._refresh_totals()
             win.destroy()
 
         ttk.Button(win, text="Save", command=save).grid(
-            row=len(defaults), column=1, sticky="e", padx=6, pady=8)
+            row=5, column=3, sticky="e", padx=5, pady=8)
 
     def _set_idle(self):
         cur = int(self.settings.get("idle_min", 10))
@@ -878,6 +908,7 @@ class App(tk.Tk):
         self.timeline = tk.Canvas(self.body, height=28, highlightthickness=0)
         self.timeline.pack(fill="x", padx=8, pady=(6, 0))
         self.timeline.bind("<Configure>", lambda e: self._draw_timeline())
+        self.timeline.bind("<Button-3>", self._set_sleep_override)
 
         info = ttk.Frame(self.body)
         info.pack(fill="x", padx=8, pady=(4, 0))
@@ -1040,14 +1071,29 @@ class App(tk.Tk):
             except Exception:
                 pass
 
+    TASKBOX_RE = re.compile(r"\s*\[(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\]\s*$", re.I)
+
+    @classmethod
+    def _parse_box(cls, raw):
+        """'email: EU [15m]' -> ('email: EU', 900). No box -> (raw, None)."""
+        m = cls.TASKBOX_RE.search(raw)
+        if m and (m.group(1) or m.group(2)):
+            secs = (int(m.group(1) or 0) * 60 + int(m.group(2) or 0)) * 60
+            return raw[:m.start()].strip(), secs
+        return raw.strip(), None
+
     def _log_task_if_new(self):
-        """Remember the task for csv rows and write it into the day file."""
-        t = self.task_var.get().strip()
+        """Remember the task for csv rows and write it into the day file.
+        A trailing [15m] / [1h30m] time-boxes the task (today's total)."""
+        t, box = self._parse_box(self.task_var.get())
         self.active_task = t
+        self.task_box_secs = box
+        self.box_warned = False
         if t:
             self._remember_task(t)
         if t and t != self.logged_task:
-            self._append_text(f"--- Task: {t}")
+            self._append_text(f"--- Task: {t}"
+                              + (f" [time-box {box // 60}m]" if box else ""))
             self.logged_task = t
 
     def _go(self, event=None):
@@ -1063,7 +1109,7 @@ class App(tk.Tk):
         if self.state != "working":
             return
         now = dt.datetime.now()
-        if self.task_var.get().strip() == self.active_task:
+        if self._parse_box(self.task_var.get())[0] == self.active_task:
             self.status.config(text="Switch splits the log when the task changes — type the new task first.")
             return
         self._log_work_until(now)
@@ -1121,19 +1167,21 @@ class App(tk.Tk):
             self.clock.config(text=hms_padded(secs))
             title = (f"{secs // 3600}:{secs % 3600 // 60:02} — "
                      f"{self.task_var.get().strip() or APP_NAME}")
+            task_tot = None
             if self.active_task and self.work_start:
-                tot = (getattr(self, "task_today_min", 0) * 60
-                       + int((dt.datetime.now() - self.work_start).total_seconds()))
-                title += f" · today {tot / 3600:.2f}h"
+                task_tot = (getattr(self, "task_today_min", 0) * 60
+                            + int((dt.datetime.now() - self.work_start).total_seconds()))
+                title += f" · today {task_tot / 3600:.2f}h"
             self.title(title)
+            self._check_time_box(task_tot)
             self._watch_idle()
         elif self.state == "break":
             bsecs = int((dt.datetime.now() - self.break_start).total_seconds())
-            self.clock.config(text=f"☕ {hms_padded(bsecs)}")
+            self.clock.config(text=f"☕ {hms_padded(bsecs)}", foreground="")
             self.title(f"☕ break {bsecs // 60}:{bsecs % 60:02} — {APP_NAME}")
             self._update_pill(bsecs)
         else:
-            self.clock.config(text="0:00:00")
+            self.clock.config(text="0:00:00", foreground="")
             self.title(("⏸ not tracking — " + APP_NAME)
                        if self.nudge_var.get() else APP_NAME)
         if self.state != "break":
@@ -1143,11 +1191,34 @@ class App(tk.Tk):
             self._draw_timeline()      # keep the live segment growing
         self.after(1000, self._tick)
 
+    def _check_time_box(self, task_tot):
+        """Escalate when today's total on the boxed task exceeds the box."""
+        if not self.task_box_secs or task_tot is None:
+            self.clock.config(foreground="")
+            return
+        if task_tot <= self.task_box_secs:
+            self.clock.config(foreground="")
+            return
+        self.clock.config(foreground="#a03030")
+        if not self.box_warned:
+            self.box_warned = True
+            over = (task_tot - self.task_box_secs) // 60
+            self._append_text(
+                f"!!! {dt.datetime.now():%H:%M} time-box exceeded: "
+                f"{self.active_task} [{self.task_box_secs // 60}m]"
+                + (f" +{over}m" if over else "") + " — wrap it up !!!")
+            try:
+                import winsound
+                winsound.MessageBeep(0x30)
+            except Exception:
+                pass
+
     # ----- floating break pill -----
 
     BREAK_WARN_SECS = 15 * 60      # pill turns red after this
+    FATIGUE_WARN_SECS = 5 * 60     # 19-21: the user's own doomscroll window
 
-    def _update_pill(self, bsecs):
+    def _update_pill(self, bsecs, now_h=None):
         if not self.settings.get("float_break", True) or self.compact:
             self._hide_pill()
             return
@@ -1195,12 +1266,19 @@ class App(tk.Tk):
                 y = self.winfo_screenheight() - p.winfo_reqheight() - 90
                 p.geometry(f"+{x}+{y}")
             self.pill = p
-        over = bsecs > self.BREAK_WARN_SECS
-        self.pill_lbl.config(
-            text=(f"☕ break {bsecs // 60}:{bsecs % 60:02} — move, don't scroll!"
-                  if over else
-                  f"☕ break {bsecs // 60}:{bsecs % 60:02} — click to work"),
-            bg="#a03030" if over else "#505050")
+        fatigue = 19 <= (now_h if now_h is not None
+                         else dt.datetime.now().hour) < 21
+        over = bsecs > (self.FATIGUE_WARN_SECS if fatigue
+                        else self.BREAK_WARN_SECS)
+        t = f"☕ break {bsecs // 60}:{bsecs % 60:02} — "
+        if over and fatigue:
+            t += "fatigue window: move or LEAVE, don't scroll!"
+        elif over:
+            t += "move, don't scroll!"
+        else:
+            t += "click to work"
+        self.pill_lbl.config(text=t, bg="#7a1f1f" if over and fatigue
+                             else ("#a03030" if over else "#505050"))
 
     @staticmethod
     def _pos_on_screen(pos):
@@ -1386,14 +1464,14 @@ class App(tk.Tk):
             if cur is not None and prev is not None:
                 text += " ↑" if cur - prev >= 5 else (
                         " ↓" if cur - prev <= -5 else " →")
-        dl_name = self.settings.get("dl_name")
-        if dl_name:
+        dls = self.deadlines()
+        on_any = False
+        for dl in dls:
             try:
-                left = (dt.date.fromisoformat(self.settings["dl_date"])
-                        - dt.date.today()).days
-                match = self.settings.get("dl_match", "").lower()
+                left = (dt.date.fromisoformat(dl["date"]) - dt.date.today()).days
+                match = dl.get("match", "").lower()
                 wk_m = 0
-                for r in read_rows():
+                for r in rows:
                     if r[1] == "break":
                         continue
                     try:
@@ -1403,20 +1481,24 @@ class App(tk.Tk):
                     if (monday <= d <= self.today
                             and (not match or match in r[5].lower())):
                         wk_m += int(r[4])
-                seg = f"   |   {dl_name}: {left}d left"
-                target = self.settings.get("dl_target_h", 0)
+                seg = f"{dl['name']} {left}d"
+                target = float(dl.get("target_h") or 0)
                 if target:
-                    seg += f" · {wk_m / 60:.2f}/{target:g}h wk"
-                text += seg
+                    seg += f" {wk_m / 60:.2f}/{target:g}h"
+                    # behind linear weekly pace with <3 weeks left -> alarm
+                    expected = target * 60 * (self.today.weekday() + 1) / 7
+                    if left <= 21 and wk_m < 0.75 * expected:
+                        seg = "⚠" + seg
+                text += "   |   " + seg
+                if not match or match in (self.active_task or "").lower():
+                    on_any = True
             except (ValueError, KeyError):
-                pass
-        # activity dot: green = working on the deadline task right now
-        if dl_name:
-            match = self.settings.get("dl_match", "").lower()
-            on_it = not match or match in (self.active_task or "").lower()
-            if self.state == "working" and on_it:
+                continue
+        # activity dot: green = working on a deadline task right now
+        if dls:
+            if self.state == "working" and on_any:
                 c = "#2e8b2e"
-            elif self.state == "break" and on_it:
+            elif self.state == "break" and on_any:
                 c = "#d9a24a"
             else:
                 c = "#bbbbbb"
@@ -1444,12 +1526,24 @@ class App(tk.Tk):
     TL_SLEEP = "#454569"
 
     def _sleep_band(self):
-        """ESTIMATED sleep band for today's 00-24 bar, as clock-minute
-        (start, end), or None. We only have last night's sleep TOTAL from
-        the health import, so: bed ~= last logged event yesterday + 1 h
-        (default 00:00 if the evening wasn't logged late), band length =
-        the imported total, clipped so it ends before today's first
-        logged activity. Clearly an estimate — labeled as such on the bar."""
+        """Sleep band for today's 00-24 bar: (start_min, end_min, exact)
+        or None. A right-click override (real bed/wake times) wins;
+        otherwise ESTIMATED from last night's imported sleep TOTAL:
+        bed ~= last logged event yesterday + 1 h (default 00:00 if the
+        evening wasn't logged late), band length = the imported total,
+        clipped so it ends before today's first logged activity."""
+        ov = self.settings.get("sleep_over", {}).get(self.today.isoformat())
+        if ov:
+            try:
+                bh, bm = map(int, ov[0].split(":"))
+                wh, wm = map(int, ov[1].split(":"))
+                bed = bh * 60 + bm
+                bed += 1440 if bed < 720 else 0     # 01:30 = past midnight
+                wake = wh * 60 + wm + 1440          # wake is always today
+                if wake > bed:
+                    return max(0, bed - 1440), wake - 1440, True
+            except (ValueError, IndexError):
+                pass
         rec = self._health_data().get(self.today.isoformat())
         if not rec or not rec.get("sleep_h"):
             return None
@@ -1477,7 +1571,7 @@ class App(tk.Tk):
             bed = wake - sleep_min
         if wake <= 1440:         # entire band before midnight — nothing to draw
             return None
-        return max(0, bed - 1440), wake - 1440
+        return max(0, bed - 1440), wake - 1440, False
 
     def _draw_timeline(self):
         cv = self.timeline
@@ -1500,7 +1594,8 @@ class App(tk.Tk):
             x0, x1 = W * band[0] / 1440, W * band[1] / 1440
             cv.create_rectangle(x0, 1, x1, H, fill=self.TL_SLEEP, outline="")
             if x1 - x0 > 55:
-                cv.create_text((x0 + x1) / 2, (H + 1) / 2, text="zzz (est.)",
+                cv.create_text((x0 + x1) / 2, (H + 1) / 2,
+                               text="zzz (set)" if band[2] else "zzz (est.)",
                                fill="#c8c8dc", font=("Segoe UI", 7))
         kws = self._signal_kws()
 
@@ -1534,6 +1629,36 @@ class App(tk.Tk):
             anchor = "nw" if hr == 0 else ("ne" if hr == 24 else "n")
             cv.create_text(min(max(x, 1), W - 1), H + 4, text=f"{hr:02}",
                            font=("Segoe UI", 7), fill="#888888", anchor=anchor)
+
+    def _set_sleep_override(self, event=None):
+        """Right-click on the timeline: enter real bed/wake for last night."""
+        cur = self.settings.get("sleep_over", {}).get(self.today.isoformat(),
+                                                      ["", ""])
+        bed = simpledialog.askstring(
+            APP_NAME, "Bed time last night (HH:MM, empty = back to estimate):",
+            initialvalue=cur[0], parent=self)
+        if bed is None:
+            return
+        overs = self.settings.setdefault("sleep_over", {})
+        if not bed.strip():
+            overs.pop(self.today.isoformat(), None)
+        else:
+            wake = simpledialog.askstring(
+                APP_NAME, "Wake time this morning (HH:MM):",
+                initialvalue=cur[1], parent=self)
+            if wake is None:
+                return
+            try:
+                for s in (bed, wake):
+                    h, m = map(int, s.strip().split(":"))
+                    assert 0 <= h < 24 and 0 <= m < 60
+            except (ValueError, AssertionError):
+                messagebox.showerror(APP_NAME, "Use HH:MM, e.g. 01:30.",
+                                     parent=self)
+                return
+            overs[self.today.isoformat()] = [bed.strip(), wake.strip()]
+        save_settings(self.settings)
+        self._draw_timeline()
 
     # ----- diary file -----
 
