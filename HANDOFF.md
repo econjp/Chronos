@@ -170,17 +170,39 @@ every place that asks "what does the app know about day D" calls
   anyway), which gives an `.ics` URL to periodically re-download. May be
   disabled by org policy on managed accounts. No code change from this —
   advisory only, logged here so it isn't re-researched from scratch.
+- **v6.6**: friction pass + finished the lens convergence. Sleep-override
+  time entry (`_parse_time_loose`) accepts `1`/`01`/`0120`/`120`/`1:20` —
+  no colon required, no leading zero required. Tasks/Library "Add" bar
+  gets a plain "est h" field and a priority selector — typing `[2h]`
+  inline still works as a fallback, but is no longer required (this is
+  what the user meant by "goal setting... have to manually write the []
+  brackets"; the Deadline/Goals dialogs themselves never required
+  brackets — those were already plain fields). New: **File > Add past
+  session** gained a "carved out of a break" checkbox — logs the work
+  interval AND shrinks the covering break row by the same minutes
+  (`_shrink_last_break`, approximate: adjusts the break's `minutes`
+  total, not a pixel-exact re-slice of its start/end) so reclassifying
+  part of a break as real work doesn't double-count it. Lens convergence
+  (backlog #2) finished — see BACKLOG entry below for the how.
 
 ## BACKLOG (priority order — continue here)
 
 1. **Dashboard as home**: retire/merge the now-redundant standalone
    windows (weekly summary, trend, health view) once the user confirms
    the dashboard covers them; keep heatmap + burn-down as drill-downs.
-2. **Finish the lens convergence** (started v6.3): migrate `_dl_progress`,
-   `_refresh_totals` deadline block, `_burndown_series`, `_capacity_lines`
-   onto `matched_minutes`. Then **link the faces**: a deadline can point
-   at a goal (dropdown of goal names); SIGNAL already seeds from goals;
-   review block shows goal-vs-ambition arrows. One system, three faces.
+2. ~~Finish the lens convergence~~ — DONE v6.6: `_dl_progress` and the
+   `_refresh_totals` weekly-target block now call `matched_minutes`;
+   `_burndown_series` routes through `day_index()` + `task_matches`
+   (needs a per-day running sum, which `matched_minutes` — a range
+   total — doesn't return, so it's one call-site short of literally
+   calling the shared function, but reads the same substrate through the
+   same predicate). `_capacity_lines` converged transitively (it only
+   ever called `_dl_progress`). Side effect worth knowing: deadlines'
+   `match` field now accepts **comma-separated multi-keyword** matching,
+   same as Goals/SIGNAL — was previously a single substring only.
+   Still open: **link the faces** — a deadline pointing at a goal
+   (dropdown of goal names); SIGNAL already seeds from goals; review
+   block could show goal-vs-ambition arrows. One system, three faces.
 2b. **Themed writing v2** (v1 done in v6.4): progression view could diff
    or highlight changed stance between entries on the same topic ("your
    thinking on X shifted here"); consider a lightweight `#tag` alternative

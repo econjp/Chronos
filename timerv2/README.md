@@ -4,6 +4,23 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Faster inputs (v6.6)
+
+Right-click the timeline to set last night's sleep: bed/wake times now
+accept `1`, `01`, `0120`, `120` or `1:20` — no colon, no leading zero, no
+minutes needed if you don't care. In Tasks / Library, adding a task with
+an estimate no longer needs `[2h]` typed inline — there's a plain "est h"
+box and a priority picker right there (typing brackets in the name still
+works, if that's faster for you).
+
+### "Actually working, not resting" (v6.6)
+
+File → **Add past session…** has a new checkbox: *"carved out of a
+break"*. Check it, and the minutes you log as work are also subtracted
+from the break they came out of — so realizing 10 of those 23 "break"
+minutes were spent replying to something task-related doesn't inflate
+your break total while under-counting your work.
+
 ### Task library (v6.5) — View → Tasks / Library
 
 The one place for messy ideas and todos — everything that used to live in a

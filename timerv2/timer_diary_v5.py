@@ -60,6 +60,18 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v6.6 (friction pass + lens convergence finished):
+  - sleep-override time entry accepts 1/01/0120/120/1:20 — no colon, no
+    leading zero required.
+  - Tasks/Library "Add" gets a plain est-h field and a priority picker —
+    [2h] bracket typing no longer required (still works as a fallback).
+  - Add past session gained a "carved out of a break" checkbox: logs the
+    work AND shrinks the covering break by the same minutes, so
+    reclassifying part of a break as real work doesn't double-count it.
+  - deadlines' match field now accepts comma-separated multi-keyword
+    matching, same as Goals/SIGNAL (a side effect of finishing the lens
+    convergence started in v6.3 — see HANDOFF.md).
+
 New in v6.5 (the task library):
   - TASK LIBRARY: Goals/Tasks/TODO/SOMEDAY unified around the existing
     Tasks window. Every item now has a priority you click to cycle
@@ -1147,11 +1159,15 @@ class App(tk.Tk):
         ttk.Button(win, text="Save", command=save).grid(
             row=6, column=3, sticky="e", padx=4, pady=8)
 
-    def _dl_progress(self, dl, rows=None):
+    def _dl_progress(self, dl):
         """Progress numbers for one deadline: matched hours done since its
         start (or all time), days left, and — when a total-hours scope is
         set — remaining hours, needed h/day, and whether we're behind the
-        straight start->due line."""
+        straight start->due line. Routes through matched_minutes — the
+        same (keywords, window) -> minutes primitive SIGNAL and Goals
+        use — when a task keyword is set; an empty match keeps its old
+        meaning of 'count all work', which matched_minutes deliberately
+        doesn't support (there, no keywords means no signal)."""
         due = dt.date.fromisoformat(dl["date"])
         start = None
         if dl.get("start"):
@@ -1159,18 +1175,15 @@ class App(tk.Tk):
                 start = dt.date.fromisoformat(dl["start"])
             except ValueError:
                 pass
-        match = dl.get("match", "").lower()
-        done = 0
-        for r in (rows if rows is not None else read_rows()):
-            if r[1] == "break" or (match and match not in r[5].lower()):
-                continue
-            try:
-                d = dt.date.fromisoformat(r[0])
-                m = int(r[4])
-            except ValueError:
-                continue
-            if (start is None or d >= start) and d <= self.today:
-                done += m
+        kws = self._match_kws(dl.get("match", ""))
+        lo = start or dt.date.min
+        if kws:
+            done = matched_minutes(kws, lo, self.today)
+        else:
+            idx = day_index()
+            lo_iso = lo.isoformat()
+            done = sum(rec["work"] for iso, rec in idx.items()
+                      if lo_iso <= iso <= self.today.isoformat())
         out = {"due": due, "start": start, "done_h": done / 60,
                "left": (due - dt.date.today()).days}
         total = float(dl.get("total_h") or 0)
@@ -1890,7 +1903,7 @@ class App(tk.Tk):
         on_any = False
         for dl in dls:
             try:
-                p = self._dl_progress(dl, rows)
+                p = self._dl_progress(dl)
                 match = dl.get("match", "").lower()
                 seg = f"{dl['name']} {p['left']}d"
                 if p.get("total_h"):
@@ -1901,17 +1914,14 @@ class App(tk.Tk):
                 else:
                     target = float(dl.get("target_h") or 0)
                     if target:
-                        wk_m = 0
-                        for r in rows:
-                            if r[1] == "break":
-                                continue
-                            try:
-                                d = dt.date.fromisoformat(r[0])
-                            except ValueError:
-                                continue
-                            if (monday <= d <= self.today
-                                    and (not match or match in r[5].lower())):
-                                wk_m += int(r[4])
+                        kws = self._match_kws(dl.get("match", ""))
+                        if kws:
+                            wk_m = matched_minutes(kws, monday, self.today)
+                        else:
+                            idx = day_index()
+                            wk_m = sum(rec["work"] for iso, rec in idx.items()
+                                      if monday.isoformat() <= iso
+                                      <= self.today.isoformat())
                         seg += f" {wk_m / 60:.2f}/{target:g}h"
                         expected = target * 60 * (self.today.weekday() + 1) / 7
                         if p["left"] <= 21 and wk_m < 0.75 * expected:
@@ -2059,12 +2069,40 @@ class App(tk.Tk):
             cv.create_text(min(max(x, 1), W - 1), H + 4, text=f"{hr:02}",
                            font=("Segoe UI", 7), fill="#888888", anchor=anchor)
 
+    @staticmethod
+    def _parse_time_loose(s):
+        """A bedtime should never need the shift key. Accepts 'HH:MM' /
+        'H:MM', or no colon at all: '1'/'01' (hour, :00 assumed),
+        '120' (H+MM), '0120'/'1001' (HHMM). Returns (h, m) or None."""
+        s = s.strip()
+        if not s:
+            return None
+        if ":" in s:
+            parts = s.split(":")
+            if len(parts) != 2:
+                return None
+            h, m = parts
+        elif len(s) <= 2:
+            h, m = s, "0"
+        elif len(s) == 3:
+            h, m = s[0], s[1:]
+        elif len(s) == 4:
+            h, m = s[:2], s[2:]
+        else:
+            return None
+        try:
+            h, m = int(h), int(m)
+        except ValueError:
+            return None
+        return (h, m) if 0 <= h < 24 and 0 <= m < 60 else None
+
     def _set_sleep_override(self, event=None):
         """Right-click on the timeline: enter real bed/wake for last night."""
         cur = self.settings.get("sleep_over", {}).get(self.today.isoformat(),
                                                       ["", ""])
         bed = simpledialog.askstring(
-            APP_NAME, "Bed time last night (HH:MM, empty = back to estimate):",
+            APP_NAME, "Bed time last night — 1, 01, 0120 or 1:20 all work "
+                      "(empty = back to estimate):",
             initialvalue=cur[0], parent=self)
         if bed is None:
             return
@@ -2072,20 +2110,23 @@ class App(tk.Tk):
         if not bed.strip():
             overs.pop(self.today.isoformat(), None)
         else:
+            bed_t = self._parse_time_loose(bed)
+            if not bed_t:
+                messagebox.showerror(APP_NAME, "Couldn't read that time — "
+                                     "try 1, 01, 0120 or 1:20.", parent=self)
+                return
             wake = simpledialog.askstring(
-                APP_NAME, "Wake time this morning (HH:MM):",
+                APP_NAME, "Wake time this morning — same shortcuts work:",
                 initialvalue=cur[1], parent=self)
             if wake is None:
                 return
-            try:
-                for s in (bed, wake):
-                    h, m = map(int, s.strip().split(":"))
-                    assert 0 <= h < 24 and 0 <= m < 60
-            except (ValueError, AssertionError):
-                messagebox.showerror(APP_NAME, "Use HH:MM, e.g. 01:30.",
-                                     parent=self)
+            wake_t = self._parse_time_loose(wake)
+            if not wake_t:
+                messagebox.showerror(APP_NAME, "Couldn't read that time — "
+                                     "try 1, 01, 0120 or 1:20.", parent=self)
                 return
-            overs[self.today.isoformat()] = [bed.strip(), wake.strip()]
+            overs[self.today.isoformat()] = [f"{bed_t[0]:02}:{bed_t[1]:02}",
+                                             f"{wake_t[0]:02}:{wake_t[1]:02}"]
         save_settings(self.settings)
         self._draw_timeline()
 
@@ -2568,6 +2609,35 @@ class App(tk.Tk):
 
     # ----- add past session -----
 
+    def _shrink_last_break(self, date_iso, minutes):
+        """'Actually 10 of those 23 break minutes were real work' — reduce
+        the most recent break row on this date by `minutes` (dropping it
+        entirely if it hits zero) so reclassifying part of a break as
+        work doesn't double-count it. Approximate by design: adjusts the
+        minutes total (what every view/total reads), not a pixel-perfect
+        re-slice of the break's start/end — those only feed the timeline
+        picture, not the numbers."""
+        rows = read_rows()
+        for i in range(len(rows) - 1, -1, -1):
+            if rows[i][0] == date_iso and rows[i][1] == "break":
+                try:
+                    m = int(rows[i][4])
+                except ValueError:
+                    continue
+                new_m = max(0, m - minutes)
+                if new_m == 0:
+                    del rows[i]
+                else:
+                    rows[i] = rows[i][:4] + [str(new_m)] + rows[i][5:]
+                tmp = SESSIONS_CSV + ".tmp"
+                with open(tmp, "w", newline="", encoding="utf-8") as f:
+                    w = csv.writer(f, delimiter=";")
+                    w.writerow(CSV_HEADER)
+                    w.writerows(rows)
+                os.replace(tmp, SESSIONS_CSV)
+                return True
+        return False
+
     def _add_past_session(self):
         win = tk.Toplevel(self)
         win.title("Add past session")
@@ -2586,6 +2656,12 @@ class App(tk.Tk):
             e.insert(0, dv)
             e.grid(row=i, column=1, padx=6, pady=3)
             fields[lbl] = e
+        carve_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            win, variable=carve_var,
+            text="Carved out of a break — actually working, not resting"
+        ).grid(row=len(defaults), column=0, columnspan=2, sticky="w",
+               padx=6, pady=(0, 3))
 
         def save():
             try:
@@ -2603,18 +2679,21 @@ class App(tk.Tk):
             note = fields["Note"].get().strip()
             append_row([d.isoformat(), "work", start.strftime("%H:%M"),
                         end.strftime("%H:%M"), mins, task, note])
+            carved = carve_var.get() and self._shrink_last_break(d.isoformat(), mins)
             if d == self.today:
                 self._append_text(f"{start:%H:%M}-{end:%H:%M}  {task or '(no task)'} "
-                                  f"({mins}m, added afterwards)"
+                                  f"({mins}m, added afterwards"
+                                  + (", carved from break" if carved else "") + ")"
                                   + (f" - {note}" if note else ""))
             if task:
                 self._remember_task(task)
             self._refresh_totals()
             win.destroy()
-            self.status.config(text=f"Added {mins} min — {task or '(no task)'}")
+            self.status.config(text=f"Added {mins} min — {task or '(no task)'}"
+                                    + (" (break reduced to match)" if carved else ""))
 
         ttk.Button(win, text="Save", command=save).grid(
-            row=len(defaults), column=1, sticky="e", padx=6, pady=8)
+            row=len(defaults) + 1, column=1, sticky="e", padx=6, pady=8)
 
     # ----- copy for AI review -----
 
@@ -2915,7 +2994,6 @@ class App(tk.Tk):
 
     def _capacity_lines(self):
         """The honest verdict: available hours vs deadline demand."""
-        rows = read_rows()
         lines, reqs, far = [], [], None
         busy = self._busy_data()
         if busy:
@@ -2927,7 +3005,7 @@ class App(tk.Tk):
                              "next 14 days already subtracted)")
         for dl in self.deadlines():
             try:
-                p = self._dl_progress(dl, rows)
+                p = self._dl_progress(dl)
             except (ValueError, KeyError):
                 continue
             if p["left"] < 0:
@@ -3085,6 +3163,13 @@ class App(tk.Tk):
         bar.pack(fill="x", padx=8, pady=(0, 4))
         entry = ttk.Entry(bar)
         entry.pack(side="left", fill="x", expand=True)
+        ttk.Label(bar, text="est h:").pack(side="left", padx=(6, 2))
+        est_entry = ttk.Entry(bar, width=5)
+        est_entry.pack(side="left")
+        pri_var = tk.StringVar(value="normal")
+        ttk.Combobox(bar, textvariable=pri_var, state="readonly", width=8,
+                    values=["normal", "signal", "someday"]).pack(
+                        side="left", padx=(4, 0))
         goal_var = tk.StringVar()
         goal_box = ttk.Combobox(bar, textvariable=goal_var, state="readonly",
                                 width=14,
@@ -3095,10 +3180,23 @@ class App(tk.Tk):
             raw = entry.get().strip()
             if not raw:
                 return
+            # a plain hours field is the primary path; [2h] typed straight
+            # into the name still works too, for muscle memory
             name, box = self._parse_box(raw)
-            self._add_task(name, est_h=(box / 3600 if box else 0),
+            est_h = 0
+            if est_entry.get().strip():
+                try:
+                    est_h = float(est_entry.get().strip().replace(",", "."))
+                except ValueError:
+                    messagebox.showerror(APP_NAME, "est h must be a number.",
+                                         parent=win)
+                    return
+            elif box:
+                est_h = box / 3600
+            self._add_task(name, est_h=est_h, priority=pri_var.get(),
                            goal=goal_var.get() or None, source="added manually")
             entry.delete(0, "end")
+            est_entry.delete(0, "end")
             refresh()
 
         def start():
@@ -3135,8 +3233,8 @@ class App(tk.Tk):
                            ("Done ✓", done), ("Delete", delete)):
             ttk.Button(bar, text=label, command=cmd).pack(side="left", padx=(4, 0))
         hint = ("Click ! to cycle priority (● signal / ○ normal / ‥ someday). "
-               'Add as "write intro [2h]" for an estimate. TODO:/SOMEDAY: '
-               "bullets anywhere (diary, themed writing) land here on their own.")
+               "TODO:/SOMEDAY: bullets anywhere (diary, themed writing) land "
+               "here on their own.")
         ef = self._estimate_factor()
         if ef:
             hint += f"  Your history: actuals run ×{ef[0]:.1f} your estimates."
@@ -3178,7 +3276,11 @@ class App(tk.Tk):
         """(dates, ideal_h, actual_h). With a total-hours scope the ideal
         line runs start->due covering the scope; otherwise it's the linear
         weekly-target pace over the last `days_back` days. Actual stops
-        at today."""
+        at today. Reads day_index() + task_matches() — the same cached
+        substrate and match predicate as everything else — rather than
+        its own csv scan; matched_minutes() itself only returns a range
+        total, not a per-day running sum, so this stays one call-site
+        below full convergence (see HANDOFF.md)."""
         end = dt.date.fromisoformat(dl["date"])
         total = float(dl.get("total_h") or 0)
         start = None
@@ -3189,16 +3291,8 @@ class App(tk.Tk):
                 pass
         if start is None:
             start = self.today - dt.timedelta(days=days_back - 1)
-        match = dl.get("match", "").lower()
-        per_day = {}
-        for r in read_rows():
-            if r[1] == "break" or (match and match not in r[5].lower()):
-                continue
-            try:
-                d = dt.date.fromisoformat(r[0])
-                per_day[d] = per_day.get(d, 0) + int(r[4])
-            except ValueError:
-                continue
+        kws = self._match_kws(dl.get("match", ""))
+        idx = day_index()
         dates, ideal, actual = [], [], []
         cum = 0
         d = start
@@ -3209,7 +3303,10 @@ class App(tk.Tk):
             i = (d - start).days + 1
             ideal.append(total * min(i, span) / span if total else rate * i)
             if d <= self.today:
-                cum += per_day.get(d, 0)
+                rec = idx.get(d.isoformat())
+                if rec:
+                    cum += (sum(m for t, m in rec["tasks"].items()
+                               if task_matches(t, kws)) if kws else rec["work"])
                 actual.append(cum / 60)
             d += dt.timedelta(days=1)
         return dates, ideal, actual
@@ -3560,10 +3657,9 @@ class App(tk.Tk):
         dls = self.deadlines()
         if dls:
             lines += ["", "DEADLINES"]
-            rows = read_rows()
             for dl in dls:
                 try:
-                    p = self._dl_progress(dl, rows)
+                    p = self._dl_progress(dl)
                 except (ValueError, KeyError):
                     continue
                 seg = (f"  {'⚠' if p.get('behind') else '·'} {dl['name']} — "
