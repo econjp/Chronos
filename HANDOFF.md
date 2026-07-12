@@ -29,6 +29,47 @@ their life with it.
 - csv parsing is cached on file mtime (`read_rows()` / `day_index()`);
   the Data doctor keeps the substrate clean.
 
+## The concept model (read this when it feels scattered)
+
+There are only **three kinds of thing** in this app. Every feature is one
+of them; the scatter came from not naming them:
+
+1. **SOURCES** feed the day record (see above). Adding one is cheap.
+2. **LENSES** — a *lens* is a set of task keywords over a date range. This
+   is the dot most recently connected: **SIGNAL, Goals and Deadlines are
+   the same shape** — `(keywords, window) → minutes`. They differ only in
+   framing: SIGNAL = today's focus, Goal = the standing *why*, Deadline =
+   a *when* with a scope. All three now resolve through ONE primitive:
+   `matched_minutes(kws, lo, hi)` + `task_matches(task, kws)` (module top).
+   A goal seeds SIGNAL when the day starts blank; a deadline should be
+   able to point at a goal. Think of them as one system with three faces.
+3. **VIEWS** read the record and the lenses and say something honest:
+   dashboard (the home), summaries, insights, exports, burn-down, heatmap.
+
+If a new idea isn't a source, a lens, or a view, it probably doesn't
+belong — or it's a new *source key* in disguise.
+
+## Realization gap (the actual scatter, be honest with the user)
+
+The model above is TRUE in intent but only PARTLY realized in code:
+
+- `_life_day` / `day_index` unified **dates**; `matched_minutes` (v6.3)
+  unified the **keyword lens** — but only `_is_signal` and `_goal_minutes`
+  route through it so far.
+- Still hand-rolling their own row scan + substring match (migrate these
+  to `matched_minutes` next, one per commit, each has tests to add):
+  `_dl_progress`, `_refresh_totals` (deadline weekly block),
+  `_burndown_series`, `_capacity_lines`. ~6 near-identical loops remain.
+- `App` is one ~3600-line class doing storage + timer state machine +
+  every window. Not worth splitting files (stdlib-single-file rule), but
+  the method groups (`# ----- xxx -----` banners) are the seams; keep new
+  code inside the right banner, keep lenses/sources/views separated.
+
+Consolidation direction (no rewrite, just convergence): every place that
+answers "how many minutes on X over range Y" calls `matched_minutes`;
+every place that asks "what does the app know about day D" calls
+`_life_day`. When both are true everywhere, the scatter is gone.
+
 ## Design rules (non-negotiable, learned over many iterations)
 
 1. **The day file is the app.** Everything visible lands in the day .txt
@@ -74,16 +115,21 @@ their life with it.
   **JSON life export**; summaries read the day index.
 - **v6.2**: **GOALS layer** (why above when; dashboard shows where hours
   point, drift warnings), **Monday WEEK REVIEW block** in the day file,
-  goals in JSON export, this HANDOFF.md.
+  goals in JSON export, this HANDOFF.md. SIGNAL seeds from goals.
+- **v6.3**: **the lens primitive** — `matched_minutes` / `task_matches`
+  at module top; SIGNAL + Goals converge on it. Concept model documented
+  above. No new feature; this was a *consolidation* pass.
 
 ## BACKLOG (priority order — continue here)
 
 1. **Dashboard as home**: retire/merge the now-redundant standalone
    windows (weekly summary, trend, health view) once the user confirms
    the dashboard covers them; keep heatmap + burn-down as drill-downs.
-2. **Goal ↔ deadline ↔ signal linking**: a deadline can point at a goal;
-   SIGNAL defaults from the top goal's keywords; review block shows
-   goal-vs-ambition arrows.
+2. **Finish the lens convergence** (started v6.3): migrate `_dl_progress`,
+   `_refresh_totals` deadline block, `_burndown_series`, `_capacity_lines`
+   onto `matched_minutes`. Then **link the faces**: a deadline can point
+   at a goal (dropdown of goal names); SIGNAL already seeds from goals;
+   review block shows goal-vs-ambition arrows. One system, three faces.
 3. **Screen-time / doomscroll source**: the 19–21 window is documented;
    import phone screen-time (csv drop like health) → new day-record key →
    insight "scroll vs next-day energy".

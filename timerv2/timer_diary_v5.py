@@ -60,6 +60,14 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v6.3 (consolidation, not a feature — the architecture converges):
+  - THE LENS PRIMITIVE: SIGNAL, Goals and Deadlines were three concepts
+    secretly the same shape — (keywords, date range) -> minutes. They now
+    resolve through ONE pair of module functions, task_matches() and
+    matched_minutes(); _is_signal and _goal_minutes route through it.
+    Deadline/burn-down/capacity migrate next (see HANDOFF.md). No user-
+    visible change; the code just stopped saying the same thing 6 ways.
+
 New in v6.2 (direction: goals above deadlines, the loop closes weekly):
   - GOALS (Tools > Goals — the why layer): deadlines answer WHEN, goals
     answer WHY. Each goal = name + one-line why + task keywords +
@@ -349,6 +357,33 @@ def day_totals(date_iso):
     """(work_min, break_min) for a date string."""
     rec = day_index().get(date_iso)
     return (rec["work"], rec["brk"]) if rec else (0, 0)
+
+
+def task_matches(task, kws):
+    """The one definition of 'this task belongs to this lens': any keyword
+    is a case-insensitive substring of the task name. SIGNAL, Goals and
+    Deadlines are all just different keyword sets over this same test."""
+    t = (task or "").lower()
+    return any(k in t for k in kws)
+
+
+def matched_minutes(kws, lo, hi):
+    """Work minutes on tasks matching `kws` over the inclusive date range
+    [lo, hi]. The shared primitive under every keyword-lens: a goal's
+    weekly hours, a deadline's progress and a day's signal are all this
+    call with a different keyword set and window. Reads the cached day
+    index, so it's one dict walk, not a csv rescan."""
+    if not kws:
+        return 0
+    idx, tot, d = day_index(), 0, lo
+    while d <= hi:
+        rec = idx.get(d.isoformat())
+        if rec:
+            for t, m in rec["tasks"].items():
+                if task_matches(t, kws):
+                    tot += m
+        d += dt.timedelta(days=1)
+    return tot
 
 
 def weekly_totals(n_weeks=8):
@@ -819,10 +854,7 @@ class App(tk.Tk):
         except OSError:
             return []
 
-    @staticmethod
-    def _is_signal(task, kws):
-        t = (task or "").lower()
-        return any(k in t for k in kws)
+    _is_signal = staticmethod(task_matches)   # a lens is a lens; see module top
 
     def _day_signal(self, day, kws=None, rows=None):
         """(signal_min, work_min) for one day given its keywords."""
@@ -1023,23 +1055,15 @@ class App(tk.Tk):
     def goals(self):
         return self.settings.get("goals") or []
 
+    @staticmethod
+    def _match_kws(spec):
+        """Comma-separated keyword spec -> lowered keyword list. Goals use
+        a comma list; deadlines use a single 'match' string — same thing."""
+        return [k.strip().lower() for k in (spec or "").split(",") if k.strip()]
+
     def _goal_minutes(self, g, lo, hi):
-        """Tracked minutes [lo, hi] on tasks matching any of the goal's
-        comma-separated keywords."""
-        kws = [k.strip().lower() for k in g.get("match", "").split(",")
-               if k.strip()]
-        if not kws:
-            return 0
-        idx, tot = day_index(), 0
-        d = lo
-        while d <= hi:
-            rec = idx.get(d.isoformat())
-            if rec:
-                for t, m in rec["tasks"].items():
-                    if any(k in t.lower() for k in kws):
-                        tot += m
-            d += dt.timedelta(days=1)
-        return tot
+        """Tracked minutes [lo, hi] on tasks matching the goal's keywords."""
+        return matched_minutes(self._match_kws(g.get("match")), lo, hi)
 
     def _set_goals(self):
         """Deadlines answer 'when'; goals answer WHY the hours happen.
