@@ -188,45 +188,78 @@ v6.6):
   disabled by org policy on managed accounts. No code change from this —
   advisory only, logged here so it isn't re-researched from scratch.
 - **v6.6**: friction pass + finished the lens convergence. Sleep-override
-  time entry loosened; task-library Add debracketed; break-carve-out
-  checkbox; deadlines gained comma-separated multi-keyword matching as a
-  side effect of the lens work. **v6.7**: deadlines can point at a goal
-  (dropdown), the linked goal's "why" shows next to the deadline in the
-  dashboard and burn-down title. **v6.8** (real bug, found via the
-  user's actual diary file, not guessed): TODO:/SOMEDAY: auto-capture
-  had NEVER worked, because every bullet the user actually typed had no
-  space after the dash ("-THESIS") and the parser required one — fixed,
-  with a `(?!-)` guard so the app's own "---" decorator lines don't get
-  mistaken for bullets (a real regression caught in testing before it
-  shipped). Same-line "TODO: text" now also works. Capture moved onto
-  the live 10s autosave (same-day, not just at rollover/theme-save) with
-  a status-bar confirmation; a one-time 14-day backfill on launch
-  recovers writing the old parser missed. Also fixed: Tasks window's
-  leftmost priority column silently ate row selection on click (the
-  natural place to click to select a row for Done/Start), because
-  refresh() rebuilds the tree and drops selection — now preserved.
-  Audited the user's real settings.json end-to-end (goals, deadline-goal
-  links, dashboard render) — all correct; 3 of 4 goals show "nothing in
-  14 days" including Thesis, which is accurate, not a bug.
   time entry (`_parse_time_loose`) accepts `1`/`01`/`0120`/`120`/`1:20` —
-  no colon required, no leading zero required. Tasks/Library "Add" bar
-  gets a plain "est h" field and a priority selector — typing `[2h]`
-  inline still works as a fallback, but is no longer required (this is
-  what the user meant by "goal setting... have to manually write the []
+  no colon, no leading zero required. Tasks/Library "Add" bar gets a
+  plain "est h" field and a priority selector — typing `[2h]` inline
+  still works as a fallback but is no longer required (this is what the
+  user meant by "goal setting... have to manually write the []
   brackets"; the Deadline/Goals dialogs themselves never required
-  brackets — those were already plain fields). New: **File > Add past
-  session** gained a "carved out of a break" checkbox — logs the work
-  interval AND shrinks the covering break row by the same minutes
-  (`_shrink_last_break`, approximate: adjusts the break's `minutes`
-  total, not a pixel-exact re-slice of its start/end) so reclassifying
-  part of a break as real work doesn't double-count it. Lens convergence
-  (backlog #2) finished — see BACKLOG entry below for the how.
+  brackets — those were already plain fields). File > Add past session
+  gained a "carved out of a break" checkbox — logs the work interval AND
+  shrinks the covering break row by the same minutes (`_shrink_last_
+  break`, approximate: adjusts the break's `minutes` total, not a
+  pixel-exact re-slice of its start/end) so reclassifying part of a
+  break as real work doesn't double-count it. Lens convergence
+  (backlog #2) finished: `_dl_progress` and the `_refresh_totals`
+  weekly-target block now call `matched_minutes`; `_burndown_series`
+  routes through `day_index()` + `task_matches` (needs a per-day running
+  sum, which `matched_minutes` — a range total — doesn't return, so it's
+  one call-site short of literally calling the shared function, but
+  reads the same substrate through the same predicate); `_capacity_lines`
+  converged transitively. Side effect: deadlines' `match` field now
+  accepts comma-separated multi-keyword matching, same as Goals/SIGNAL.
+- **v6.7**: deadlines can point at a goal (dropdown), the linked goal's
+  "why" shows next to the deadline in the dashboard and burn-down title.
+- **v6.8** (real bug, found via the user's actual diary file, not
+  guessed): TODO:/SOMEDAY: auto-capture had NEVER worked, because every
+  bullet the user actually typed had no space after the dash
+  ("-THESIS") and the parser required one — fixed, with a `(?!-)` guard
+  so the app's own "---" decorator lines don't get mistaken for bullets
+  (a real regression caught in testing before it shipped). Same-line
+  "TODO: text" now also works. Capture moved onto the live 10s autosave
+  (same-day, not just at rollover/theme-save) with a status-bar
+  confirmation; a one-time 14-day backfill on launch recovers writing
+  the old parser missed. Also fixed: Tasks window's leftmost priority
+  column silently ate row selection on click (the natural place to
+  click to select a row for Done/Start), because refresh() rebuilds the
+  tree and drops selection — now preserved. Audited the user's real
+  settings.json end-to-end (goals, deadline-goal links, dashboard
+  render) — all correct; 3 of 4 goals show "nothing in 14 days"
+  including Thesis, which is accurate, not a bug.
+- **v7.0** (the day file becomes provably the source of truth):
+  `parse_day_file_to_rows()` is the exact inverse of `event_line()` —
+  given a day file's own Start/Stop/Task lines, it reconstructs the
+  work/break csv rows that produced them (handles a session that runs
+  past real midnight correctly: the Stop line embeds the next calendar
+  date even though it belongs to this effective day's file — the day
+  only rolls at the configurable rollover hour, not midnight). Tools >
+  "Rebuild sessions.csv from day files…" wires this up as a backup-first
+  recovery tool — "the day file is the source of truth, csv is a
+  derived cache" stops being a design principle nothing exercises and
+  becomes something you can actually do. Tasks link to deadlines too,
+  not just goals (same dropdown pattern, own column; right-click any
+  row to set/change its goal or deadline after the fact — auto-captured
+  items land with neither set). Life dashboard becomes a tabbed home
+  (Today & Week / Deadlines & Goals / Insights, built by splitting
+  `_dashboard_lines`'s existing output on its own section headers — zero
+  risk of new computation bugs, pure layout change) plus a hub row
+  linking to every detail view; nothing was deleted, each still holds
+  unique detail the condensed tabs don't. File > Import life record
+  (JSON) restores goals/deadlines/capacity (merged by name, never
+  replaces existing) and day files (only ones missing locally, never
+  overwrites current work) from a previous export — paired with the csv
+  rebuild for a full, lossless recovery path.
 
 ## BACKLOG (priority order — continue here)
 
-1. **Dashboard as home**: retire/merge the now-redundant standalone
-   windows (weekly summary, trend, health view) once the user confirms
-   the dashboard covers them; keep heatmap + burn-down as drill-downs.
+1. ~~Dashboard as home~~ — DONE v7.0, but as a HUB not a replacement:
+   became a tabbed window (Today & Week / Deadlines & Goals / Insights)
+   with a button row linking to every detail view (weekly, monthly,
+   trend, health, heatmap, burn-down) — none were retired, each still
+   holds unique detail (full per-day/per-task tables, the 8-week chart)
+   the condensed tabs deliberately don't replicate. Revisit actual
+   retirement only if the user says a specific standalone window has
+   gone unused for a while.
 2. ~~Finish the lens convergence~~ — DONE v6.6: `_dl_progress` and the
    `_refresh_totals` weekly-target block now call `matched_minutes`;
    `_burndown_series` routes through `day_index()` + `task_matches`
@@ -271,8 +304,15 @@ v6.6):
    word ("ENERGY: 3 anxious") — parse the word, correlate.
 5. **Money source**: monthly csv drop (bank export) → spend per day key;
    balance section gains a cost line. (User hinted "total life".)
-6. **JSON import/restore**: make the life export round-trippable so the
-   exe can be rebuilt from life.json alone — true data sovereignty.
+6. ~~JSON import/restore~~ — DONE v7.0, honestly scoped: File > Import
+   life record restores settings (goals/deadlines/capacity, merged by
+   name) and day files (only ones missing locally) from an export; it
+   deliberately does NOT try to rebuild sessions.csv from the JSON's
+   per-day aggregates (lossy — no individual start/end times survive
+   aggregation). Pair with Tools > Rebuild sessions.csv from day files
+   (also v7.0) instead, which reconstructs losslessly from the restored
+   day files' own event lines. Import → Rebuild is the full, lossless
+   recovery path — not a single "import" button doing both silently.
 7. **Multi-machine**: settings/diary already OneDrive-able; document a
    two-PC setup properly (single-instance mutex is per-machine).
 8. Insights v3: weekday patterns ("your Tuesdays are 40% weaker"),

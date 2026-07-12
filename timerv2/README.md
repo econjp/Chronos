@@ -1,8 +1,39 @@
-# TimerDiary v6
+# TimerDiary v7
 
 The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
+
+### Data sovereignty (v7.0)
+
+**Tools → Rebuild sessions.csv from day files…** — the day file has always
+been described as the true record and the csv as a derived index; this
+makes it literally true. Reconstructs every work/break row straight from
+your day files' own `Start;`/`Stop;`/`--- Task:` lines. Lose or corrupt
+`sessions.csv` and it's fully recoverable as long as the day files survive.
+Backs up the current csv first; a confirmation dialog, not routine
+maintenance.
+
+**File → Import life record (JSON)…** — restores goals/deadlines/capacity
+(merged by name — never replaces what you already have configured) and day
+files (only ones missing locally — never overwrites current work) from a
+previous export. Pair it with the csv rebuild above: import brings the day
+files back, rebuild regenerates the session log from them — full, lossless
+recovery on a new machine or after a lost install.
+
+### Life dashboard — now a tabbed home (v7.0)
+
+`Ctrl+D` opens three tabs (Today & Week / Deadlines & Goals / Insights)
+instead of one long scroll, plus a row of buttons linking straight to every
+detail view — Weekly, Monthly, Trend, Health, Heatmap, Burn-down. Nothing
+was retired; each still holds detail the condensed tabs don't repeat.
+
+### Tasks link to deadlines too (v7.0)
+
+Not just goals — the Tasks/Library window has a Deadline column and dropdown
+now, same pattern as Goal. **Right-click any row** to set or change its
+goal or deadline after the fact — needed for TODO:/SOMEDAY: items that
+auto-captured with neither set.
 
 ### Deadlines linked to goals (v6.7)
 

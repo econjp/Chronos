@@ -60,6 +60,28 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v7.0 (the day file becomes provably the source of truth):
+  - REBUILD sessions.csv FROM DAY FILES (Tools menu): parse_day_file_to_
+    rows() is the exact inverse of event_line() — given a day file's own
+    Start/Stop/Task lines, it reconstructs the work/break csv rows that
+    produced them. "The day file is the source of truth, csv is a
+    derived cache" stops being a design principle and becomes something
+    you can actually do: lose or corrupt sessions.csv and it's fully
+    recoverable from the day files alone. Backs up first.
+  - TASKS LINK TO DEADLINES too, not just goals — same dropdown pattern,
+    its own column. Right-click any row to set/change its goal or
+    deadline after the fact (auto-captured items land with neither set).
+  - LIFE DASHBOARD becomes a tabbed home (Today & Week / Deadlines &
+    Goals / Insights) instead of one long scroll, plus a hub row linking
+    out to every detail view (Weekly, Monthly, Trend, Health, Heatmap,
+    Burn-down) — a front door, not a replacement; nothing was deleted.
+  - IMPORT LIFE RECORD (File menu): restores goals/deadlines/capacity
+    (merged by name, never replaces what's already configured) and day
+    files (only ones missing locally, never overwrites current work)
+    from a previous JSON export. Pair with the csv rebuild above for a
+    full, lossless recovery: import restores the day files, rebuild
+    regenerates the session log from them.
+
 New in v6.8 (fix the actual todo-capture bug):
   - real bug: EVERY bullet the user actually typed used no space after
     the dash ("-THESIS", not "- THESIS") and the parser required one —
@@ -1043,6 +1065,8 @@ class App(tk.Tk):
         filem.add_command(label="Export week to calendar (.ics)", command=self._export_ics)
         filem.add_command(label="Export life record (JSON)…",
                           command=self._export_life_json)
+        filem.add_command(label="Import life record (JSON)…",
+                          command=self._import_life_json)
         filem.add_separator()
         filem.add_command(label="Open data folder", command=self._open_folder)
         filem.add_command(label="Change diary folder…", command=self._change_diary_dir)
@@ -4182,7 +4206,7 @@ class App(tk.Tk):
                 pass
             days[iso] = rec
         out = {"exported": dt.datetime.now().isoformat(timespec="seconds"),
-               "app": "TimerDiary v6.2",
+               "app": "TimerDiary v7.0",
                "goals": self.goals(),
                "deadlines": self.deadlines(),
                "capacity_per_weekday": self._capacity(),
@@ -4192,6 +4216,70 @@ class App(tk.Tk):
         self.status.config(text=f"Life record exported — {len(days)} day(s) "
                                 f"→ {os.path.basename(path)}. Plain JSON, "
                                 "yours forever.")
+
+    def _import_life_json(self):
+        """Restores goals/deadlines/capacity (merged by name — never
+        silently replaces what's already configured) and day files
+        (only ones missing locally — never overwrites current work)
+        from a previously exported life record. Deliberately does NOT
+        try to rebuild sessions.csv from the JSON's per-day aggregates —
+        that would be a lossy reconstruction (no individual start/end
+        times survive aggregation). Run Tools > Rebuild sessions.csv
+        from day files afterward instead: the restored day files carry
+        the full original event log, so that path is lossless."""
+        path = filedialog.askopenfilename(
+            parent=self, filetypes=[("JSON", "*.json")],
+            title="Import a life record (JSON)")
+        if not path:
+            return
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            messagebox.showerror(APP_NAME, f"Couldn't read that file:\n{e}")
+            return
+        days = data.get("days", {})
+        ddir = self.diary_dir()
+        new_files = [iso for iso, rec in days.items()
+                    if rec.get("diary") and not os.path.exists(
+                        os.path.join(ddir, f"{iso}.txt"))]
+        n_goals = len({g["name"] for g in data.get("goals", [])}
+                      - {g["name"] for g in self.goals()})
+        n_dls = len({d["name"] for d in data.get("deadlines", [])}
+                    - {d["name"] for d in self.deadlines()})
+        if not messagebox.askyesno(
+                APP_NAME,
+                f"Import from {os.path.basename(path)}?\n\n"
+                f"• {n_goals} new goal(s), {n_dls} new deadline(s) "
+                "(merged by name — nothing existing gets replaced)\n"
+                f"• {len(new_files)} day file(s) restored (only ones you "
+                "don't already have locally — nothing here gets "
+                "overwritten)\n\n"
+                "Afterward: Tools > Rebuild sessions.csv from day files "
+                "to regenerate the session log losslessly from what's "
+                "restored."):
+            return
+
+        def merge_named(existing, incoming):
+            names = {x["name"] for x in existing}
+            return existing + [x for x in incoming if x["name"] not in names]
+
+        self.settings["goals"] = merge_named(self.goals(), data.get("goals", []))
+        self.settings["deadlines"] = merge_named(
+            self.deadlines(), data.get("deadlines", []))
+        if data.get("capacity_per_weekday"):
+            self.settings["capacity"] = data["capacity_per_weekday"]
+        save_settings(self.settings)
+        for iso in new_files:
+            with open(os.path.join(ddir, f"{iso}.txt"), "w",
+                      encoding="utf-8") as f:
+                f.write(days[iso]["diary"])
+        self._load_diary()
+        self._refresh_totals()
+        self.status.config(
+            text=f"Imported: +{n_goals} goal(s), +{n_dls} deadline(s), "
+                f"{len(new_files)} day file(s) restored. Now try Tools > "
+                "Rebuild sessions.csv from day files.")
 
     # ----- data doctor (keep the substrate clean) -----
 
