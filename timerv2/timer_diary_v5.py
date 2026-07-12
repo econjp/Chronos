@@ -60,6 +60,15 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v7.7 (per-task clock, so switching doesn't look like it lied):
+  - the big clock has always shown SESSION-cumulative time (matches the
+    old app's "studying duration" — only Reset clears it, a task Switch
+    never does, on purpose; the csv already attributed minutes to the
+    right task all along). But visually, that reads as "the timer kept
+    going" the instant you switch tasks. New small readout next to the
+    big clock — "this task: 3:12" — shows elapsed time on the CURRENT
+    interval only, visibly back to 0:00 the moment you Switch or Start.
+
 New in v7.6 (readable diary — pure view layer, file untouched):
   - syntax highlighting in the diary pane: day headers bold, SIGNAL/
     ENERGY/TODO/WEEK REVIEW headers bold green, themed-writing blocks
@@ -1465,6 +1474,17 @@ class App(tk.Tk):
         self._quote_i = 0
         self.clock.bind("<Double-Button-1>", self._signal_quote)
 
+        # the big clock is the SESSION total (matches the old app's
+        # "studying duration" — only Reset clears it, a task Switch never
+        # does, on purpose). That's exactly what reads as "the timer kept
+        # going" when you switch tasks, even though the log/csv already
+        # attributes minutes correctly per task. This small readout is
+        # the fix: elapsed time on the CURRENT interval only, visibly
+        # back to 0:00 the instant you Switch or Start.
+        self.task_clock = ttk.Label(self.top, text="", font=("Segoe UI", 10),
+                                    foreground="#777777")
+        self.task_clock.pack(side="left", padx=(8, 0), anchor="s", pady=(0, 5))
+
         self.compact_btn = ttk.Button(self.top, text="—", width=3,
                                       command=self._toggle_compact)
         self.compact_btn.pack(side="right")
@@ -1842,20 +1862,26 @@ class App(tk.Tk):
             title = (f"{secs // 3600}:{secs % 3600 // 60:02} — "
                      f"{self.task_var.get().strip() or APP_NAME}")
             task_tot = None
+            interval_secs = 0
             if self.active_task and self.work_start:
-                task_tot = (getattr(self, "task_today_min", 0) * 60
-                            + int((dt.datetime.now() - self.work_start).total_seconds()))
+                interval_secs = int((dt.datetime.now() - self.work_start).total_seconds())
+                task_tot = getattr(self, "task_today_min", 0) * 60 + interval_secs
                 title += f" · today {task_tot / 3600:.2f}h"
+            self.task_clock.config(
+                text=(f"this task: {interval_secs // 60}:{interval_secs % 60:02}"
+                     if self.active_task else ""))
             self.title(title)
             self._check_time_box(task_tot)
             self._watch_idle()
         elif self.state == "break":
             bsecs = int((dt.datetime.now() - self.break_start).total_seconds())
             self.clock.config(text=f"☕ {hms_padded(bsecs)}", foreground="")
+            self.task_clock.config(text="")
             self.title(f"☕ break {bsecs // 60}:{bsecs % 60:02} — {APP_NAME}")
             self._update_pill(bsecs)
         else:
             self.clock.config(text="0:00:00", foreground="")
+            self.task_clock.config(text="")
             self.title(("⏸ not tracking — " + APP_NAME)
                        if self.nudge_var.get() else APP_NAME)
         if self.state != "break":
