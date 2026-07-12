@@ -60,6 +60,16 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v7.3 (timeline third color + focus order):
+  - the day timeline paints goal-aligned-but-not-signal work (a run,
+    when today's signal is thesis) in its own color, distinct from
+    signal-green and plain-work-blue — three buckets, not a binary.
+  - new day headers get a "focus order today" block when 2+ scoped
+    deadlines are competing: most urgent first (behind-pace overrides
+    merely-sooner), each with its needed h/day. Second tier of the
+    planning/recommendation engine (see HANDOFF.md) — a stated
+    recommendation, not a configurable one.
+
 New in v7.2 (goal-aware signal flag):
   - the "not today's signal" status flag now checks whether the active
     task matches a GOAL even though it's off-signal — "not today's
@@ -2103,6 +2113,8 @@ class App(tk.Tk):
 
     TL_WORK, TL_BREAK, TL_SIGNAL = "#4a6fa5", "#e0a44c", "#3a8a3a"
     TL_SLEEP = "#454569"
+    TL_GOAL = "#8a5ba3"   # goal-aligned but not today's declared signal —
+                          # e.g. a run, when today's signal is "thesis"
     WORKOUT_DOT_MIN = 10   # minutes — filters Apple Watch's auto-detected
                             # "Other" activity blips from a real workout
 
@@ -2179,10 +2191,14 @@ class App(tk.Tk):
                                text="zzz (set)" if band[2] else "zzz (est.)",
                                fill="#c8c8dc", font=("Segoe UI", 7))
         kws = self._signal_kws()
+        goal_kws = [self._match_kws(g.get("match")) for g in self.goals()]
 
         def work_color(task):
-            return self.TL_SIGNAL if kws and self._is_signal(task, kws) \
-                else self.TL_WORK
+            if kws and self._is_signal(task, kws):
+                return self.TL_SIGNAL
+            if any(task_matches(task, gk) for gk in goal_kws):
+                return self.TL_GOAL
+            return self.TL_WORK
 
         today_iso = self.today.isoformat()
         for r in read_rows():
@@ -2307,6 +2323,7 @@ class App(tk.Tk):
         plan = self._plan_line()
         if plan:
             parts.append(plan)
+        parts += self._focus_order_lines()
         if self.today.weekday() == 0:
             parts += self._week_review_block()
         parts.append(f"SIGNAL: {self._carry_signal()}")
@@ -2344,6 +2361,32 @@ class App(tk.Tk):
         line += (" ✓" if avail >= need else
                  " ⚠ tight — start early, cut the admin")
         return line
+
+    def _focus_order_lines(self):
+        """Backlog "planning engine" tier b: when 2+ scoped deadlines are
+        competing for today, an explicit priority order — most urgent
+        first — instead of leaving the reader to do the sort. Purely a
+        VIEW: reads only numbers _dl_progress already computes (behind-
+        pace, days left, needed h/day), no new data pipeline. A
+        recommendation the reader glances at and follows or ignores, not
+        something to configure — no accept/reject UI, on purpose."""
+        items = []
+        for dl in self.deadlines():
+            try:
+                p = self._dl_progress(dl)
+            except (ValueError, KeyError):
+                continue
+            if p["left"] >= 0 and p.get("total_h") and p["remaining_h"] > 0:
+                items.append((dl["name"], p["left"], p["needed_per_day"],
+                             p.get("behind", False)))
+        if len(items) < 2:
+            return []
+        items.sort(key=lambda x: (not x[3], x[1], -x[2]))
+        lines = ["focus order today (most urgent first):"]
+        for i, (name, left, need, behind) in enumerate(items, 1):
+            lines.append(f"  {i}. {name} — {need:.1f}h ({left}d left)"
+                         + (" ⚠ behind pace" if behind else ""))
+        return lines
 
     def _week_review_block(self):
         """Monday's file opens with last week's honest numbers and the two

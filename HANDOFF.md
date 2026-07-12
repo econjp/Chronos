@@ -90,6 +90,40 @@ v6.6):
 5. Day rolls over at 04:00. Finnish locale quirks in csv (`;`-delimited,
    decimal commas tolerated on import).
 
+### Signal vs. maintenance (a recurring question, resolved 2026-07-13)
+
+The user has asked more than once, across sessions, whether recovery/
+maintenance activity (a run, sleep, physical upkeep) should count as
+"signal" — the app's Musk/O'Leary-inspired "zero noise, 100% signal"
+framing from early in the project. Resolved position, worth restating if
+this comes up again rather than re-litigating from scratch:
+
+**SIGNAL stays reserved for today's one declared sharpest priority.**
+Maintenance is not noise, but it is also not signal — it's a third
+thing. The "100% signal, zero noise" framing was always about
+eliminating *noise* (drift, doomscrolling, admin that silently expands
+to fill available time) — not about eliminating rest. Even maximally
+focused people sleep and exercise; the framing was never "never
+recover," it was "never let low-value distraction eat your attention."
+Collapsing maintenance into "signal" would inflate the metric and kill
+its one job: telling the user, honestly, whether today's actual hours
+went to the thing they said mattered most *today*.
+
+The architecture already had the right answer before this was asked
+explicitly: **GOALS is where maintenance gets its due.** A goal like
+"Physical Engine Maintenance" (already configured, 7h/week ambition)
+tracks recovery as real, weighted, legitimate time — just not *today's*
+signal. This is why the timeline (v7.2) now paints goal-aligned-but-
+off-signal work in a third color (`TL_GOAL`, distinct from signal-green
+and plain-work-blue) instead of forcing a binary signal/not-signal
+choice, and why the status-bar flag (v7.2) says "counts toward: X"
+instead of a bare warning. Three buckets, not two: signal (today's one
+thing) > goal-aligned (matters, just not today's specific lever) > plain
+work (tracked, unattributed to any declared priority) > noise (matches
+nothing, actively erodes capacity — e.g. doomscrolling). Don't build a
+"maintenance is 50% signal" scoring compromise if this comes up again;
+the three-bucket model is already correct and more honest than a blend.
+
 ## Repo map & data formats
 
 - `timerv2/timer_diary_v5.py` — the whole app (~4100 lines, v6.6 as of
@@ -441,22 +475,24 @@ v6.6):
 
     **Three scopes, cheapest first — pick one, don't build all three
     at once:**
-    a) **Priority ordering when capacity is scarce** (buildable NOW, no
-       new infra) — when total needed-hours across active deadlines
-       exceeds net capacity, say explicitly which to prioritize and by
-       how much the others get cut, instead of just an aggregate ⚠. Pure
-       arithmetic over already-computed numbers.
-    b) **Suggested focus list** (buildable now, no new infra) — an
-       ordered list view: "1. Thesis — 5.4h needed (⚠ behind, 5d left) ·
-       2. TUTA — 0.7h needed · 3. (1.9h uncommitted — pick from Task
-       library)". A rule-based priority sort (days-left ascending,
-       behind-pace first), not a time-blocked calendar — doesn't need
-       interval-level busy data, just orders what already gets computed.
+    a) ~~Priority ordering when capacity is scarce~~ — DONE v7.1, in
+       `_capacity_lines`: when total needed-hours across active
+       deadlines exceeds net capacity, states explicitly which is fully
+       funded and which takes the cut, by how much.
+    b) ~~Suggested focus list~~ — DONE v7.3, `_focus_order_lines`: new
+       day headers get a "focus order today" block when 2+ scoped
+       deadlines compete — most urgent first (behind-pace overrides a
+       merely-sooner due date), each with its needed h/day. Does NOT
+       yet fold in task-library items with no deadline (the "3.
+       (1.9h uncommitted — pick from Task library)" line from the
+       original sketch) — still a real gap if the user wants unscoped
+       backlog items included in the ordering, not just deadline-backed
+       work.
     c) **True time-blocked schedule** ("09:00-11:30 Thesis, 11:30-12:00
        email [boxed]...") — needs the `parse_ics_busy` interval upgrade
        above to respect WHERE in the day meetings actually are, not just
-       how many hours they consume. Bigger lift; do (a) and (b) first
-       and see if they're enough before reaching for this.
+       how many hours they consume. Bigger lift; (a) and (b) are done —
+       revisit whether they're enough before reaching for this.
 
     **Guardrail, matching the career-chat prompt's caution (item 9
     above) even though this is a different feature**: a recommendation
