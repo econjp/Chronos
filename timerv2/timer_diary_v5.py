@@ -3153,7 +3153,8 @@ class App(tk.Tk):
                         pass
             return tot / 60
 
-        def refresh():
+        def refresh(keep_selection=None):
+            sel = keep_selection if keep_selection is not None else tree.selection()
             tree.delete(*tree.get_children())
             for i, t in enumerate(self.settings.get("tasks", [])):
                 pri = t.get("priority", "normal")
@@ -3163,6 +3164,11 @@ class App(tk.Tk):
                     f"{est:g}h" if est else "—",
                     f"{task_actual_h(t['name'], t['added']):.2f}h",
                     t.get("goal") or "—", t.get("source") or "—"))
+            # rebuilding the tree drops selection unless we restore it — a
+            # priority click on row 2 must not silently un-pick row 2
+            keep = [iid for iid in sel if tree.exists(iid)]
+            if keep:
+                tree.selection_set(keep)
 
         def picked():
             sel = tree.selection()
@@ -3176,7 +3182,7 @@ class App(tk.Tk):
             cur = self.settings["tasks"][i].get("priority", "normal")
             self.settings["tasks"][i]["priority"] = self._PRI_NEXT[cur]
             save_settings(self.settings)
-            refresh()
+            refresh(keep_selection=[row])
 
         tree.bind("<Button-1>", toggle_priority)
 

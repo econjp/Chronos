@@ -257,6 +257,39 @@ v6.6):
    two-PC setup properly (single-instance mutex is per-machine).
 8. Insights v3: weekday patterns ("your Tuesdays are 40% weaker"),
    meeting-load vs deep-hours correlation, break-ratio drift alarm.
+9. **Deliberately NOT NOW — from the user's career/life-context chat,
+   2026-07-13.** A separate long-running chat that holds career-planning
+   context proposed three ideas, explicitly self-aware that shipping them
+   should wait: "the app will still be v6.7 next week; the thesis
+   deadline won't wait" (9 days out, zero words at time of writing). Do
+   not build these until the user asks again post-draft.
+   - **Reopening Guard / Decision Ledger**: a `decide: <keyword>` task
+     type — on Stop, prompts for verdict + reason, stored locally; future
+     matching tasks show a banner with the original date/verdict/reason
+     and a reopen counter, requiring typed new-data justification to
+     unlock. Real named settled-decision seed data was provided (retake-
+     a-course, paid application services, accept-then-quit, spray
+     applications — all previously decided NO/SKIP). **Flagged by its own
+     author as adjacent to the drift-prompt/priority-gate this app has
+     twice deliberately held back** (see the `⚠ not today's signal`
+     status flag, v6.5, and the standing "only if the meter fails"
+     decision from 2026-07-11) — if revisited, explicitly re-check
+     against that precedent rather than building a second gating
+     mechanism side by side with the first.
+   - **Opportunity triage capture**: a `consider: <opportunity>` capture
+     landing in the task library as a low-priority someday item,
+     deliberately not actioned same-day — a holding pen for FOMO pulls
+     toward new offers. Same shape as SOMEDAY: already is; may not need
+     new code beyond documenting the convention, similar to how SOMEDAY
+     itself turned out to be nearly free in v6.4.
+   - **Blunt capacity-shortfall line**: on rollover, one hard sentence in
+     the day file if required hours for the nearest deadline exceed net
+     capacity — "something gets cut," not a soft nudge. Check first
+     whether `_plan_line`/`_capacity_lines` already compute this and just
+     need harder-line presentation rather than new math — likely the
+     latter, since `_capacity_lines` already produces a "⚠ overbooked by
+     Xh" verdict; the ask is about surfacing it in the day file's morning
+     plan line, not inventing the number.
 
 ## How to verify changes without Windows
 
