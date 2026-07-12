@@ -51,24 +51,30 @@ belong — or it's a new *source key* in disguise.
 
 ## Realization gap (the actual scatter, be honest with the user)
 
-The model above is TRUE in intent but only PARTLY realized in code:
+The model above is TRUE in intent and now MOSTLY realized in code (as of
+v6.6):
 
-- `_life_day` / `day_index` unified **dates**; `matched_minutes` (v6.3)
-  unified the **keyword lens** — but only `_is_signal` and `_goal_minutes`
-  route through it so far.
-- Still hand-rolling their own row scan + substring match (migrate these
-  to `matched_minutes` next, one per commit, each has tests to add):
-  `_dl_progress`, `_refresh_totals` (deadline weekly block),
-  `_burndown_series`, `_capacity_lines`. ~6 near-identical loops remain.
-- `App` is one ~3600-line class doing storage + timer state machine +
+- `_life_day` / `day_index` unified **dates**; `matched_minutes` +
+  `task_matches` (v6.3, finished v6.6) unified the **keyword lens** —
+  `_is_signal`, `_goal_minutes`, `_dl_progress`, the `_refresh_totals`
+  weekly-target block, `_burndown_series` (via `day_index`+`task_matches`
+  directly — it needs a per-day running sum, which `matched_minutes`
+  itself doesn't return) and `_capacity_lines` (transitively, via
+  `_dl_progress`) all route through it now. No more hand-rolled row
+  scans for "minutes on X over range Y" anywhere in the app.
+- Still open: the three lenses (SIGNAL/Goals/Deadlines) don't yet point
+  *at each other* — a Deadline can't reference a Goal by name, though a
+  Goal already seeds SIGNAL when the day starts blank. See BACKLOG #2.
+- `App` is one ~4100-line class doing storage + timer state machine +
   every window. Not worth splitting files (stdlib-single-file rule), but
   the method groups (`# ----- xxx -----` banners) are the seams; keep new
   code inside the right banner, keep lenses/sources/views separated.
-
-Consolidation direction (no rewrite, just convergence): every place that
-answers "how many minutes on X over range Y" calls `matched_minutes`;
-every place that asks "what does the app know about day D" calls
-`_life_day`. When both are true everywhere, the scatter is gone.
+- The **task library** (v6.5) is a fourth kind of thing, not a lens: a
+  discrete backlog item with a flat `priority` attribute, not a
+  keyword-over-a-range. Deliberately NOT forced into the lens shape —
+  see the v6.5 changelog entry for why. It's closer to a SOURCE (writes
+  `--- Done: ...` lines onto the day record) that also happens to have
+  its own persistent list in settings.
 
 ## Design rules (non-negotiable, learned over many iterations)
 
@@ -86,16 +92,27 @@ every place that asks "what does the app know about day D" calls
 
 ## Repo map & data formats
 
-- `timerv2/timer_diary_v5.py` — the whole app (~3300 lines). v4 kept as
-  reference. `timerv2/README.md` — user-facing docs, newest feature first.
+- `timerv2/timer_diary_v5.py` — the whole app (~4100 lines, v6.6 as of
+  2026-07-13). v4 kept as reference. `timerv2/README.md` — user-facing
+  docs, newest feature first.
 - Data at `%APPDATA%\TimerDiary\`: `sessions.csv`
   (`date;type;start;end;minutes;task;note`, type=work|break, HH:MM times),
-  `settings.json` (keys: deadlines, goals, tasks, capacity, off_dates,
-  sleep_over, ics_path, health_dir, target_min, rollover_hour, hotkey…),
-  `diary\YYYY-MM-DD.txt` day files, `backups\`.
-- Day-file conventions parsed by code: `SIGNAL: kw, kw`, `ENERGY: 1-5`,
-  `TODO` lines (carried to next day), `--- Done: task (est Xh, actual
-  Yh)`, `--- Task:`, session/break lines, `WEEK REVIEW Wnn:` (Mondays).
+  `settings.json`, `diary\YYYY-MM-DD.txt` day files, `backups\`.
+- `settings.json` keys: `deadlines` (list: name/start/date/total_h/
+  target_h/match), `goals` (list: name/why/match/target_h, max 5),
+  `tasks` (the task library, list: name/est_h/priority[signal|normal|
+  someday]/goal/source/added), `capacity` (7 floats, Mon..Sun),
+  `off_dates`, `sleep_over` ({iso: [bed HH:MM, wake HH:MM]}), `ics_path`,
+  `health_dir`, `diary_dir`, `target_min`, `rollover_hour`, `hotkey`,
+  `idle_min`, `float_break`, `nudge`, `asked_autostart`.
+- Day-file conventions parsed by code: `SIGNAL: kw, kw` (carries daily,
+  seeds from goals if blank), `ENERGY: 1-5`, `TODO:`/`SOMEDAY:` headers
+  with `-`/`*`/`[ ]` bullets (TODO carries to next day AND auto-captures
+  into the task library; SOMEDAY never carries, library-captures only),
+  `--- Done: task (est Xh, actual Yh)`, `--- Task:`, `!!! time-box
+  exceeded !!!`, session/break lines, `WEEK REVIEW Wnn:` (Mondays),
+  `=== THEME: name — HH:MM (Xm) === ... === END THEME ===` (themed
+  writing blocks, read back out by Browse Themes — never a second file).
 - **Export life record (JSON)** (File menu) is the canonical portable
   dump: per-day record + diary text + goals + deadlines + capacity.
 
@@ -247,6 +264,10 @@ run on the user's Windows machine (Ctrl+D dashboard, Data doctor scan).
 
 ## Git
 
-Branch: `claude/life-management-platform-arch-6s4hrv` on
-`econjp/chrono`. Master holds pre-v5.5 history. Commit style: short
-imperative title + honest body listing user-visible changes first.
+Private repo `econjp/chrono`, all work happens directly on `master` —
+no other branch is active. (A mobile-session branch,
+`claude/life-management-platform-arch-*`, was cherry-picked into master
+and re-authored on 2026-07-12; see CLAUDE.md incident log. It may still
+exist on origin as a harmless leftover pointer — safe to delete, not
+urgent.) Commit style: short imperative title + honest body listing
+user-visible changes first. No AI co-author trailers, ever (CLAUDE.md).
