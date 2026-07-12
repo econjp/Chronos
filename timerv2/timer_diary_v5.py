@@ -60,6 +60,20 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v7.4 (insights v3):
+  - weekday pattern: flags a genuinely weaker weekday once every day of
+    the week has enough samples ("Tues average 2.3h vs Thus at 5.0h —
+    54% weaker") — not noise, a real recurring gap worth scheduling
+    around.
+  - meeting-load vs deep-hours: do days with 2h+ of meetings actually
+    cost you focus, or do you work around them fine — your own history
+    answers it instead of assuming.
+  - break-ratio drift: this week's break share vs the 3 weeks before —
+    catches a slow creep before it's obvious.
+  All three reuse existing data (day_index, calendar busy-time,
+  read_rows) — no new sources, no new infra, same honest n>=3 gating
+  as every other insight.
+
 New in v7.3 (timeline third color + focus order):
   - the day timeline paints goal-aligned-but-not-signal work (a run,
     when today's signal is thesis) in its own color, distinct from
@@ -4183,6 +4197,71 @@ class App(tk.Tk):
         if best:
             out.append(f"streak: {run} active day(s) (≥30m) · best in "
                        f"16 weeks: {best}")
+
+        # weekday patterns — is one day of the week genuinely weaker,
+        # not just noise. Needs every weekday represented (n>=3 each)
+        # before it speaks at all.
+        wd_buckets = [[] for _ in range(7)]
+        for i in range(1, days + 1):
+            d = self.today - dt.timedelta(days=i)
+            w = (idx.get(d.isoformat()) or {"work": 0})["work"]
+            if w > 0:
+                wd_buckets[d.weekday()].append(w)
+        if all(len(b) >= 3 for b in wd_buckets):
+            names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            avgs = [sum(b) / len(b) / 60 for b in wd_buckets]
+            best_i = max(range(7), key=lambda i: avgs[i])
+            worst_i = min(range(7), key=lambda i: avgs[i])
+            if avgs[best_i] > 0:
+                diff_pct = round(100 * (avgs[best_i] - avgs[worst_i]) / avgs[best_i])
+                if diff_pct >= 20:
+                    out.append(f"{names[worst_i]}s average {avgs[worst_i]:.1f}h vs "
+                              f"{names[best_i]}s at {avgs[best_i]:.1f}h — "
+                              f"{diff_pct}% weaker, worth knowing before "
+                              "scheduling something hard there")
+
+        # meeting load vs deep hours — does a busy calendar day actually
+        # cost you focus, or do you work around it fine
+        busy_data = self._busy_data()
+        heavy, light = [], []
+        for i in range(1, days + 1):
+            d = self.today - dt.timedelta(days=i)
+            iso = d.isoformat()
+            w = (idx.get(iso) or {"work": 0})["work"]
+            if w <= 0:
+                continue
+            (heavy if busy_data.get(iso, 0.0) >= 2 else light).append(w)
+        if len(heavy) >= 3 and len(light) >= 3:
+            ha = sum(heavy) / len(heavy) / 60
+            la = sum(light) / len(light) / 60
+            verdict = ("meetings are eating your focus" if ha < 0.85 * la
+                      else "holding up fine around meetings")
+            out.append(f"days with ≥2h of meetings: {ha:.1f}h of work "
+                       f"({len(heavy)} days) vs {la:.1f}h on lighter-calendar "
+                       f"days ({len(light)} days) — {verdict}")
+
+        # break-ratio drift — is the work:break balance creeping the
+        # wrong way, not just this week being unusually chatty
+        monday = self.today - dt.timedelta(days=self.today.weekday())
+        prev_lo = monday - dt.timedelta(days=21)
+        cur_w = cur_b = prev_w = prev_b = 0
+        for r in read_rows():
+            try:
+                rd = dt.date.fromisoformat(r[0])
+                m = int(r[4])
+            except ValueError:
+                continue
+            if rd >= monday:
+                cur_b, cur_w = (cur_b + m, cur_w) if r[1] == "break" else (cur_b, cur_w + m)
+            elif rd >= prev_lo:
+                prev_b, prev_w = (prev_b + m, prev_w) if r[1] == "break" else (prev_b, prev_w + m)
+        if cur_w + cur_b >= 5 * 60 and prev_w + prev_b >= 15 * 60:
+            cur_ratio = cur_b / (cur_w + cur_b)
+            prev_ratio = prev_b / (prev_w + prev_b)
+            if cur_ratio > prev_ratio + 0.10:
+                out.append(f"breaks are {round(100 * cur_ratio)}% of tracked "
+                           f"time this week vs {round(100 * prev_ratio)}% the "
+                           "3 weeks before — drifting, worth a look")
         return out
 
     def _draw_week_bars(self, cv, week):

@@ -350,8 +350,12 @@ the three-bucket model is already correct and more honest than a blend.
    recovery path — not a single "import" button doing both silently.
 7. **Multi-machine**: settings/diary already OneDrive-able; document a
    two-PC setup properly (single-instance mutex is per-machine).
-8. Insights v3: weekday patterns ("your Tuesdays are 40% weaker"),
-   meeting-load vs deep-hours correlation, break-ratio drift alarm.
+8. ~~Insights v3~~ — DONE v7.4: weekday pattern (needs every weekday
+   to have n>=3 samples before it speaks — won't fire until real
+   history accumulates), meeting-load vs deep-hours ("meetings are
+   eating your focus" / "holding up fine"), break-ratio drift (this
+   week vs the 3 weeks before). All reuse existing data, no new
+   sources.
 9. **Deliberately NOT NOW — from the user's career/life-context chat,
    2026-07-13.** A separate long-running chat that holds career-planning
    context proposed three ideas, explicitly self-aware that shipping them
