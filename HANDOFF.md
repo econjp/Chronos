@@ -130,7 +130,18 @@ every place that asks "what does the app know about day D" calls
    onto `matched_minutes`. Then **link the faces**: a deadline can point
    at a goal (dropdown of goal names); SIGNAL already seeds from goals;
    review block shows goal-vs-ambition arrows. One system, three faces.
-3. **Screen-time / doomscroll source**: the 19–21 window is documented;
+3. **Themed / guided diary sections** (requested 2026-07-12, design before
+   build — see the options given to the user, pick before coding): the
+   diary is currently one undifferentiated scroll per day; the user wants
+   space for non-work reflection (career thinking, life-admin like a
+   house move, brainstorming) without polluting the work log or becoming
+   the "guided sessions = BS" trap already rejected once for morning/
+   evening templates. Likely shape: named sections *within* the existing
+   day file (still one file, still plain text — the sacred rule doesn't
+   bend), opened on demand via a keyword or menu item, never on a timer
+   or forced cadence. Do not build a second window/pane for this; the day
+   file stays the single surface.
+3b. **Screen-time / doomscroll source**: the 19–21 window is documented;
    import phone screen-time (csv drop like health) → new day-record key →
    insight "scroll vs next-day energy".
 4. **Mood ≠ energy**: optional second header line or extend ENERGY with a

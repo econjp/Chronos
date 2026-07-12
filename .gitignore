@@ -1,9 +1,12 @@
 # personal data — never commit
 2026new/
 2026 Health/
+2026 calendar/
 oldtimer example/
 CLAUDE.md
+HANDOFF-private-notes.md
 .claude/
+*.pst
 
 # build artifacts
 timerv2/dist/
