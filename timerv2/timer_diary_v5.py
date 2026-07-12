@@ -60,6 +60,26 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v7.9 (scheduler foundations — prep for the v8.0 push):
+  - `parse_ics_busy` (the per-day busy-HOURS scalar every capacity view
+    reads) is now a thin sum over a new `parse_ics_intervals`, which
+    returns the actual busy TIME RANGES per day, merged and sorted.
+    Same file parsed once, two views over it — this is the one real
+    infra gap the planning-engine backlog flagged as blocking a true
+    time-blocked schedule, now closed. Side effect, called out
+    explicitly rather than left silent: double-booked/overlapping
+    meetings now count their overlap once, not once per event, so
+    total busy hours on a day with a real double-booking will read
+    slightly lower than before — the more honest number.
+  - New `_free_slots(date)`: work-day window (Tools > "Work-day window",
+    default 08:00-22:00) minus calendar busy ranges minus (today only)
+    already-logged work/break time from the csv, merged, slivers under
+    15 min dropped. The actual foundation piece — v8's real scheduler
+    reads this directly instead of re-deriving it.
+  - One small end-to-end proof it works, in the day file where
+    everything visible lives: "biggest free block today: 14:00-17:00
+    (3.0h)" in the morning header, right after the plan line.
+
 New in v7.8 (on this day):
   - the morning header now checks for a day file exactly one year ago
     (same month/day; Feb 29 falls back to -365 days) and, if one exists,
@@ -713,10 +733,34 @@ def health_line(rec):
 
 # ---------------- calendar (.ics) busy-time import ----------------
 
-def parse_ics_busy(path, start, end):
-    """{date_iso: busy_hours} from an exported .ics, window [start, end].
-    Skips all-day events and recurring (RRULE) events — good enough for
-    'subtract my meetings from capacity', not a calendar client."""
+def _merge_time_intervals(intervals):
+    """Sort + merge overlapping/adjacent (start_time, end_time) tuples —
+    the shared primitive both the hours-view and the slot-finder need,
+    so two meetings double-booked at the same hour count as one busy
+    hour, not two."""
+    merged = []
+    for s, e in sorted(intervals):
+        if merged and s <= merged[-1][1]:
+            if e > merged[-1][1]:
+                merged[-1] = (merged[-1][0], e)
+        else:
+            merged.append((s, e))
+    return merged
+
+
+def _time_span_hours(s, e):
+    return (dt.datetime.combine(dt.date.min, e)
+            - dt.datetime.combine(dt.date.min, s)).total_seconds() / 3600
+
+
+def parse_ics_intervals(path, start, end):
+    """{date_iso: [(start_time, end_time), ...]} from an exported .ics,
+    window [start, end] — merged, sorted time-of-day ranges per day.
+    This is the v8 scheduler's foundation piece: parse_ics_busy (below)
+    used to be the only view of this data, a per-day SCALAR that can't
+    say WHERE in the day you're free. Skips all-day events and
+    recurring (RRULE) events — same known limitation as before, see
+    HANDOFF's RRULE backlog item."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             text = f.read()
@@ -724,7 +768,7 @@ def parse_ics_busy(path, start, end):
         return {}
     text = text.replace("\r\n ", "").replace("\n ", "")   # unfold folds
     utc_off = dt.datetime.now().astimezone().utcoffset() or dt.timedelta()
-    busy = {}
+    raw = {}
     for block in text.split("BEGIN:VEVENT")[1:]:
         block = block.split("END:VEVENT")[0]
         if "RRULE:" in block:
@@ -753,10 +797,20 @@ def parse_ics_busy(path, start, end):
             seg_end = min(edt, nxt)
             if start <= cur.date() <= end:
                 iso = cur.date().isoformat()
-                busy[iso] = busy.get(iso, 0.0) + (
-                    seg_end - cur).total_seconds() / 3600
+                raw.setdefault(iso, []).append((cur.time(), seg_end.time()))
             cur = seg_end
-    return busy
+    return {iso: _merge_time_intervals(ivs) for iso, ivs in raw.items()}
+
+
+def parse_ics_busy(path, start, end):
+    """{date_iso: busy_hours} — a thin sum over parse_ics_intervals, kept
+    as its own function since every existing capacity call site wants a
+    scalar. Note: overlapping (double-booked) meetings now count once,
+    not once per event — parse_ics_intervals merges before this sums, so
+    a calendar with real overlaps will show slightly LESS busy time than
+    before this change, which is the more honest number."""
+    return {iso: sum(_time_span_hours(s, e) for s, e in ivs)
+            for iso, ivs in parse_ics_intervals(path, start, end).items()}
 
 
 # ---------------- old-format line builders ----------------
@@ -1213,6 +1267,8 @@ class App(tk.Tk):
         toolsm.add_command(label="Idle detection…", command=self._set_idle)
         toolsm.add_command(label="Day rollover hour…", command=self._set_rollover)
         toolsm.add_command(label="Daily target…", command=self._set_target)
+        toolsm.add_command(label="Work-day window (free-slot finder)…",
+                           command=self._set_work_window)
         m.add_cascade(label="Tools", menu=toolsm)
         self.menu = m
         self.config(menu=m)
@@ -1431,6 +1487,29 @@ class App(tk.Tk):
         if v is not None:
             self.settings["rollover_hour"] = v
             save_settings(self.settings)
+
+    def _set_work_window(self):
+        ws, we = self.settings.get("work_window", ["08:00", "22:00"])
+        s = simpledialog.askstring(
+            APP_NAME, "Work-day window start (HH:MM) — the earliest hour "
+                      "the free-slot finder should ever offer:",
+            initialvalue=ws, parent=self)
+        if s is None:
+            return
+        e = simpledialog.askstring(
+            APP_NAME, "Work-day window end (HH:MM):",
+            initialvalue=we, parent=self)
+        if e is None:
+            return
+        try:
+            for v in (s, e):
+                h, m = map(int, v.split(":"))
+                assert 0 <= h <= 23 and 0 <= m <= 59
+        except (ValueError, AssertionError):
+            messagebox.showerror(APP_NAME, "Use HH:MM, e.g. 08:00")
+            return
+        self.settings["work_window"] = [s, e]
+        save_settings(self.settings)
 
     def _set_target(self):
         cur = self.settings.get("target_min", 0)
@@ -2463,6 +2542,9 @@ class App(tk.Tk):
         plan = self._plan_line()
         if plan:
             parts.append(plan)
+        fb = self._next_free_block_line()
+        if fb:
+            parts.append(fb)
         parts += self._focus_order_lines()
         if self.today.weekday() == 0:
             parts += self._week_review_block()
@@ -3396,6 +3478,87 @@ class App(tk.Tk):
                               dt.date.today() + dt.timedelta(days=90))
         self._busy_cache = (key, data)
         return data
+
+    def _busy_intervals(self):
+        """Calendar busy TIME RANGES per date — the interval-level
+        sibling of _busy_data(), needed for slot-finding instead of just
+        a daily total. Same file, same cache shape, own cache slot since
+        the two views don't share a dict layout."""
+        path = self.settings.get("ics_path")
+        if not path or not os.path.exists(path):
+            return {}
+        key = (path, os.path.getmtime(path), dt.date.today().isoformat())
+        cache = getattr(self, "_busy_intervals_cache", None)
+        if cache and cache[0] == key:
+            return cache[1]
+        data = parse_ics_intervals(path, dt.date.today() - dt.timedelta(days=14),
+                                   dt.date.today() + dt.timedelta(days=90))
+        self._busy_intervals_cache = (key, data)
+        return data
+
+    def _work_window(self):
+        """The daily envelope the free-slot finder is allowed to offer
+        blocks within — configurable (Tools menu), defaults 08:00-22:00.
+        Not the same concept as weekday capacity hours (_capacity): that
+        caps TOTAL hours, this caps WHEN in the day they can land."""
+        try:
+            ws, we = self.settings.get("work_window", ["08:00", "22:00"])
+            wsh, wsm = map(int, ws.split(":"))
+            weh, wem = map(int, we.split(":"))
+            return dt.time(wsh, wsm), dt.time(weh, wem)
+        except (ValueError, TypeError):
+            return dt.time(8, 0), dt.time(22, 0)
+
+    def _logged_intervals(self, d):
+        """Already-logged work+break time ranges for date d, read from
+        the csv — so a same-day slot search doesn't re-offer hours
+        already spent."""
+        ivs = []
+        for r in read_rows():
+            if r[0] != d.isoformat():
+                continue
+            try:
+                sh, sm = map(int, r[2].split(":"))
+                eh, em = map(int, r[3].split(":"))
+                ivs.append((dt.time(sh, sm), dt.time(eh, em)))
+            except (ValueError, IndexError):
+                continue
+        return _merge_time_intervals(ivs)
+
+    def _free_slots(self, d):
+        """Free time-of-day ranges on date d: the work window minus
+        calendar busy time minus (today only) already-logged work/break
+        — the foundation piece v8's real time-blocked scheduler is built
+        on. Returns [(start_time, end_time), ...]; slivers under 15 min
+        are dropped so it reads as usable blocks, not calendar noise."""
+        win_start, win_end = self._work_window()
+        busy = list(self._busy_intervals().get(d.isoformat(), []))
+        if d == dt.date.today():
+            busy += self._logged_intervals(d)
+        busy = _merge_time_intervals(busy)
+        slots, cur = [], win_start
+        for s, e in busy:
+            if s > cur:
+                slots.append((cur, min(s, win_end)))
+            cur = max(cur, e)
+            if cur >= win_end:
+                break
+        if cur < win_end:
+            slots.append((cur, win_end))
+        return [(s, e) for s, e in slots if s < e and _time_span_hours(s, e) >= 0.25]
+
+    def _next_free_block_line(self):
+        """One line that proves the interval math end to end: the
+        biggest contiguous free block left today, calendar and
+        already-logged time both subtracted. v8's scheduler reads the
+        same _free_slots() this does — this is the smallest possible
+        real exercise of it, not a demo."""
+        slots = self._free_slots(self.today)
+        if not slots:
+            return None
+        s, e = max(slots, key=lambda se: _time_span_hours(*se))
+        return (f"biggest free block today: {s:%H:%M}-{e:%H:%M} "
+                f"({_time_span_hours(s, e):.1f}h)")
 
     def _set_ics(self):
         p = filedialog.askopenfilename(

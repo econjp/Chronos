@@ -327,6 +327,19 @@ the three-bucket model is already correct and more honest than a blend.
   — if one exists. Read-only, zero setup, pays back the "keeps the data
   forever" idea directly in the file the user already reads every
   morning rather than as a separate view to remember to open.
+- **v7.9** (scheduler foundations — the v7.9 prep release for the v8.0
+  "big push," user-chosen direction: The Scheduler). Closes the one
+  real infra gap flagged under item 11 below: `parse_ics_intervals` now
+  returns actual per-day busy TIME RANGES (merged/sorted), and
+  `parse_ics_busy` becomes a thin hours-sum over it — every existing
+  capacity call site is unaffected (same signature), except that
+  double-booked meetings now count their overlap once instead of once
+  per event (a genuine, called-out behavior fix, not silent). New
+  `_free_slots(date)` — work-day window (Tools > "Work-day window",
+  default 08:00-22:00) minus calendar busy ranges minus (today only)
+  already-logged csv time — is the actual foundation v8's real
+  scheduler builds on. Proved end-to-end with one visible line in the
+  morning header: "biggest free block today: 14:00-17:00 (3.0h)".
 
 ## BACKLOG (priority order — continue here)
 
@@ -512,14 +525,15 @@ the three-bucket model is already correct and more honest than a blend.
     matches the concept model's own "sources/lenses/views" shape (see
     above): this would be a view, arguably the most important one.
 
-    **The one real infrastructure gap**: `parse_ics_busy` (v5.9) returns
-    `{date_iso: total_busy_hours}` — a per-day SCALAR, not actual time
-    RANGES within the day. A genuinely gap-aware scheduler ("you're free
-    09-11 and 14-17") needs interval-level busy data, which means
-    extending `parse_ics_busy` (or a sibling function) to return
-    `{date_iso: [(start_time, end_time), ...]}` instead of a sum. This
-    is the prerequisite for the ambitious version below; the modest
-    version doesn't need it.
+    ~~**The one real infrastructure gap**~~ — CLOSED v7.9: `parse_ics_busy`
+    used to return `{date_iso: total_busy_hours}`, a per-day SCALAR, not
+    actual time RANGES within the day. `parse_ics_intervals` now returns
+    `{date_iso: [(start_time, end_time), ...]}` (merged/sorted);
+    `parse_ics_busy` is a thin sum over it, so every existing capacity
+    call site kept working unchanged. `_free_slots(date)` (work window
+    minus calendar minus today's own logged csv time) is the actual
+    gap-aware primitive tier (c) below needs — this was the prerequisite,
+    now done.
 
     **Three scopes, cheapest first — pick one, don't build all three
     at once:**
@@ -535,10 +549,28 @@ the three-bucket model is already correct and more honest than a blend.
        after the deadlines are fed. Matches the original sketch fully
        now.
     c) **True time-blocked schedule** ("09:00-11:30 Thesis, 11:30-12:00
-       email [boxed]...") — needs the `parse_ics_busy` interval upgrade
-       above to respect WHERE in the day meetings actually are, not just
-       how many hours they consume. Bigger lift; (a) and (b) are done —
-       revisit whether they're enough before reaching for this.
+       email [boxed]...") — THIS IS V8.0. The interval-level primitive
+       it needs (`_free_slots`, v7.9) is now done; (a) and (b) are done.
+       What's left is genuinely the scheduler itself: given today's
+       `_free_slots()` and the same competing-deadline data
+       `_focus_order_lines` already ranks, greedily place each ranked
+       item's needed-hours into slots (largest-need-first into
+       largest-slot-first, or soonest-deadline-first — worth prototyping
+       both before picking) and render actual boxed time ranges into the
+       day header, not just a priority list. Open design questions to
+       resolve before building: (1) does a placed block get written into
+       the day file as a literal suggestion line, or does it stay a
+       dashboard-only view — the sacred rule says the day file is the
+       product, so probably the former, but a WRONG suggestion baked
+       into the file forever is a worse failure mode than a wrong
+       dashboard number that just gets closed; (2) what happens when the
+       user doesn't follow the plan (they won't, always) — the existing
+       guardrail below already answers this (never track
+       accept/reject), but a scheduler is the feature most tempted to
+       violate it, so re-read the guardrail before writing a line of
+       this; (3) minimum viable version is probably just TODAY's
+       schedule, one deadline at a time, not a full multi-day
+       multi-deadline optimizer — start there.
 
     **Guardrail, matching the career-chat prompt's caution (item 9
     above) even though this is a different feature**: a recommendation
