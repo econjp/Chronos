@@ -4,6 +4,34 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Themed writing (v6.4) — `Ctrl+T`
+
+For everything that isn't work: career thinking, a house move, a business
+idea, brainstorming, or a "want to do this someday" list. Pick or type a
+topic (autocompletes from ones you've used), write in a small
+distraction-free popup, **Save & close** (or just close the window — it
+always saves) drops a delimited block into *today's* day file:
+`=== THEME: career — 14:00 (6m) === … === END THEME ===`. Still one file,
+still plain text — no second database to desync or lose.
+
+View → **Browse themes…** reads every day file's blocks back out, grouped
+by topic, oldest first — the whole thread on "career" or "Brussels move"
+in one scroll, so picking a thought back up next week is just reading, not
+remembering. **Copy this thread** for pasting into Claude; **Continue
+writing on this topic** opens a fresh popup under the same name.
+
+Low-priority "someday, not now" items: write them under a `SOMEDAY:`
+header with `-` bullets, same as `TODO:` — they're never carried into
+tomorrow (no nagging), but stay searchable (Search all days, or as their
+own theme if you write them inside a themed session).
+
+### TODO carry-over, tightened (v6.4)
+
+Carry-over now only pulls **`-` / `*` / `[ ]` bullet lines** written under
+a `TODO:` header — free paragraphs (even ones that mention "todo" in
+passing) are never swept in. Old habit of writing todos as plain sentences
+under `TODO:` won't carry anymore — prefix with `-`.
+
 ## Where this is heading
 
 The long game is a **life management platform**, and the architecture now
@@ -70,11 +98,17 @@ the next tool on top of it. The data is yours and outlives the app.
 One window instead of nine: **today** (hours so far incl. the running
 session, signal %, the morning plan vs capacity, last night's sleep),
 **the week** as bars — green signal share inside blue work, last week as
-grey ghosts, planned capacity as a red dashed line — **every deadline**
-with done/scope, needed-per-day and the combined slack verdict, and
-**insights** cross-referencing the sources over your last 60 days:
+grey ghosts, planned capacity as a red dashed line — a **sleep graph**
+below it (last 14 nights, dark bars ≥7h / amber <7h, a green dot on days
+you also logged a workout — the body signals merged into one glance,
+because a graph reads faster than any sentence about it) — **every
+deadline** with done/scope, needed-per-day and the combined slack
+verdict, and **insights** cross-referencing the sources over your last 60
+days, counting only days you actually tracked work (a weekend you didn't
+open the app isn't evidence about anything):
 
-- *sleep ≥7h → 5.2h/day (18d) · <7h → 3.9h/day (12d): sleep is worth +1.3h*
+- *on days you tracked work: after ≥7h sleep you averaged 5.2h of work
+  (18 such days) vs 3.9h after <7h sleep (12 days) — a +1.3h/day difference*
 - *deep hours 09–12: 41% of all your work lands there — guard that window*
 - *average unbroken block 32m this week vs 41m before — more fragmented*
 - *estimates: actuals run ×1.5 across 13 finished tasks*

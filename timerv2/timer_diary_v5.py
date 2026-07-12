@@ -60,6 +60,24 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v6.4 (themed writing + honest insights):
+  - THEMED WRITING (Ctrl+T / View > Browse themes): a distraction-free
+    popup for anything that isn't work — career thinking, a house move,
+    a business idea, brainstorming, a someday list. Save writes one
+    delimited block into TODAY's day file; no second data store. Browse
+    themes reads every day file's blocks back out, grouped by topic,
+    oldest first — the whole thread on one subject in one scroll.
+  - INSIGHTS FIXED: sleep/energy-vs-output were quietly averaging in
+    days you never opened the app (0 tracked minutes dragging the
+    average toward zero) — now active-days-only, and spelled out in
+    full sentences instead of a terse arrow chain.
+  - TODO carry-over now requires '-'/'*'/'[ ]' bullets under a 'TODO:'
+    header — a paragraph of brainstorming no longer becomes tomorrow's
+    todo wall. New 'SOMEDAY:' header (same bullets) is simply never
+    carried — write low-priority ideas there.
+  - Life dashboard gained a 14-night sleep bar graph (>=7h/<7h shading,
+    workout dot) under the week bars.
+
 New in v6.3 (consolidation, not a feature — the architecture converges):
   - THE LENS PRIMITIVE: SIGNAL, Goals and Deadlines were three concepts
     secretly the same shape — (keywords, date range) -> minutes. They now
@@ -936,6 +954,9 @@ class App(tk.Tk):
         viewm = tk.Menu(m, tearoff=0)
         viewm.add_command(label="Life dashboard", accelerator="Ctrl+D",
                           command=self._dashboard)
+        viewm.add_command(label="Themed writing…", accelerator="Ctrl+T",
+                          command=self._themed_writing)
+        viewm.add_command(label="Browse themes…", command=self._browse_themes)
         viewm.add_separator()
         viewm.add_command(label="Weekly summary", command=lambda: self._summary("week"))
         viewm.add_command(label="Monthly summary", command=lambda: self._summary("month"))
@@ -1303,6 +1324,7 @@ class App(tk.Tk):
         self.bind("<Control-Return>", self._go)
         self.bind("<Control-r>", lambda e: self._reset())
         self.bind("<Control-d>", self._dashboard)
+        self.bind("<Control-t>", self._themed_writing)
         self.diary.bind("<F5>", self._insert_timestamp)
         self.task_box.bind("<Return>", self._go)
         self.task_box.bind("<<ComboboxSelected>>", self._switch)
@@ -2173,29 +2195,35 @@ class App(tk.Tk):
             return f"verdict: light day ({h:.1f}h tracked) — what stole it?"
         return None
 
+    _BULLET_RE = re.compile(r"^[-*]\s+\S|^\[[ xX]\]\s+\S")
+
     def _carry_todos(self, yday):
-        """Lines containing TODO from yesterday's file, plus the indented
-        block after a 'TODO:' style line. Carried TODOs chain day to day
-        until deleted."""
+        """Bullet lines ('- x', '* x', '[ ] x') directly under a 'TODO:'
+        header from yesterday's file — carried forward until done or
+        deleted. Free paragraphs are never swept in, even ones that
+        mention 'todo' in passing — only marked bullets are, so a day of
+        brainstorming prose doesn't become tomorrow's todo wall. Write
+        low-priority someday/maybe items under a 'SOMEDAY:' header
+        instead — same bullet syntax, never carried, just browsable
+        (Search all days / Browse themes)."""
         try:
             with open(self.diary_path(yday), encoding="utf-8") as f:
                 lines = f.read().splitlines()
         except OSError:
             return []
-        skip = ("start;", "stop;", "reset;", "---", "===")
         out, grab = [], False
         for ln in lines:
             s = ln.strip()
             low = s.lower()
             if grab:
-                if s and not low.startswith(skip):
+                if self._BULLET_RE.match(s):
                     out.append(ln)
                     continue
+                if s == "":
+                    continue
                 grab = False
-            if "todo" in low and not low.startswith(skip):
-                if not low.startswith("todo (carried"):
-                    out.append(ln)
-                grab = low.endswith(":") or low == "todo"
+            if low in ("todo:", "todo") and not low.startswith("todo (carried"):
+                grab = True
         return out[:12]
 
     def _carry_signal(self):
@@ -2215,6 +2243,174 @@ class App(tk.Tk):
             kws += [k.strip() for k in g.get("match", "").split(",")
                     if k.strip()]
         return ", ".join(dict.fromkeys(kws))
+
+    # ----- themed writing (reflection / brainstorm / someday, one topic) -----
+
+    _THEME_RE = re.compile(
+        r"=== THEME: (.+?) — (\d\d:\d\d)(?: \((\d+)m\))? ===\n"
+        r"(.*?)\n=== END THEME ===", re.S)
+
+    def _scan_themes(self):
+        """{normalized_name: {"display": canonical case, "entries":
+        [(date, time, mins_or_None, text), ...]}} across every day file,
+        oldest first — a themed session is never a second data store, it's
+        this file's own '=== THEME: x ===' blocks read back out, exactly
+        like Search all days already does for free text."""
+        out = {}
+        try:
+            names = sorted(os.listdir(self.diary_dir()))
+        except OSError:
+            return out
+        for fn in names:
+            if not fn.endswith(".txt"):
+                continue
+            date = fn[:-4]
+            try:
+                with open(os.path.join(self.diary_dir(), fn),
+                          encoding="utf-8") as f:
+                    text = f.read()
+            except OSError:
+                continue
+            for m in self._THEME_RE.finditer(text):
+                name, hhmm, mins, body = m.groups()
+                name = name.strip()
+                key = " ".join(name.lower().split())
+                rec = out.setdefault(key, {"display": {}, "entries": []})
+                rec["display"][name] = rec["display"].get(name, 0) + 1
+                rec["entries"].append((date, hhmm, int(mins) if mins else None,
+                                       body.strip()))
+        for rec in out.values():
+            rec["display"] = max(rec["display"], key=rec["display"].get)
+            rec["entries"].sort(key=lambda e: (e[0], e[1]))
+        return out
+
+    def _themed_writing(self, event=None):
+        """Ctrl+T: pick or type a topic (existing ones autocomplete), then
+        write in a distraction-free popup. Nothing forced, nothing on a
+        timer or rollover — you summon this, it never summons you."""
+        themes = self._scan_themes()
+        names = sorted((r["display"] for r in themes.values()), key=str.lower)
+        win = tk.Toplevel(self)
+        win.title("Themed writing")
+        win.resizable(False, False)
+        win.grab_set()
+        ttk.Label(win, text="Topic — existing or new, optional [Xm]:").grid(
+            row=0, column=0, padx=8, pady=(8, 3))
+        var = tk.StringVar()
+        box = ttk.Combobox(win, textvariable=var, values=names, width=32)
+        box.grid(row=1, column=0, padx=8, pady=3)
+        box.focus_set()
+
+        def go(event=None):
+            raw = var.get().strip()
+            if not raw:
+                return
+            win.destroy()
+            self._open_theme_popup(raw)
+
+        box.bind("<Return>", go)
+        ttk.Button(win, text="Start", command=go).grid(
+            row=2, column=0, sticky="e", padx=8, pady=(0, 8))
+
+    def _open_theme_popup(self, raw):
+        name, box_secs = self._parse_box(raw)
+        if not name:
+            return
+        start = dt.datetime.now()
+        p = tk.Toplevel(self)
+        p.title(f"Themed writing — {name}")
+        p.geometry("640x480")
+        hdr = ttk.Frame(p)
+        hdr.pack(fill="x", padx=8, pady=(8, 0))
+        ttk.Label(hdr, text=name, font=("Segoe UI", 13, "bold")).pack(side="left")
+        timer_lbl = ttk.Label(hdr, text="0:00")
+        timer_lbl.pack(side="right")
+        txt = tk.Text(p, wrap="word", font=("Consolas", 11), undo=True)
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        txt.focus_set()
+        alive = [True]
+
+        def tick():
+            if not alive[0]:
+                return
+            secs = int((dt.datetime.now() - start).total_seconds())
+            m, s = divmod(secs, 60)
+            over = box_secs and secs > box_secs
+            timer_lbl.config(
+                text=f"{m}:{s:02d}" + (f" / target {box_secs // 60}m" if box_secs else ""),
+                foreground="#c03030" if over else "")
+            p.after(1000, tick)
+
+        def save(event=None):
+            alive[0] = False
+            body = txt.get("1.0", "end-1c").strip()
+            if body:
+                mins = max(1, round((dt.datetime.now() - start).total_seconds() / 60))
+                self._append_text(f"=== THEME: {name} — {start:%H:%M} "
+                                  f"({mins}m) ===\n{body}\n=== END THEME ===")
+                self.status.config(text=f"Saved {mins}m of themed writing — {name}")
+            p.destroy()
+
+        bar = ttk.Frame(p)
+        bar.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Button(bar, text="Save & close", command=save).pack(side="left")
+        ttk.Label(bar, text="Ctrl+Enter to save · closing the window saves too",
+                 foreground="#777777").pack(side="left", padx=8)
+        p.bind("<Control-Return>", save)
+        p.protocol("WM_DELETE_WINDOW", save)
+        tick()
+
+    def _browse_themes(self):
+        """Read-only, across every day file: pick a topic, see its whole
+        thread in order — 'what did I think about X, and how has that
+        changed' answered by scrolling, not remembering."""
+        themes = self._scan_themes()
+        win = tk.Toplevel(self)
+        win.title("Browse themes")
+        win.geometry("620x480")
+        top = ttk.Frame(win)
+        top.pack(fill="x", padx=8, pady=8)
+        ttk.Label(top, text="Topic:").pack(side="left")
+        names = sorted(themes, key=lambda k: -len(themes[k]["entries"]))
+        var = tk.StringVar(value=themes[names[0]]["display"] if names else "")
+        box = ttk.Combobox(top, state="readonly", width=30,
+                           values=[f"{themes[k]['display']} ({len(themes[k]['entries'])})"
+                                   for k in names])
+        if names:
+            box.current(0)
+        box.pack(side="left", padx=(6, 0))
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10))
+        txt.pack(fill="both", expand=True, padx=8, pady=(0, 4))
+
+        def render(event=None):
+            txt.config(state="normal")
+            txt.delete("1.0", "end")
+            if not names:
+                txt.insert("1.0", "No themed sessions yet — Ctrl+T to start one.")
+                txt.config(state="disabled")
+                return
+            key = names[box.current()]
+            for date, hhmm, mins, body in themes[key]["entries"]:
+                txt.insert("end", f"----- {date} {hhmm}"
+                                  f"{f' ({mins}m)' if mins else ''} -----\n")
+                txt.insert("end", body + "\n\n")
+            txt.config(state="disabled")
+
+        def copy():
+            self.clipboard_clear()
+            self.clipboard_append(txt.get("1.0", "end-1c"))
+            self.status.config(text="Theme thread copied.")
+
+        box.bind("<<ComboboxSelected>>", render)
+        bar = ttk.Frame(win)
+        bar.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Button(bar, text="Copy this thread", command=copy).pack(side="left")
+        ttk.Button(bar, text="Continue writing on this topic",
+                  command=lambda: (win.destroy(),
+                                   self._open_theme_popup(
+                                       themes[names[box.current()]]["display"]))
+                  if names else None).pack(side="left", padx=6)
+        render()
 
     # ----- health import -----
 
@@ -3085,6 +3281,9 @@ class App(tk.Tk):
         cv = tk.Canvas(win, width=660, height=150, background="white",
                        highlightthickness=0)
         cv.pack(padx=8, pady=(8, 4))
+        sleep_cv = tk.Canvas(win, width=660, height=80, background="white",
+                             highlightthickness=0)
+        sleep_cv.pack(padx=8, pady=(0, 4))
         txt = tk.Text(win, wrap="word", font=("Consolas", 10),
                       width=88, height=26)
         txt.pack(fill="both", expand=True, padx=8, pady=(0, 4))
@@ -3099,6 +3298,7 @@ class App(tk.Tk):
             week = [self._life_day(monday + dt.timedelta(days=i))
                     for i in range(7)]
             self._draw_week_bars(cv, week)
+            self._draw_sleep_bars(sleep_cv)
             lines = self._dashboard_lines(week)
             shown[0] = "\n".join(lines)
             txt.config(state="normal")
@@ -3277,21 +3477,27 @@ class App(tk.Tk):
         when there are enough samples to mean something."""
         out = []
         idx = day_index()
-        # sleep x output — the reason the health import exists
+        # sleep x output — the reason the health import exists.
+        # Only days you actually tracked work count: a weekend with 8h
+        # sleep and 0 tracked hours isn't evidence sleep hurt your output,
+        # it's evidence you didn't open the app — mixing that in silently
+        # drags the averages toward zero and the insight into nonsense.
         good, short = [], []
         for i in range(1, days + 1):            # today isn't finished yet
             d = self.today - dt.timedelta(days=i)
             sl = self._sleep_h(d.isoformat())
-            if sl:
-                w = (idx.get(d.isoformat()) or {"work": 0})["work"]
+            w = (idx.get(d.isoformat()) or {"work": 0})["work"]
+            if sl and w > 0:
                 (good if sl >= 7 else short).append(w)
         if len(good) >= 3 and len(short) >= 3:
             g = sum(good) / len(good) / 60
             s = sum(short) / len(short) / 60
-            out.append(f"sleep ≥7h → {g:.1f}h/day ({len(good)}d) · <7h → "
-                       f"{s:.1f}h/day ({len(short)}d): sleep is worth "
-                       f"{g - s:+.1f}h of daily output")
-        # energy x everything — the 1-5 you type into the header
+            out.append(f"on days you tracked work: after ≥7h sleep you "
+                       f"averaged {g:.1f}h of work ({len(good)} such days) "
+                       f"vs {s:.1f}h after <7h sleep ({len(short)} days) "
+                       f"— a {g - s:+.1f}h/day difference")
+        # energy x everything — the 1-5 you type into the header. Same
+        # active-days-only filter as above, same reason.
         ehi, elo, en_sl = [], [], []
         for i in range(1, days + 1):
             d = self.today - dt.timedelta(days=i)
@@ -3299,17 +3505,19 @@ class App(tk.Tk):
             if not e:
                 continue
             w = (idx.get(d.isoformat()) or {"work": 0})["work"]
-            if e >= 4:
+            if e >= 4 and w > 0:
                 ehi.append(w)
-            elif e <= 2:
+            elif e <= 2 and w > 0:
                 elo.append(w)
             sl = self._sleep_h(d.isoformat())
             if sl:
                 en_sl.append((sl, e))
         if len(ehi) >= 3 and len(elo) >= 3:
-            out.append(f"energy ≥4 days → {sum(ehi) / len(ehi) / 60:.1f}h of "
-                       f"work · energy ≤2 days → {sum(elo) / len(elo) / 60:.1f}h"
-                       " — protect what charges you, it IS the productivity")
+            out.append(f"on days you tracked work: energy ≥4 averaged "
+                       f"{sum(ehi) / len(ehi) / 60:.1f}h of work "
+                       f"({len(ehi)} days) vs {sum(elo) / len(elo) / 60:.1f}h "
+                       f"on energy ≤2 days ({len(elo)} days) — protect what "
+                       "charges you, it IS the productivity")
         g_e = [e for sl, e in en_sl if sl >= 7]
         s_e = [e for sl, e in en_sl if sl < 7]
         if len(g_e) >= 3 and len(s_e) >= 3:
@@ -3427,6 +3635,46 @@ class App(tk.Tk):
                        fill="#777777",
                        text="blue = work · green = signal share · grey = "
                             "last week · red dash = planned capacity")
+
+    def _draw_sleep_bars(self, cv, days=14):
+        """Last N nights: sleep hours as bars (dark = >=7h, amber = <7h),
+        a dot on top when a workout was logged that day — the two body
+        signals merged into one glance, since a graph reads faster than
+        any sentence about them ever will."""
+        cv.delete("all")
+        W, H, pad = int(cv["width"]), int(cv["height"]), 26
+        dates = [self.today - dt.timedelta(days=i) for i in range(days - 1, -1, -1)]
+        vals = [(self._sleep_h(d.isoformat()),
+                 self._health_data().get(d.isoformat(), {}).get("workout_min"))
+                for d in dates]
+        mx = max([v[0] or 0 for v in vals] + [8])
+        bw = (W - 2 * pad) / days
+
+        def y(h):
+            return H - 16 - (H - 32) * h / mx
+
+        ref = y(7)
+        cv.create_line(pad, ref, W - pad, ref, fill="#c9c9c9", dash=(2, 2))
+        cv.create_text(W - pad, ref - 8, anchor="e", text="7h",
+                       font=("Segoe UI", 7), fill="#999999")
+        for i, (d, (sl, wk)) in enumerate(zip(dates, vals)):
+            x0 = pad + i * bw + 3
+            x1 = pad + (i + 1) * bw - 3
+            if sl:
+                cv.create_rectangle(x0, y(sl), x1, H - 16,
+                                    fill=self.TL_SLEEP if sl >= 7 else "#c98a3a",
+                                    outline="")
+            if wk:
+                cv.create_oval((x0 + x1) / 2 - 3, 4, (x0 + x1) / 2 + 3, 10,
+                               fill="#3a8a3a", outline="")
+            if d == self.today:
+                cv.create_text((x0 + x1) / 2, H - 6, text="today",
+                               font=("Segoe UI", 7), fill="#000000")
+        cv.create_line(pad, H - 16, W - pad, H - 16)
+        cv.create_text(pad, 10, anchor="w", font=("Segoe UI", 8),
+                       fill="#777777",
+                       text="sleep, last 14 nights — dark = ≥7h · amber = "
+                            "<7h · green dot = workout logged that day")
 
     def _export_life_json(self):
         """The whole life record — every day the app knows anything about,

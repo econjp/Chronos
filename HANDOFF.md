@@ -119,6 +119,28 @@ every place that asks "what does the app know about day D" calls
 - **v6.3**: **the lens primitive** — `matched_minutes` / `task_matches`
   at module top; SIGNAL + Goals converge on it. Concept model documented
   above. No new feature; this was a *consolidation* pass.
+- **v6.4**: **Themed writing** (`Ctrl+T` / View → Browse themes) — option
+  C from the 2026-07-12 proposal, picked by the user and extended: a
+  distraction-free popup writes a delimited `=== THEME: x ===` block into
+  *today's* day file (no second data store — Browse themes is a read-only
+  scan across every day file's blocks, same pattern as Search all days);
+  supports the `[Xm]` time-box syntax; covers reflection, brainstorming
+  and "someday" listing as one generic mechanism, not three modes.
+  **Insights fixed**: sleep/energy-vs-output were silently averaging in
+  days with zero tracked work (a weekend you didn't open the app dragged
+  the average toward zero) — now filtered to active days only, and the
+  wording spells out what's being compared instead of a terse arrow
+  chain. **TODO carry-over tightened**: only `-`/`*`/`[ ]` bullet lines
+  under a `TODO:` header carry — free paragraphs (even ones mentioning
+  "todo") no longer sweep in wholesale. New `SOMEDAY:` header (same
+  bullet syntax) is recognized by never being carried — no new parsing
+  needed, "someday" just doesn't contain "todo". **Life dashboard** gained
+  a sleep-bars graph (14 nights, ≥7h/<7h shading, workout dot) under the
+  week bars — the user's ask: "you catch things way faster from graphs."
+  Also: an externally-authored (mobile Claude Code) branch was merged
+  after a full re-review + regression pass and a from-scratch re-author
+  as the user with no AI trailers — see CLAUDE.md incident log, not
+  duplicated here since it's private/operational, not architecture.
 
 ## BACKLOG (priority order — continue here)
 
@@ -130,17 +152,12 @@ every place that asks "what does the app know about day D" calls
    onto `matched_minutes`. Then **link the faces**: a deadline can point
    at a goal (dropdown of goal names); SIGNAL already seeds from goals;
    review block shows goal-vs-ambition arrows. One system, three faces.
-3. **Themed / guided diary sections** (requested 2026-07-12, design before
-   build — see the options given to the user, pick before coding): the
-   diary is currently one undifferentiated scroll per day; the user wants
-   space for non-work reflection (career thinking, life-admin like a
-   house move, brainstorming) without polluting the work log or becoming
-   the "guided sessions = BS" trap already rejected once for morning/
-   evening templates. Likely shape: named sections *within* the existing
-   day file (still one file, still plain text — the sacred rule doesn't
-   bend), opened on demand via a keyword or menu item, never on a timer
-   or forced cadence. Do not build a second window/pane for this; the day
-   file stays the single surface.
+2b. **Themed writing v2** (v1 done in v6.4): progression view could diff
+   or highlight changed stance between entries on the same topic ("your
+   thinking on X shifted here"); consider a lightweight `#tag` alternative
+   for one-line mentions that don't deserve a whole popup session (the
+   user floated this as option A before picking C — still cheap to add
+   alongside, not a replacement).
 3b. **Screen-time / doomscroll source**: the 19–21 window is documented;
    import phone screen-time (csv drop like health) → new day-record key →
    insight "scroll vs next-day energy".
