@@ -60,6 +60,21 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v6.2 (direction: goals above deadlines, the loop closes weekly):
+  - GOALS (Tools > Goals — the why layer): deadlines answer WHEN, goals
+    answer WHY. Each goal = name + one-line why + task keywords +
+    optional h/week ambition. The dashboard's GOALS section shows where
+    the hours actually point — this week, 4-week average, % of tracked —
+    and calls out drift: "nothing in 14 days; still a goal?"
+  - WEEK REVIEW: Monday's day file opens with last week's honest numbers
+    (hours, active days, signal %, vs the week before, per goal) and the
+    two questions that matter — "what worked / what stole time? ->" —
+    answered in the text, where they live. The Friday AI export and the
+    Monday review now close the same loop.
+  - goals ride along in the JSON life export.
+  - HANDOFF.md at the repo root: vision, architecture, data formats and
+    backlog — any future session (or another dev platform) starts there.
+
 New in v6.1 (the whole life joins the record):
   - ENERGY line: each day header gets "ENERGY: " — type 1-5 when you know
     it, right in the text (the sacred rule: everything lives in the day
@@ -928,6 +943,7 @@ class App(tk.Tk):
         toolsm.add_separator()
         toolsm.add_command(label="Global hotkey…", command=self._set_hotkey)
         toolsm.add_command(label="Deadline countdown…", command=self._set_deadline)
+        toolsm.add_command(label="Goals — the why layer…", command=self._set_goals)
         toolsm.add_command(label="Idle detection…", command=self._set_idle)
         toolsm.add_command(label="Day rollover hour…", command=self._set_rollover)
         toolsm.add_command(label="Daily target…", command=self._set_target)
@@ -1001,6 +1017,76 @@ class App(tk.Tk):
 
         ttk.Button(win, text="Save", command=save).grid(
             row=5, column=5, sticky="e", padx=4, pady=8)
+
+    # ----- goals (the why layer above deadlines) -----
+
+    def goals(self):
+        return self.settings.get("goals") or []
+
+    def _goal_minutes(self, g, lo, hi):
+        """Tracked minutes [lo, hi] on tasks matching any of the goal's
+        comma-separated keywords."""
+        kws = [k.strip().lower() for k in g.get("match", "").split(",")
+               if k.strip()]
+        if not kws:
+            return 0
+        idx, tot = day_index(), 0
+        d = lo
+        while d <= hi:
+            rec = idx.get(d.isoformat())
+            if rec:
+                for t, m in rec["tasks"].items():
+                    if any(k in t.lower() for k in kws):
+                        tot += m
+            d += dt.timedelta(days=1)
+        return tot
+
+    def _set_goals(self):
+        """Deadlines answer 'when'; goals answer WHY the hours happen.
+        Each goal: a name, the reason, task keywords, an optional weekly
+        ambition. The dashboard then shows where the hours actually point."""
+        win = tk.Toplevel(self)
+        win.title("Goals — the why layer")
+        win.resizable(False, False)
+        win.grab_set()
+        cols = ("Goal (empty = off)", "Why (one line)",
+                "Tasks containing (comma-sep)", "h/week (opt)")
+        keys = ("name", "why", "match", "target_h")
+        for c, lbl in enumerate(cols):
+            ttk.Label(win, text=lbl).grid(row=0, column=c, padx=4, pady=(8, 2))
+        cur = self.goals()
+        grid = []
+        for i in range(5):
+            g = cur[i] if i < len(cur) else {}
+            row = []
+            for c, key in enumerate(keys):
+                e = ttk.Entry(win, width=(8 if key == "target_h" else 22))
+                v = g.get(key, "")
+                e.insert(0, str(v) if v else "")
+                e.grid(row=i + 1, column=c, padx=4, pady=2)
+                row.append(e)
+            grid.append(row)
+
+        def save():
+            out = []
+            for row in grid:
+                vals = {k: row[c].get().strip() for c, k in enumerate(keys)}
+                if not vals["name"]:
+                    continue
+                try:
+                    vals["target_h"] = float(vals["target_h"] or 0)
+                except ValueError:
+                    messagebox.showerror(
+                        APP_NAME, f"h/week must be a number on "
+                                  f"'{vals['name']}'.", parent=win)
+                    return
+                out.append(vals)
+            self.settings["goals"] = out
+            save_settings(self.settings)
+            win.destroy()
+
+        ttk.Button(win, text="Save", command=save).grid(
+            row=6, column=3, sticky="e", padx=4, pady=8)
 
     def _dl_progress(self, dl, rows=None):
         """Progress numbers for one deadline: matched hours done since its
@@ -1973,6 +2059,8 @@ class App(tk.Tk):
         plan = self._plan_line()
         if plan:
             parts.append(plan)
+        if self.today.weekday() == 0:
+            parts += self._week_review_block()
         parts.append(f"SIGNAL: {self._carry_signal()}")
         parts.append("ENERGY: ")   # type 1-5 when you know it — feeds the record
         todos = self._carry_todos(yday)
@@ -2003,6 +2091,47 @@ class App(tk.Tk):
         line += (" ✓" if avail >= need else
                  " ⚠ tight — start early, cut the admin")
         return line
+
+    def _week_review_block(self):
+        """Monday's file opens with last week's honest numbers and the two
+        questions that close the loop — answered in the text, where they
+        live. The review ritual, without opening a single window."""
+        mon = self.today - dt.timedelta(days=7)
+        sun = mon + dt.timedelta(days=6)
+        idx = day_index()
+        tot = brk = active = 0
+        d = mon
+        while d <= sun:
+            rec = idx.get(d.isoformat())
+            if rec:
+                tot += rec["work"]
+                brk += rec["brk"]
+                if rec["work"] >= 30:
+                    active += 1
+            d += dt.timedelta(days=1)
+        if not tot:
+            return []
+        rows = read_rows()
+        sig = 0
+        d = mon
+        while d <= sun:
+            sig += self._day_signal(d, None, rows)[0]
+            d += dt.timedelta(days=1)
+        # the week before, for the direction arrow
+        prev = sum((idx.get((mon - dt.timedelta(days=7 - i)).isoformat())
+                    or {"work": 0})["work"] for i in range(7))
+        head = (f"WEEK REVIEW W{mon.isocalendar().week}: {tot / 60:.1f}h "
+                f"over {active} active day(s)")
+        if sig:
+            head += f", signal {round(100 * sig / tot)}%"
+        if prev:
+            head += f" ({(tot - prev) / 60:+.1f}h vs week before)"
+        parts = ["", head]
+        for g in self.goals():
+            m = self._goal_minutes(g, mon, sun)
+            parts.append(f"  {g['name']}: {m / 60:.1f}h")
+        parts.append("  what worked / what stole time? ->")
+        return parts
 
     @staticmethod
     def _verdict(work_min, sig_min, sig_work):
@@ -3025,6 +3154,33 @@ class App(tk.Tk):
             lines.append("  top: " + " · ".join(
                 f"{k} {m / 60:.1f}h" for k, m in top))
 
+        gs = self.goals()
+        if gs:
+            lines += ["", "GOALS — where the hours actually point"]
+            monday = week[0]["date"]
+            for g in gs:
+                m_wk = self._goal_minutes(g, monday, self.today)
+                m4 = self._goal_minutes(
+                    g, self.today - dt.timedelta(days=27), self.today)
+                m14 = self._goal_minutes(
+                    g, self.today - dt.timedelta(days=13), self.today)
+                tgt = float(g.get("target_h") or 0)
+                expected = tgt * (self.today.weekday() + 1) / 7
+                mark = "⚠" if (m14 == 0 or
+                               (tgt and m_wk / 60 < 0.75 * expected)) else "·"
+                seg = f"  {mark} {g['name']}"
+                if g.get("why"):
+                    seg += f" ({g['why']})"
+                seg += (f": {m_wk / 60:.1f}h this wk"
+                        f" · 4-wk avg {m4 / 4 / 60:.1f}h/wk")
+                if tgt:
+                    seg += f" · ambition {tgt:g}h/wk"
+                if wk:
+                    seg += f" · {round(100 * m_wk / wk)}% of tracked"
+                if m14 == 0:
+                    seg += " — nothing in 14 days; still a goal?"
+                lines.append(seg)
+
         # the whole life, not just the tracked slice: account the waking week
         n = self.today.weekday() + 1
         sofar = week[:n]
@@ -3276,7 +3432,8 @@ class App(tk.Tk):
                 pass
             days[iso] = rec
         out = {"exported": dt.datetime.now().isoformat(timespec="seconds"),
-               "app": "TimerDiary v6.1",
+               "app": "TimerDiary v6.2",
+               "goals": self.goals(),
                "deadlines": self.deadlines(),
                "capacity_per_weekday": self._capacity(),
                "days": days}

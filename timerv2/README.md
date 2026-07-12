@@ -22,6 +22,23 @@ source with one new key, **Life balance** widened the lens from the
 tracked slice to the whole waking week, and **Export life record** made
 the record portable — plain JSON that any future tool can start from.
 
+### Goals — the why layer (v6.2)
+
+Tools → Goals: up to five, each a **name + one-line why + task keywords +
+optional h/week ambition**. Deadlines answer *when*; goals answer *why the
+hours happen at all*. The dashboard's GOALS section then shows where the
+hours actually point — `· Thesis (graduate): 12.3h this wk · 4-wk avg
+9.8h/wk · 64% of tracked` — and calls out drift honestly: `⚠ Finnish
+(live here properly): 0.0h this wk — nothing in 14 days; still a goal?`
+
+### Week review (v6.2)
+
+Monday's day file opens with last week already reviewed: `WEEK REVIEW
+W28: 23.4h over 5 active day(s), signal 61% (+3.1h vs week before)`, one
+line per goal, and the two questions that close the loop — `what worked /
+what stole time? ->` — answered right in the text. Friday's AI export
+asks the questions; Monday's file makes you answer them.
+
 ### Energy line (v6.1)
 
 Each new day header carries an `ENERGY: ` line — type **1–5** when you
