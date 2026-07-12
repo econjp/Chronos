@@ -3734,7 +3734,13 @@ class App(tk.Tk):
         win.geometry("740x780")
         win.minsize(680, 500)
 
-        top_tab = ttk.Frame(win)
+        # a Notebook pane must be an actual child of the notebook widget —
+        # creating these as children of `win` instead left the tabs
+        # switchable but visually empty, since nothing was really attached
+        nb = ttk.Notebook(win)
+        nb.pack(fill="both", expand=True, padx=8, pady=(8, 4))
+
+        top_tab = ttk.Frame(nb)
         cv = tk.Canvas(top_tab, width=660, height=150, background="white",
                        highlightthickness=0)
         cv.pack(padx=4, pady=(4, 2))
@@ -3743,14 +3749,12 @@ class App(tk.Tk):
         sleep_cv.pack(padx=4, pady=(0, 2))
         txt_today = self._scrolled_text(top_tab)
 
-        goals_tab = ttk.Frame(win)
+        goals_tab = ttk.Frame(nb)
         txt_goals = self._scrolled_text(goals_tab)
 
-        insights_tab = ttk.Frame(win)
+        insights_tab = ttk.Frame(nb)
         txt_insights = self._scrolled_text(insights_tab)
 
-        nb = ttk.Notebook(win)
-        nb.pack(fill="both", expand=True, padx=8, pady=(8, 4))
         nb.add(top_tab, text="Today & Week")
         nb.add(goals_tab, text="Deadlines & Goals")
         nb.add(insights_tab, text="Insights")
