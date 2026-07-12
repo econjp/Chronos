@@ -17,6 +17,37 @@ record, not another parser and another window. The **Life dashboard** is
 the single pane over the record, the **Data doctor** keeps the substrate
 trustworthy, and the weekly **AI review** is the analyst on top.
 
+v6.1 delivered the first proofs of that claim: **ENERGY** became a new
+source with one new key, **Life balance** widened the lens from the
+tracked slice to the whole waking week, and **Export life record** made
+the record portable — plain JSON that any future tool can start from.
+
+### Energy line (v6.1)
+
+Each new day header carries an `ENERGY: ` line — type **1–5** when you
+know it, right in the text, like SIGNAL. It flows into the day record,
+shows on the dashboard, and once enough days exist the insights cross it
+with everything else: *"energy ≥4 days → 5.1h of work · ≤2 days → 2.9h"*,
+*"energy after ≥7h sleep: 3.9/5 · after <7h: 2.8/5 — your own body,
+measured."* Leave it empty on days you don't care.
+
+### Life balance (v6.1, in the dashboard)
+
+The dashboard now accounts the **waking week**, not just the tracked
+slice: `tracked work 18.4h (16%) · breaks 3.1h · meetings 4.5h · workout
+2.3h`, the by-project split, and the honest remainder — `unaccounted
+~83h — meals, commute, people, scroll. The diary knows; the timer
+doesn't.` Sleep comes from the health import (8h assumed where unknown,
+and it says so).
+
+### Export life record (v6.1)
+
+File → *Export life record (JSON)…* — every day the app knows anything
+about, one JSON file: work/break/task minutes, signal, energy, sleep,
+workout, steps, meeting hours, capacity, plus the full diary text, along
+with your deadlines and week plan. Back it up, feed it to an AI, or build
+the next tool on top of it. The data is yours and outlives the app.
+
 ### Life dashboard (v6.0) — `Ctrl+D`
 
 One window instead of nine: **today** (hours so far incl. the running

@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v6.1 (the whole life joins the record):
+  - ENERGY line: each day header gets "ENERGY: " — type 1-5 when you know
+    it, right in the text (the sacred rule: everything lives in the day
+    txt). It becomes one more key on the day record — exactly the way
+    v6.0 said new sources would — and the insights cross it with the
+    rest: energy >=4 vs <=2 days' output, energy after >=7h vs <7h sleep.
+  - LIFE BALANCE (in the dashboard): the week's WAKING hours accounted —
+    tracked work, breaks, meetings, workouts, by-project split, and the
+    honest remainder: "unaccounted ~34h — meals, commute, people, scroll.
+    The diary knows; the timer doesn't." A life platform that only sees
+    the tracked slice isn't one.
+  - EXPORT LIFE RECORD (File menu): every day the app knows anything
+    about — timer, signal, energy, sleep, workout, steps, meetings,
+    capacity, full diary text — as one plain JSON file. The data outlives
+    the app; any future tool starts from this file.
+  - weekly/monthly summary and the AI export now read through the v6.0
+    day index (one parse, not one scan per view); calendar busy-time now
+    also covers the past two weeks so the balance sees real meetings.
+
 New in v6.0 (the consolidation — one record, one dashboard, clean data):
   - THE DAY RECORD: one internal unit (_life_day) that merges everything
     known about a date — timer minutes, signal share, sleep (override >
@@ -809,6 +828,27 @@ class App(tk.Tk):
                     sig += m
         return sig, work
 
+    # ----- energy meter (1-5 in the day header, like SIGNAL) -----
+
+    @staticmethod
+    def _energy_from_text(text):
+        """First 1-5 digit on the first 'ENERGY:' line, else None."""
+        for line in text.splitlines():
+            s = line.strip()
+            if s.lower().startswith("energy:"):
+                m = re.search(r"[1-5]", s[7:12])
+                return int(m.group()) if m else None
+        return None
+
+    def _day_energy(self, day=None):
+        if day is None or day == self.today:
+            return self._energy_from_text(self.diary.get("1.0", "end-1c"))
+        try:
+            with open(self.diary_path(day), encoding="utf-8") as f:
+                return self._energy_from_text(f.read())
+        except OSError:
+            return None
+
     # ----- day / paths -----
 
     def rollover_hour(self):
@@ -835,6 +875,8 @@ class App(tk.Tk):
         filem.add_command(label="Add past session…", command=self._add_past_session)
         filem.add_command(label="Open a day file…", command=self._open_day_file)
         filem.add_command(label="Export week to calendar (.ics)", command=self._export_ics)
+        filem.add_command(label="Export life record (JSON)…",
+                          command=self._export_life_json)
         filem.add_separator()
         filem.add_command(label="Open data folder", command=self._open_folder)
         filem.add_command(label="Change diary folder…", command=self._change_diary_dir)
@@ -1932,6 +1974,7 @@ class App(tk.Tk):
         if plan:
             parts.append(plan)
         parts.append(f"SIGNAL: {self._carry_signal()}")
+        parts.append("ENERGY: ")   # type 1-5 when you know it — feeds the record
         todos = self._carry_todos(yday)
         if todos:
             parts += ["", "TODO (carried from yesterday):"] + todos
@@ -2156,20 +2199,16 @@ class App(tk.Tk):
 
         work = brk = 0
         tasks = {}
-        for r in read_rows():
-            try:
-                d = dt.date.fromisoformat(r[0])
-                m = int(r[4])
-            except ValueError:
-                continue
-            if not (first <= d <= last):
-                continue
-            if r[1] == "break":
-                brk += m
-            else:
-                work += m
-                key = r[5] or "(no task)"
-                tasks[key] = tasks.get(key, 0) + m
+        idx = day_index()
+        d = first
+        while d <= last:
+            rec = idx.get(d.isoformat())
+            if rec:
+                work += rec["work"]
+                brk += rec["brk"]
+                for t, m in rec["tasks"].items():
+                    tasks[t] = tasks.get(t, 0) + m
+            d += dt.timedelta(days=1)
 
         parts = [f"TimerDiary export {first} … {last}",
                  f"Total: {work / 60:.2f} h work, {brk / 60:.2f} h breaks"]
@@ -2217,8 +2256,8 @@ class App(tk.Tk):
         txt = tk.Text(win, wrap="none", font=("Consolas", 10))
         txt.pack(fill="both", expand=True, padx=8, pady=8)
 
-        lines = [" day        sleep  workout   steps   work   signal",
-                 " " + "-" * 50]
+        lines = [" day        sleep  workout   steps   work   signal   en",
+                 " " + "-" * 55]
         good, short = [], []      # (work_min, sig_pct) split at 7 h sleep
         for i in range(13, -1, -1):
             d = self.today - dt.timedelta(days=i)
@@ -2226,6 +2265,7 @@ class App(tk.Tk):
             w, _b = day_totals(d.isoformat())
             sig, tot = self._day_signal(d)
             sl = rec.get("sleep_h")
+            en = self._day_energy(d)
             pct = round(100 * sig / tot) if tot else None
             lines.append(
                 f" {d:%a %d.%m}  "
@@ -2233,7 +2273,8 @@ class App(tk.Tk):
                 + (f"  {round(rec['workout_min']):>4}m" if rec.get("workout_min") else "     -")
                 + (f"  {rec['steps']:>6}" if rec.get("steps") else "       -")
                 + (f"  {w / 60:>5.2f}h" if w else "      -")
-                + (f"  {pct:>4}%" if pct is not None else "      -"))
+                + (f"  {pct:>4}%" if pct is not None else "      -")
+                + (f"  {en}/5" if en else "    -"))
             if sl and w:
                 (good if sl >= 7 else short).append((w, pct))
         if len(good) >= 2 and len(short) >= 2:
@@ -2314,29 +2355,18 @@ class App(tk.Tk):
             last = nxt - dt.timedelta(days=1)
             title = f"{first:%B %Y}"
 
-        days, breaks, tasks, sig = {}, {}, {}, {}
-        kws_by_day = {}
+        days, breaks, tasks, sig, kws_by_day = {}, {}, {}, {}, {}
+        idx, rows = day_index(), read_rows()
         d = first
         while d <= last:
-            days[d] = breaks[d] = sig[d] = 0
+            rec = idx.get(d.isoformat()) or {"work": 0, "brk": 0, "tasks": {}}
+            days[d], breaks[d] = rec["work"], rec["brk"]
             kws_by_day[d] = self._signal_kws(d)
+            sig[d] = (self._day_signal(d, kws_by_day[d], rows)[0]
+                      if kws_by_day[d] else 0)
+            for t, m in rec["tasks"].items():
+                tasks[t] = tasks.get(t, 0) + m
             d += dt.timedelta(days=1)
-        for r in read_rows():
-            try:
-                d = dt.date.fromisoformat(r[0])
-                m = int(r[4])
-            except ValueError:
-                continue
-            if d not in days:
-                continue
-            if r[1] == "break":
-                breaks[d] += m
-            else:
-                days[d] += m
-                key = r[5] or "(no task)"
-                tasks[key] = tasks.get(key, 0) + m
-                if kws_by_day[d] and self._is_signal(r[5], kws_by_day[d]):
-                    sig[d] += m
 
         win = tk.Toplevel(self)
         win.title(title)
@@ -2417,7 +2447,8 @@ class App(tk.Tk):
         cache = getattr(self, "_busy_cache", None)
         if cache and cache[0] == key:
             return cache[1]
-        data = parse_ics_busy(path, dt.date.today(),
+        # two weeks back so the balance/summary views see past meetings too
+        data = parse_ics_busy(path, dt.date.today() - dt.timedelta(days=14),
                               dt.date.today() + dt.timedelta(days=90))
         self._busy_cache = (key, data)
         return data
@@ -2879,6 +2910,7 @@ class App(tk.Tk):
         rec = {"date": d, "work": base["work"], "brk": base["brk"],
                "tasks": dict(base["tasks"]),
                "signal": self._day_signal(d)[0] if signal else None,
+               "energy": self._day_energy(d),
                "sleep_h": self._sleep_h(iso),
                "workout_min": self._health_data().get(iso, {}).get("workout_min"),
                "steps": self._health_data().get(iso, {}).get("steps"),
@@ -2949,6 +2981,8 @@ class App(tk.Tk):
         if plan:
             lines.append("  " + plan)
         hl = []
+        if t["energy"]:
+            hl.append(f"energy {t['energy']}/5")
         if t["sleep_h"]:
             hl.append(f"slept {fmt_sleep(t['sleep_h'])}")
             past = [self._sleep_h((self.today - dt.timedelta(days=i)).isoformat())
@@ -2990,6 +3024,39 @@ class App(tk.Tk):
             top = sorted(tasks.items(), key=lambda x: -x[1])[:6]
             lines.append("  top: " + " · ".join(
                 f"{k} {m / 60:.1f}h" for k, m in top))
+
+        # the whole life, not just the tracked slice: account the waking week
+        n = self.today.weekday() + 1
+        sofar = week[:n]
+        waking, assumed = 0.0, False
+        for r in sofar:
+            if r["sleep_h"]:
+                waking += 24 - r["sleep_h"]
+            else:
+                waking += 16
+                assumed = True
+        work_h, brk_h = wk / 60, brk / 60
+        meet_h = sum(r["busy_h"] for r in sofar)
+        wo_h = sum(r["workout_min"] or 0 for r in sofar) / 60
+        lines += ["", f"LIFE BALANCE — {n} day(s), ~{waking:.0f} waking hours"
+                      + (" (8h sleep assumed where unknown)" if assumed else "")]
+        lines.append(f"  tracked work {work_h:.1f}h "
+                     f"({round(100 * work_h / waking) if waking else 0}%)"
+                     f" · breaks {brk_h:.1f}h · meetings {meet_h:.1f}h"
+                     f" · workout {wo_h:.1f}h")
+        cats = {}
+        for r in sofar:
+            for k, m in r["tasks"].items():
+                c = k.split(":")[0].strip() if ":" in k else "(uncategorised)"
+                cats[c] = cats.get(c, 0) + m
+        if cats:
+            lines.append("  by project: " + " · ".join(
+                f"{c} {m / 60:.1f}h" for c, m in
+                sorted(cats.items(), key=lambda x: -x[1])[:4]))
+        other = waking - work_h - brk_h - meet_h - wo_h
+        if other > 0:
+            lines.append(f"  unaccounted ~{other:.0f}h — meals, commute, "
+                         "people, scroll. The diary knows; the timer doesn't.")
 
         dls = self.deadlines()
         if dls:
@@ -3039,6 +3106,31 @@ class App(tk.Tk):
             out.append(f"sleep ≥7h → {g:.1f}h/day ({len(good)}d) · <7h → "
                        f"{s:.1f}h/day ({len(short)}d): sleep is worth "
                        f"{g - s:+.1f}h of daily output")
+        # energy x everything — the 1-5 you type into the header
+        ehi, elo, en_sl = [], [], []
+        for i in range(1, days + 1):
+            d = self.today - dt.timedelta(days=i)
+            e = self._day_energy(d)
+            if not e:
+                continue
+            w = (idx.get(d.isoformat()) or {"work": 0})["work"]
+            if e >= 4:
+                ehi.append(w)
+            elif e <= 2:
+                elo.append(w)
+            sl = self._sleep_h(d.isoformat())
+            if sl:
+                en_sl.append((sl, e))
+        if len(ehi) >= 3 and len(elo) >= 3:
+            out.append(f"energy ≥4 days → {sum(ehi) / len(ehi) / 60:.1f}h of "
+                       f"work · energy ≤2 days → {sum(elo) / len(elo) / 60:.1f}h"
+                       " — protect what charges you, it IS the productivity")
+        g_e = [e for sl, e in en_sl if sl >= 7]
+        s_e = [e for sl, e in en_sl if sl < 7]
+        if len(g_e) >= 3 and len(s_e) >= 3:
+            out.append(f"energy after ≥7h sleep: {sum(g_e) / len(g_e):.1f}/5 · "
+                       f"after <7h: {sum(s_e) / len(s_e):.1f}/5 — your own "
+                       "body, measured")
         # deep hours — when the work actually happens
         by_hour, tot = [0] * 24, 0
         cutoff = (self.today - dt.timedelta(days=days)).isoformat()
@@ -3150,6 +3242,49 @@ class App(tk.Tk):
                        fill="#777777",
                        text="blue = work · green = signal share · grey = "
                             "last week · red dash = planned capacity")
+
+    def _export_life_json(self):
+        """The whole life record — every day the app knows anything about,
+        as plain JSON. The data outlives the app: any future tool (or the
+        next version of this platform) starts from this file."""
+        path = filedialog.asksaveasfilename(
+            parent=self, defaultextension=".json",
+            initialfile=f"life_{dt.date.today()}.json",
+            filetypes=[("JSON", "*.json")],
+            title="Export the full life record")
+        if not path:
+            return
+        self._save_diary()
+        isos = set(day_index()) | set(self._health_data())
+        try:
+            isos |= {fn[:-4] for fn in os.listdir(self.diary_dir())
+                     if fn.endswith(".txt")}
+        except OSError:
+            pass
+        days = {}
+        for iso in sorted(isos):
+            try:
+                d = dt.date.fromisoformat(iso)
+            except ValueError:
+                continue
+            rec = self._life_day(d)
+            del rec["date"]
+            try:
+                with open(self.diary_path(d), encoding="utf-8") as f:
+                    rec["diary"] = f.read()
+            except OSError:
+                pass
+            days[iso] = rec
+        out = {"exported": dt.datetime.now().isoformat(timespec="seconds"),
+               "app": "TimerDiary v6.1",
+               "deadlines": self.deadlines(),
+               "capacity_per_weekday": self._capacity(),
+               "days": days}
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, indent=1)
+        self.status.config(text=f"Life record exported — {len(days)} day(s) "
+                                f"→ {os.path.basename(path)}. Plain JSON, "
+                                "yours forever.")
 
     # ----- data doctor (keep the substrate clean) -----
 
