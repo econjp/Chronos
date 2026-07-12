@@ -60,6 +60,14 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v7.2 (goal-aware signal flag):
+  - the "not today's signal" status flag now checks whether the active
+    task matches a GOAL even though it's off-signal — "not today's
+    signal, but counts toward: Physical Engine Maintenance" instead of
+    a bare warning. Off-signal-but-goal-aligned (a run, when today's
+    signal is thesis) and genuinely unattributed (matches nothing) are
+    different situations; the status bar now says which one it is.
+
 New in v7.1 (fix + first recommendation-engine piece):
   - fix: Life dashboard tabs were empty (real bug — the tab-content
     frames were created as children of the window instead of the
@@ -1586,7 +1594,12 @@ class App(tk.Tk):
                     note += f" · pace {v[0] / 60:.2f}h/active-day ({v[1]}d of last 14)"
                 kws = self._signal_kws()
                 if kws and not self._is_signal(self.active_task, kws):
-                    note += " · ⚠ not today's signal"
+                    g = next((g["name"] for g in self.goals()
+                             if task_matches(self.active_task,
+                                             self._match_kws(g.get("match")))),
+                             None)
+                    note += (f" · not today's signal, but counts toward: {g}"
+                             if g else " · ⚠ not today's signal (no goal either)")
             self.status.config(text=f"Working — {self.active_task or '(no task)'}{note}")
         elif self.settings.get("float_break", True):
             self.status.config(text="On break — the floating clock counts it; "
