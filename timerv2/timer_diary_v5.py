@@ -2434,7 +2434,8 @@ class App(tk.Tk):
                     grab = kind
         return out
 
-    def _add_task(self, name, est_h=0, priority="normal", goal=None, source=None):
+    def _add_task(self, name, est_h=0, priority="normal", goal=None,
+                 deadline=None, source=None):
         """Add to the library, deduped by normalized name — the same
         bullet carried unchanged for a few days doesn't create
         duplicates every time it's re-scanned. Returns True if a new
@@ -2447,7 +2448,7 @@ class App(tk.Tk):
         if any(" ".join(t["name"].lower().split()) == key for t in tasks):
             return False
         tasks.append({"name": name, "est_h": est_h, "priority": priority,
-                      "goal": goal, "source": source,
+                      "goal": goal, "deadline": deadline, "source": source,
                       "added": self.today.isoformat()})
         save_settings(self.settings)
         return True
@@ -3262,11 +3263,11 @@ class App(tk.Tk):
         win = tk.Toplevel(self)
         win.title("Tasks / Library")
         win.geometry("780x420")
-        cols = ("pri", "task", "est", "actual", "goal", "source")
+        cols = ("pri", "task", "est", "actual", "goal", "deadline", "source")
         heads = {"pri": "!", "task": "task", "est": "est", "actual": "actual",
-                 "goal": "goal", "source": "from"}
-        widths = {"pri": 26, "task": 260, "est": 55, "actual": 70,
-                  "goal": 110, "source": 160}
+                 "goal": "goal", "deadline": "deadline", "source": "from"}
+        widths = {"pri": 26, "task": 220, "est": 50, "actual": 65,
+                  "goal": 100, "deadline": 90, "source": 140}
         tree = ttk.Treeview(win, columns=cols, show="headings")
         for c in cols:
             tree.heading(c, text=heads[c])
@@ -3296,7 +3297,8 @@ class App(tk.Tk):
                     self._PRI_ICON.get(pri, "○"), t["name"],
                     f"{est:g}h" if est else "—",
                     f"{task_actual_h(t['name'], t['added']):.2f}h",
-                    t.get("goal") or "—", t.get("source") or "—"))
+                    t.get("goal") or "—", t.get("deadline") or "—",
+                    t.get("source") or "—"))
             # rebuilding the tree drops selection unless we restore it — a
             # priority click on row 2 must not silently un-pick row 2
             keep = [iid for iid in sel if tree.exists(iid)]
@@ -3332,9 +3334,14 @@ class App(tk.Tk):
                         side="left", padx=(4, 0))
         goal_var = tk.StringVar()
         goal_box = ttk.Combobox(bar, textvariable=goal_var, state="readonly",
-                                width=14,
+                                width=13,
                                 values=[""] + [g["name"] for g in self.goals()])
         goal_box.pack(side="left", padx=(4, 0))
+        dl_var = tk.StringVar()
+        dl_box = ttk.Combobox(bar, textvariable=dl_var, state="readonly",
+                              width=11,
+                              values=[""] + [d["name"] for d in self.deadlines()])
+        dl_box.pack(side="left", padx=(4, 0))
 
         def add(event=None):
             raw = entry.get().strip()
@@ -3354,7 +3361,8 @@ class App(tk.Tk):
             elif box:
                 est_h = box / 3600
             self._add_task(name, est_h=est_h, priority=pri_var.get(),
-                           goal=goal_var.get() or None, source="added manually")
+                           goal=goal_var.get() or None,
+                           deadline=dl_var.get() or None, source="added manually")
             entry.delete(0, "end")
             est_entry.delete(0, "end")
             refresh()
@@ -3388,11 +3396,47 @@ class App(tk.Tk):
             save_settings(self.settings)
             refresh()
 
+        def set_link(field, names):
+            i = picked()
+            if i is None:
+                return
+            pop = tk.Toplevel(win)
+            pop.title(f"Set {field}")
+            pop.resizable(False, False)
+            pop.grab_set()
+            var = tk.StringVar(value=self.settings["tasks"][i].get(field) or "")
+            ttk.Combobox(pop, textvariable=var, state="readonly",
+                        values=[""] + names, width=30).grid(
+                            row=0, column=0, padx=8, pady=8)
+
+            def ok():
+                self.settings["tasks"][i][field] = var.get() or None
+                save_settings(self.settings)
+                pop.destroy()
+                refresh(keep_selection=[str(i)])
+
+            ttk.Button(pop, text="OK", command=ok).grid(row=1, column=0, pady=(0, 8))
+
+        menu = tk.Menu(tree, tearoff=0)
+        menu.add_command(label="Set goal…", command=lambda: set_link(
+            "goal", [g["name"] for g in self.goals()]))
+        menu.add_command(label="Set deadline…", command=lambda: set_link(
+            "deadline", [d["name"] for d in self.deadlines()]))
+
+        def right_click(event):
+            row = tree.identify_row(event.y)
+            if row:
+                tree.selection_set(row)
+                menu.tk_popup(event.x_root, event.y_root)
+
+        tree.bind("<Button-3>", right_click)
+
         entry.bind("<Return>", add)
         for label, cmd in (("Add", add), ("Start ▶", start),
                            ("Done ✓", done), ("Delete", delete)):
             ttk.Button(bar, text=label, command=cmd).pack(side="left", padx=(4, 0))
-        hint = ("Click ! to cycle priority (● signal / ○ normal / ‥ someday). "
+        hint = ("Click ! to cycle priority (● signal / ○ normal / ‥ someday), "
+               "right-click a row to set/change its goal or deadline. "
                "TODO:/SOMEDAY: bullets anywhere (diary, themed writing) land "
                "here on their own.")
         ef = self._estimate_factor()
