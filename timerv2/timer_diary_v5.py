@@ -60,6 +60,23 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v6.8 (fix the actual todo-capture bug):
+  - real bug: EVERY bullet the user actually typed used no space after
+    the dash ("-THESIS", not "- THESIS") and the parser required one —
+    nothing was ever being captured. Fixed (space now optional), with a
+    guard so "---" decorator lines don't get mistaken for bullets.
+  - same-line "TODO: buy milk" now works too, not just a header line
+    followed by separate bullets.
+  - capture now runs on the live 10s autosave (today's diary), not only
+    at day-rollover or themed-writing save — same-day items land within
+    seconds, with a status-bar "+N to task library" confirmation.
+  - one-time-per-launch backfill sweeps the last 14 days for items the
+    old parser missed — existing writing didn't need retyping.
+  - Tasks window bug: the priority column is the leftmost one, so a
+    click meant to select a row for Done/Start was cycling its priority
+    AND wiping the whole list's selection (refresh() rebuilds the tree).
+    Selection now survives.
+
 New in v6.7 (link the faces):
   - Deadlines can now point at a Goal (dropdown in Tools > Deadline
     countdowns). The linked goal's one-line "why" shows next to the
@@ -827,6 +844,7 @@ class App(tk.Tk):
         self._refresh_totals()
         self._first_run_autostart()
         self._recover_if_needed()
+        self._backfill_task_library()
         self.hotq = queue.Queue()
         self.hot_tid = None
         self._start_hotkey()
@@ -2281,17 +2299,38 @@ class App(tk.Tk):
             return f"verdict: light day ({h:.1f}h tracked) — what stole it?"
         return None
 
-    _BULLET_RE = re.compile(r"^[-*]\s+\S|^\[[ xX]\]\s+\S")
+    # bullets: dash/star/checkbox, SPACE OPTIONAL ("-x" and "- x" both count —
+    # real usage showed people don't reliably type the space). The
+    # negative lookahead excludes "--"/"---" so the app's own
+    # "--- Session start"/"--- Task:" decorator lines are never
+    # mistaken for a bullet.
+    _BULLET_RE = re.compile(r"^-(?!-)\s*\S|^\*(?!\*)\s*\S|^\[[ xX]\]\s*\S")
+    # header: 'TODO'/'SOMEDAY', optional colon, optional same-line item text
+    # ("TODO:" alone -> bullets follow on later lines; "TODO: buy milk" ->
+    # the item is right there, no separate bullet line needed)
+    _HEADER_RE = re.compile(r"^(todo|someday)\b\s*:?\s*(.*)$", re.I)
+
+    def _match_header(self, s):
+        """(kind, same_line_item_or_None) if `s` is a TODO:/SOMEDAY:
+        header, else None. Excludes the carried-header line itself so it
+        never re-triggers grab mode on its own text."""
+        if s.lower().startswith("todo (carried"):
+            return None
+        m = self._HEADER_RE.match(s)
+        if not m:
+            return None
+        kind = "normal" if m.group(1).lower() == "todo" else "someday"
+        rest = m.group(2).strip()
+        return (kind, rest or None)
 
     def _carry_todos(self, yday):
-        """Bullet lines ('- x', '* x', '[ ] x') directly under a 'TODO:'
-        header from yesterday's file — carried forward until done or
-        deleted. Free paragraphs are never swept in, even ones that
-        mention 'todo' in passing — only marked bullets are, so a day of
-        brainstorming prose doesn't become tomorrow's todo wall. Write
-        low-priority someday/maybe items under a 'SOMEDAY:' header
-        instead — same bullet syntax, never carried, just browsable
-        (Search all days / Browse themes)."""
+        """Bullet lines ('-x', '* x', '[ ] x') under a 'TODO:' header, or
+        a same-line 'TODO: item', from yesterday's file — carried forward
+        until done or deleted. Free paragraphs are never swept in, even
+        ones that mention 'todo' in passing — only marked items are, so a
+        day of brainstorming prose doesn't become tomorrow's todo wall.
+        Write low-priority someday/maybe items under 'SOMEDAY:' instead —
+        same syntax, never carried, just browsable."""
         try:
             with open(self.diary_path(yday), encoding="utf-8") as f:
                 lines = f.read().splitlines()
@@ -2300,29 +2339,31 @@ class App(tk.Tk):
         out, grab = [], False
         for ln in lines:
             s = ln.strip()
-            low = s.lower()
             if grab:
-                if self._BULLET_RE.match(s):
+                m = self._BULLET_RE.match(s)
+                if m:
                     out.append(ln)
                     continue
                 if s == "":
                     continue
                 grab = False
-            if low in ("todo:", "todo") and not low.startswith("todo (carried"):
-                grab = True
+            h = self._match_header(s)
+            if h and h[0] == "normal":
+                if h[1]:
+                    out.append(f"- {h[1]}")   # same-line item, shown as a bullet
+                else:
+                    grab = True
         return out[:12]
 
     # ----- task library (the one place messy ideas/todos live) -----
 
     def _extract_bullets(self, text):
-        """[(kind, item_text), ...] for every bullet under a 'TODO:' or
-        'SOMEDAY:' header anywhere in `text`. kind is 'normal' or
-        'someday' — the same bullet syntax, just a different header, so
-        no new parsing rule to learn."""
+        """[(kind, item_text), ...] for every TODO:/SOMEDAY: item in
+        `text` — either a bullet line under a header, or the text right
+        after 'TODO:' on the same line. kind is 'normal' or 'someday'."""
         out, grab = [], None
         for ln in text.splitlines():
             s = ln.strip()
-            low = s.lower()
             if grab:
                 m = self._BULLET_RE.match(s)
                 if m:
@@ -2331,36 +2372,63 @@ class App(tk.Tk):
                 if s == "":
                     continue
                 grab = None
-            if low in ("todo:", "todo") and not low.startswith("todo (carried"):
-                grab = "normal"
-            elif low in ("someday:", "someday"):
-                grab = "someday"
+            h = self._match_header(s)
+            if h:
+                kind, same_line = h
+                if same_line:
+                    out.append((kind, same_line))
+                else:
+                    grab = kind
         return out
 
     def _add_task(self, name, est_h=0, priority="normal", goal=None, source=None):
         """Add to the library, deduped by normalized name — the same
         bullet carried unchanged for a few days doesn't create
-        duplicates every time it's re-scanned."""
+        duplicates every time it's re-scanned. Returns True if a new
+        item was actually added."""
         name = name.strip()
         if not name:
-            return
+            return False
         key = " ".join(name.lower().split())
         tasks = self.settings.setdefault("tasks", [])
         if any(" ".join(t["name"].lower().split()) == key for t in tasks):
-            return
+            return False
         tasks.append({"name": name, "est_h": est_h, "priority": priority,
                       "goal": goal, "source": source,
                       "added": self.today.isoformat()})
         save_settings(self.settings)
+        return True
 
     def _auto_capture_bullets(self, text, source):
-        """Every TODO:/SOMEDAY: bullet in `text` lands in the task
-        library automatically — write one anywhere (main diary, a
-        themed-writing session) and it's tracked, not just carried
-        forward as raw text until you happen to reread it."""
+        """Every TODO:/SOMEDAY: item in `text` lands in the task library
+        automatically — write one anywhere (main diary, a themed-writing
+        session) and it's tracked, not just carried forward as raw text
+        until you happen to reread it. Returns how many were new."""
+        added = 0
         for kind, item in self._extract_bullets(text):
-            self._add_task(item, priority=("someday" if kind == "someday"
-                                           else "normal"), source=source)
+            if self._add_task(item, priority=("someday" if kind == "someday"
+                                               else "normal"), source=source):
+                added += 1
+        return added
+
+    def _backfill_task_library(self):
+        """Runs every launch (cheap, deduped): sweeps the last 14 days'
+        files for TODO:/SOMEDAY: items the parser missed before it
+        recognized no-space bullets and same-line 'TODO: text' — old
+        writing shouldn't need retyping just because the recognizer
+        got better."""
+        total = 0
+        for i in range(14):
+            d = self.today - dt.timedelta(days=i)
+            try:
+                with open(self.diary_path(d), encoding="utf-8") as f:
+                    total += self._auto_capture_bullets(f.read(), f"{d} diary")
+            except OSError:
+                continue
+        if total:
+            self.status.config(
+                text=f"Backfilled {total} item(s) into the task library "
+                    "from the last 14 days.")
 
     def _carry_signal(self):
         """Yesterday's SIGNAL line text (original case), or ''."""
@@ -2484,8 +2552,11 @@ class App(tk.Tk):
                 mins = max(1, round((dt.datetime.now() - start).total_seconds() / 60))
                 self._append_text(f"=== THEME: {name} — {start:%H:%M} "
                                   f"({mins}m) ===\n{body}\n=== END THEME ===")
-                self._auto_capture_bullets(body, f"theme: {name}")
-                self.status.config(text=f"Saved {mins}m of themed writing — {name}")
+                added = self._auto_capture_bullets(body, f"theme: {name}")
+                msg = f"Saved {mins}m of themed writing — {name}"
+                if added:
+                    msg += f"  ·  +{added} to task library"
+                self.status.config(text=msg)
             p.destroy()
 
         bar = ttk.Frame(p)
@@ -2608,6 +2679,15 @@ class App(tk.Tk):
         self._roll_day_if_needed()
         if self.diary.edit_modified():
             self._save_diary()
+            # live capture: a TODO:/SOMEDAY: item typed straight into
+            # today's diary (not just a themed-writing session) now
+            # lands in the task library within ~10s, not "at rollover
+            # tomorrow" — that was the actual gap the user hit
+            added = self._auto_capture_bullets(
+                self.diary.get("1.0", "end-1c"), f"{self.today} diary")
+            if added:
+                self.status.config(
+                    text=f"+{added} new item(s) → Task library")
         if self.state != "idle":
             self._save_state()
         # sleep data lands on the phone after wake-up: re-check ~every 30 min

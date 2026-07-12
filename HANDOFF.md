@@ -188,6 +188,26 @@ v6.6):
   disabled by org policy on managed accounts. No code change from this —
   advisory only, logged here so it isn't re-researched from scratch.
 - **v6.6**: friction pass + finished the lens convergence. Sleep-override
+  time entry loosened; task-library Add debracketed; break-carve-out
+  checkbox; deadlines gained comma-separated multi-keyword matching as a
+  side effect of the lens work. **v6.7**: deadlines can point at a goal
+  (dropdown), the linked goal's "why" shows next to the deadline in the
+  dashboard and burn-down title. **v6.8** (real bug, found via the
+  user's actual diary file, not guessed): TODO:/SOMEDAY: auto-capture
+  had NEVER worked, because every bullet the user actually typed had no
+  space after the dash ("-THESIS") and the parser required one — fixed,
+  with a `(?!-)` guard so the app's own "---" decorator lines don't get
+  mistaken for bullets (a real regression caught in testing before it
+  shipped). Same-line "TODO: text" now also works. Capture moved onto
+  the live 10s autosave (same-day, not just at rollover/theme-save) with
+  a status-bar confirmation; a one-time 14-day backfill on launch
+  recovers writing the old parser missed. Also fixed: Tasks window's
+  leftmost priority column silently ate row selection on click (the
+  natural place to click to select a row for Done/Start), because
+  refresh() rebuilds the tree and drops selection — now preserved.
+  Audited the user's real settings.json end-to-end (goals, deadline-goal
+  links, dashboard render) — all correct; 3 of 4 goals show "nothing in
+  14 days" including Thesis, which is accurate, not a bug.
   time entry (`_parse_time_loose`) accepts `1`/`01`/`0120`/`120`/`1:20` —
   no colon required, no leading zero required. Tasks/Library "Add" bar
   gets a plain "est h" field and a priority selector — typing `[2h]`
