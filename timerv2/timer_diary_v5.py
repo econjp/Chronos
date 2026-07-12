@@ -60,6 +60,27 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.0 (the actual scheduler — planning-engine tier c):
+  - the morning header's "focus order today" list is now an actual
+    time-blocked schedule: each competing deadline (most urgent first,
+    behind-pace overrides a merely-sooner due date) greedily claims its
+    needed h/day out of today's real free time (_free_slots, v7.9),
+    earliest slot first — "08:00-12:05 Thesis (4.1h) ⚠ behind pace"
+    instead of just "Thesis — 4.1h needed." Leftover free time after
+    everything is placed gets one line naming Task-library signal
+    items, same as before. If a deadline's need doesn't fit today's
+    free time, says so plainly ("doesn't fit today's free time") rather
+    than silently truncating.
+  - MVP scope, on purpose (see HANDOFF's design notes written before
+    this was built): TODAY only, one greedy pass, not a multi-day
+    optimizer. Falls back to the plain priority list on a fully-booked
+    day, when there's no free time to place anything into.
+  - Still just a VIEW, generated once at day-header time same as
+    plan/focus-order — nothing about whether you actually follow it is
+    ever tracked, gated, or asked about. That guardrail was written
+    into the backlog specifically because this feature is the most
+    tempted to break it; it doesn't.
+
 New in v7.9 (scheduler foundations — prep for the v8.0 push):
   - `parse_ics_busy` (the per-day busy-HOURS scalar every capacity view
     reads) is now a thin sum over a new `parse_ics_intervals`, which
@@ -751,6 +772,11 @@ def _merge_time_intervals(intervals):
 def _time_span_hours(s, e):
     return (dt.datetime.combine(dt.date.min, e)
             - dt.datetime.combine(dt.date.min, s)).total_seconds() / 3600
+
+
+def _add_hours(t, hours):
+    return (dt.datetime.combine(dt.date.min, t)
+            + dt.timedelta(hours=hours)).time()
 
 
 def parse_ics_intervals(path, start, end):
@@ -2545,7 +2571,7 @@ class App(tk.Tk):
         fb = self._next_free_block_line()
         if fb:
             parts.append(fb)
-        parts += self._focus_order_lines()
+        parts += self._day_schedule_lines()
         if self.today.weekday() == 0:
             parts += self._week_review_block()
         parts.append(f"SIGNAL: {self._carry_signal()}")
@@ -2621,14 +2647,14 @@ class App(tk.Tk):
                  " ⚠ tight — start early, cut the admin")
         return line
 
-    def _focus_order_lines(self):
-        """Backlog "planning engine" tier b: when 2+ scoped deadlines are
-        competing for today, an explicit priority order — most urgent
-        first — instead of leaving the reader to do the sort. Purely a
-        VIEW: reads only numbers _dl_progress already computes (behind-
-        pace, days left, needed h/day), no new data pipeline. A
-        recommendation the reader glances at and follows or ignores, not
-        something to configure — no accept/reject UI, on purpose."""
+    def _focus_items(self):
+        """Scoped deadlines with real remaining hours, ranked most-
+        urgent-first (behind-pace overrides a merely-sooner due date).
+        The shared ranking both _focus_order_lines (tier b: a plain
+        priority list) and _day_schedule_lines (tier c: the same
+        ranking placed into actual free time) read from — one
+        computation, two views, same pattern as the day-record lenses
+        elsewhere in this file."""
         items = []
         for dl in self.deadlines():
             try:
@@ -2638,9 +2664,21 @@ class App(tk.Tk):
             if p["left"] >= 0 and p.get("total_h") and p["remaining_h"] > 0:
                 items.append((dl["name"], p["left"], p["needed_per_day"],
                              p.get("behind", False)))
+        items.sort(key=lambda x: (not x[3], x[1], -x[2]))
+        return items
+
+    def _focus_order_lines(self):
+        """Backlog "planning engine" tier b: when 2+ scoped deadlines are
+        competing for today, an explicit priority order — most urgent
+        first — instead of leaving the reader to do the sort. Purely a
+        VIEW over _focus_items(); a recommendation the reader glances at
+        and follows or ignores, not something to configure — no
+        accept/reject UI, on purpose. Kept as the fallback
+        _day_schedule_lines uses when there's no free time left to
+        actually place anything into."""
+        items = self._focus_items()
         if len(items) < 2:
             return []
-        items.sort(key=lambda x: (not x[3], x[1], -x[2]))
         lines = ["focus order today (most urgent first):"]
         for i, (name, left, need, behind) in enumerate(items, 1):
             lines.append(f"  {i}. {name} — {need:.1f}h ({left}d left)"
@@ -2655,6 +2693,62 @@ class App(tk.Tk):
             line = f"  {len(items) + 1}. ({slack:.1f}h uncommitted"
             line += (f" — pick from Task library: {', '.join(signal_tasks[:3])})"
                      if signal_tasks else " — pick from Task library)")
+            lines.append(line)
+        return lines
+
+    def _day_schedule_lines(self):
+        """v8.0: planning-engine tier c, actual time-blocked placement.
+        MVP scope deliberately kept small (see HANDOFF's design notes
+        before building this): TODAY only, one greedy pass — each
+        _focus_items() deadline (most urgent first) claims its needed
+        h/day out of _free_slots(today) (v7.9), earliest free time
+        first, so urgent work lands as soon as the day allows rather
+        than wherever leaves the prettiest gaps. A VIEW only, generated
+        once at day-header time same as plan/focus-order — never
+        tracked, never gated on whether followed (the standing
+        planning-engine guardrail: no accept/reject UI, no compliance
+        tracking, ever). Falls back to the plain priority list when
+        there's no free time to place anything into — a schedule with
+        nothing to block is just the old list, not silence."""
+        items = self._focus_items()
+        if not items:
+            return []
+        slots = list(self._free_slots(self.today))
+        if not slots:
+            return self._focus_order_lines()
+        lines = ["suggested schedule today:"]
+        for name, left, need, behind in items:
+            remaining, placed, rest = need, [], []
+            for s, e in slots:
+                if remaining <= 1e-9:
+                    rest.append((s, e))
+                    continue
+                avail = _time_span_hours(s, e)
+                if avail <= remaining + 1e-9:
+                    placed.append((s, e))
+                    remaining -= avail
+                else:
+                    cut = _add_hours(s, remaining)
+                    placed.append((s, cut))
+                    rest.append((cut, e))
+                    remaining = 0.0
+            slots = rest
+            tag = " ⚠ behind pace" if behind else ""
+            for s, e in placed:
+                lines.append(f"  {s:%H:%M}-{e:%H:%M} {name} "
+                             f"({_time_span_hours(s, e):.1f}h){tag}")
+            if remaining > 0.05:
+                lines.append(f"  ({name}: {remaining:.1f}h doesn't fit "
+                             "today's free time)")
+        leftover = sum(_time_span_hours(s, e) for s, e in slots)
+        if leftover >= 0.25:
+            biggest = max(slots, key=lambda se: _time_span_hours(*se))
+            signal_tasks = [tsk["name"] for tsk in self.settings.get("tasks", [])
+                            if tsk.get("priority") == "signal"]
+            line = (f"  {biggest[0]:%H:%M}-{biggest[1]:%H:%M} uncommitted "
+                    f"({leftover:.1f}h free today total)")
+            if signal_tasks:
+                line += f" — pick from Task library: {', '.join(signal_tasks[:3])}"
             lines.append(line)
         return lines
 

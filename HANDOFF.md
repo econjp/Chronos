@@ -4,6 +4,50 @@ Paste-able project brain. Any new session, agent, or development platform
 should read this file first; it replaces re-explaining the vision.
 **Keep it updated in the same commit as the feature it describes.**
 
+## If you are Claude Code running via GitHub / mobile — read this first
+
+This repo has no committed `CLAUDE.md`. The maintainer keeps a private,
+gitignored one on their main machine with personal context (data
+locations, past incidents, working style) that never leaves that
+machine — it is deliberately not here. If you're working from a mobile
+session or a fresh GitHub checkout, this section stands in for it. A
+few hard rules, learned from a real incident, not theoretical caution:
+
+1. **No AI co-author trailers, ever.** No `Co-Authored-By: Claude`, no
+   `Claude-Session:`, nothing identifying a commit as AI-authored.
+   Plain commit messages: short technical subject, first line says
+   what changed and why, humble tone. This is a standing, explicit
+   rule — a past mobile session violated it, and every one of its
+   commits had to be cherry-picked and re-authored by hand before they
+   could touch `master`.
+2. **Never push to or merge into `master` directly.** Work on a clearly
+   named branch (e.g. `claude/short-topic`). The maintainer reviews,
+   audits, and merges by hand from their main machine — don't
+   fast-forward or merge-commit your own branch in yourself, even if
+   the diff looks clean.
+3. **Keep it small.** 1-3 commits, one well-scoped item — ideally
+   something already described in this file's BACKLOG section below,
+   not a new architectural direction improvised on the spot. A mobile
+   session doesn't carry this project's full working history in
+   context; picking a pre-scoped item is much safer than inventing
+   scope.
+4. **Never commit personal data.** Only touch `timerv2/*.py`,
+   `HANDOFF.md`, `README.md`, and repo config (`.gitignore`, etc.).
+   Never create, reference, or paste in a commit the contents of any
+   diary/day-file text, health export, calendar export, or anything
+   resembling a real name, email, or personal detail — even in a
+   commit message or code comment. If unsure whether something counts
+   as personal data, leave it out.
+5. **Preserve the format rules.** The day-file's own text format
+   (`Start;`/`Stop;`/`Reset;` lines, `--- Task:` etc., see "Repo map &
+   data formats" below) must never change — it's the actual product,
+   not a log. stdlib only, single file (`timerv2/timer_diary_v5.py`),
+   no new pip dependencies, ever.
+6. **Leave a clear trail.** The next laptop session won't have this
+   conversation's context either — write commit messages and a short
+   PR/branch description that explain exactly what changed and why, as
+   if handing off to a stranger, because you are.
+
 ## The big vision (the user's own, restated once)
 
 A **total life management platform**, grown outward from a work timer.
@@ -340,6 +384,20 @@ the three-bucket model is already correct and more honest than a blend.
   already-logged csv time — is the actual foundation v8's real
   scheduler builds on. Proved end-to-end with one visible line in the
   morning header: "biggest free block today: 14:00-17:00 (3.0h)".
+- **v8.0** (the actual scheduler — planning-engine tier c, DONE). The
+  "focus order today" list is now a real time-blocked schedule:
+  `_focus_items()` (the ranking, factored out of the old
+  `_focus_order_lines` so both views share it) is greedily placed into
+  `_free_slots(today)`, most-urgent-deadline-first into
+  earliest-free-time-first — "08:00-12:05 Thesis (4.1h) ⚠ behind pace"
+  instead of a bare "needs 4.1h." MVP scope on purpose: today only, one
+  pass, no multi-day optimization; falls back to the plain priority
+  list on a fully-booked day. Sanity-checked against the user's real
+  deadline set (Thesis/TUTA/HHegemon draft via a sandboxed settings.json
+  copy, not the live file) and produced a sensible placement. Still
+  purely a VIEW — the planning-engine guardrail (no accept/reject UI,
+  no compliance tracking) holds; see the design notes under backlog
+  item 11c below, now marked done.
 
 ## BACKLOG (priority order — continue here)
 
@@ -548,29 +606,21 @@ the three-bucket model is already correct and more honest than a blend.
        naming signal-priority Task-library items when slack remains
        after the deadlines are fed. Matches the original sketch fully
        now.
-    c) **True time-blocked schedule** ("09:00-11:30 Thesis, 11:30-12:00
-       email [boxed]...") — THIS IS V8.0. The interval-level primitive
-       it needs (`_free_slots`, v7.9) is now done; (a) and (b) are done.
-       What's left is genuinely the scheduler itself: given today's
-       `_free_slots()` and the same competing-deadline data
-       `_focus_order_lines` already ranks, greedily place each ranked
-       item's needed-hours into slots (largest-need-first into
-       largest-slot-first, or soonest-deadline-first — worth prototyping
-       both before picking) and render actual boxed time ranges into the
-       day header, not just a priority list. Open design questions to
-       resolve before building: (1) does a placed block get written into
-       the day file as a literal suggestion line, or does it stay a
-       dashboard-only view — the sacred rule says the day file is the
-       product, so probably the former, but a WRONG suggestion baked
-       into the file forever is a worse failure mode than a wrong
-       dashboard number that just gets closed; (2) what happens when the
-       user doesn't follow the plan (they won't, always) — the existing
-       guardrail below already answers this (never track
-       accept/reject), but a scheduler is the feature most tempted to
-       violate it, so re-read the guardrail before writing a line of
-       this; (3) minimum viable version is probably just TODAY's
-       schedule, one deadline at a time, not a full multi-day
-       multi-deadline optimizer — start there.
+    c) ~~True time-blocked schedule~~ — DONE v8.0: `_focus_items()`
+       (ranking, shared with tier b) placed greedily into
+       `_free_slots()`, most-urgent-first into earliest-free-time-first.
+       Answered the three open questions from the original design note:
+       (1) written directly into the day header as a "suggested
+       schedule today:" block, same tier as plan/focus-order, not a
+       separate dashboard-only view — regenerated fresh each morning,
+       never edited in place, so a wrong suggestion just doesn't
+       reappear tomorrow rather than sitting stale in the file forever;
+       (2) no compliance tracking added, per the guardrail below — it's
+       a VIEW, full stop; (3) shipped as literally TODAY-only, one
+       greedy pass, falling back to the plain priority list on a
+       fully-booked day. Next real extension, if wanted: multi-day
+       lookahead (place tomorrow's leftover need into tomorrow's free
+       slots too) — deliberately not attempted here, MVP first.
 
     **Guardrail, matching the career-chat prompt's caution (item 9
     above) even though this is a different feature**: a recommendation
