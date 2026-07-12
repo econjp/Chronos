@@ -672,6 +672,57 @@ def event_line(kind, when, cum_secs):
             f"{cum_secs // 3600};{cum_secs // 60};{cum_secs}")
 
 
+_EVENT_RE = re.compile(r"^(Start|Stop|Reset);(\d{4}-\d\d-\d\d);(\d\d:\d\d:\d\d);")
+_TASK_LINE_RE = re.compile(r"^--- Task: (.+?)(?:\s*\[time-box \d+m\])?\s*$")
+
+
+def parse_day_file_to_rows(text, date_iso):
+    """Reconstruct work/break sessions.csv rows purely from a day file's
+    own event lines — the exact inverse of event_line(). The day file is
+    the source of truth (the sacred rule); this makes the csv provably
+    re-derivable from it, never the only place the log survives. Uses
+    each event's own embedded date+time to compute interval length (a
+    session that runs past real midnight writes a Stop line dated the
+    NEXT calendar day even though it's still this effective day's file —
+    the day only rolls at the configurable rollover hour, not midnight;
+    every row is still filed under `date_iso`, the file it came from, not
+    the possibly-later calendar date on an individual line). A
+    '--- Task:' line sets the task name for every work interval until
+    the next one."""
+    rows, task = [], ""
+    pending_start = pending_stop = None   # full datetimes, not just times
+
+    for ln in text.splitlines():
+        s = ln.strip()
+        m = _TASK_LINE_RE.match(s)
+        if m:
+            task = m.group(1).strip()
+            continue
+        m = _EVENT_RE.match(s)
+        if not m:
+            continue
+        kind, d, hms = m.groups()
+        h, mi, se = (int(x) for x in hms.split(":"))
+        when = dt.datetime.combine(dt.date.fromisoformat(d), dt.time(h, mi, se))
+        if kind == "Start":
+            if pending_stop is not None:
+                secs = (when - pending_stop).total_seconds()
+                if 0 <= secs and secs >= MIN_LOG_SECS:
+                    rows.append([date_iso, "break", pending_stop.strftime("%H:%M"),
+                                when.strftime("%H:%M"), max(1, round(secs / 60)), "", ""])
+                pending_stop = None
+            pending_start = when
+        else:   # Stop or Reset both close an open work interval
+            if pending_start is not None:
+                secs = (when - pending_start).total_seconds()
+                if 0 <= secs and secs >= MIN_LOG_SECS:
+                    rows.append([date_iso, "work", pending_start.strftime("%H:%M"),
+                                when.strftime("%H:%M"), max(1, round(secs / 60)), task, ""])
+                pending_start = None
+            pending_stop = when if kind == "Stop" else None
+    return rows
+
+
 # ---------------- idle detection (Windows) ----------------
 
 class _LASTINPUTINFO(ctypes.Structure):
@@ -1043,6 +1094,8 @@ class App(tk.Tk):
         toolsm.add_separator()
         toolsm.add_command(label="Data doctor — check & clean history…",
                            command=self._data_doctor)
+        toolsm.add_command(label="Rebuild sessions.csv from day files…",
+                           command=self._rebuild_csv_from_diary)
         toolsm.add_separator()
         toolsm.add_command(label="Global hotkey…", command=self._set_hotkey)
         toolsm.add_command(label="Deadline countdown…", command=self._set_deadline)
@@ -4180,6 +4233,53 @@ class App(tk.Tk):
 
         btn.config(command=clean)
         render()
+
+    def _rebuild_csv_from_diary(self):
+        """A recovery tool, not a routine one: rebuild sessions.csv
+        ENTIRELY from the day .txt files' own event lines. The day file
+        is the sacred source of truth — this makes the csv provably
+        derivable from it, so a corrupted or lost csv is recoverable as
+        long as the day files survive (which is the whole point of the
+        sacred rule)."""
+        if not messagebox.askyesno(
+                APP_NAME,
+                "Rebuild sessions.csv entirely from your day files?\n\n"
+                "Current csv is backed up first. This REPLACES the csv "
+                "with what your day files' own Start/Stop/Task lines say "
+                "— use it to recover from a lost or corrupted csv, not "
+                "as routine maintenance."):
+            return
+        if os.path.exists(SESSIONS_CSV):
+            bdir = os.path.join(data_dir(), "backups")
+            os.makedirs(bdir, exist_ok=True)
+            shutil.copy2(SESSIONS_CSV, os.path.join(
+                bdir, f"sessions_before_rebuild_{dt.date.today()}.csv"))
+        try:
+            names = sorted(fn for fn in os.listdir(self.diary_dir())
+                           if fn.endswith(".txt"))
+        except OSError:
+            names = []
+        rows, n_files = [], 0
+        for fn in names:
+            date_iso = fn[:-4]
+            try:
+                dt.date.fromisoformat(date_iso)
+            except ValueError:
+                continue   # RECOVERED-... and other non-dated files: skip
+            with open(os.path.join(self.diary_dir(), fn), encoding="utf-8") as f:
+                rows += parse_day_file_to_rows(f.read(), date_iso)
+            n_files += 1
+        tmp = SESSIONS_CSV + ".tmp"
+        with open(tmp, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f, delimiter=";")
+            w.writerow(CSV_HEADER)
+            w.writerows(rows)
+        os.replace(tmp, SESSIONS_CSV)
+        self._refresh_totals()
+        messagebox.showinfo(
+            APP_NAME, f"Rebuilt sessions.csv: {len(rows)} row(s) from "
+                      f"{n_files} day file(s). Previous csv backed up "
+                      "in backups\\.")
 
     # ----- calendar export -----
 
