@@ -60,6 +60,26 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v6.0 (the consolidation — one record, one dashboard, clean data):
+  - THE DAY RECORD: one internal unit (_life_day) that merges everything
+    known about a date — timer minutes, signal share, sleep (override >
+    import), workout, steps, meeting hours, planned capacity. This is the
+    platform atom: a future data source (mood, money, screen time) becomes
+    one new key on the record, not a new parser in every window.
+  - LIFE DASHBOARD (View menu / Ctrl+D): one window instead of nine —
+    today (work, signal, plan vs capacity, sleep), the week as bars vs
+    last week and planned capacity, every deadline with the slack verdict,
+    and INSIGHTS that cross-reference the sources: sleep ≥7h vs <7h daily
+    output, your deep hours of day, focus-block fragmentation trend,
+    estimate multiplier, streaks. One "Copy for AI review" exports the
+    whole consolidated picture.
+  - DATA DOCTOR (Tools): scans sessions.csv for task-name spelling
+    variants ("Thesis"/"thesis: ch4 "), junk rows, exact duplicates and
+    overlapping intervals — shows the report, and Clean merges/drops with
+    a backup first. The analyses are only as honest as the substrate.
+  - cached csv parsing (mtime-keyed) + a per-day index: the history is
+    parsed once per change instead of once per window per task per day.
+
 New in v5.9 (the pieces feed each other):
   - MORNING PLAN: the new day header now states today's mission —
     "plan today: Thesis 5.4h = 5.4h needed · 4.0h available ⚠ tight".
@@ -219,10 +239,22 @@ def already_running():
         return False
 
 
+_ROWS_CACHE = {"key": None, "rows": [], "idx_key": None, "days": {}}
+
+
 def read_rows():
-    """All csv rows, normalised to 7 columns (v4 files had no 'type')."""
-    if not os.path.exists(SESSIONS_CSV):
+    """All csv rows, normalised to 7 columns (v4 files had no 'type').
+    Cached on the file's (mtime, size): every window reads through here,
+    so the history is parsed once per change, not once per view. Callers
+    must treat the result as read-only."""
+    try:
+        st = os.stat(SESSIONS_CSV)
+    except OSError:
+        _ROWS_CACHE.update(key=None, rows=[])
         return []
+    key = (st.st_mtime_ns, st.st_size)
+    if _ROWS_CACHE["key"] == key:
+        return _ROWS_CACHE["rows"]
     with open(SESSIONS_CSV, newline="", encoding="utf-8") as f:
         raw = list(csv.reader(f, delimiter=";"))
     out = []
@@ -231,7 +263,31 @@ def read_rows():
             r = [r[0], "work"] + r[1:]
         if len(r) >= 5:
             out.append(r + [""] * (7 - len(r)))
+    _ROWS_CACHE.update(key=key, rows=out)
     return out
+
+
+def day_index():
+    """{date_iso: {"work": min, "brk": min, "tasks": {task: min}}} over the
+    whole history — the base aggregate every consolidated view reads.
+    Rebuilt only when the csv changes."""
+    read_rows()
+    if _ROWS_CACHE["idx_key"] != _ROWS_CACHE["key"]:
+        idx = {}
+        for r in _ROWS_CACHE["rows"]:
+            try:
+                m = int(r[4])
+            except ValueError:
+                continue
+            rec = idx.setdefault(r[0], {"work": 0, "brk": 0, "tasks": {}})
+            if r[1] == "break":
+                rec["brk"] += m
+            else:
+                rec["work"] += m
+                t = r[5].strip() or "(no task)"
+                rec["tasks"][t] = rec["tasks"].get(t, 0) + m
+        _ROWS_CACHE.update(idx_key=_ROWS_CACHE["key"], days=idx)
+    return _ROWS_CACHE["days"]
 
 
 def append_row(row):
@@ -257,19 +313,8 @@ def recent_tasks(limit=12):
 
 def day_totals(date_iso):
     """(work_min, break_min) for a date string."""
-    w = b = 0
-    for r in read_rows():
-        if r[0] != date_iso:
-            continue
-        try:
-            m = int(r[4])
-        except ValueError:
-            continue
-        if r[1] == "break":
-            b += m
-        else:
-            w += m
-    return w, b
+    rec = day_index().get(date_iso)
+    return (rec["work"], rec["brk"]) if rec else (0, 0)
 
 
 def weekly_totals(n_weeks=8):
@@ -800,6 +845,9 @@ class App(tk.Tk):
         m.add_cascade(label="File", menu=filem)
 
         viewm = tk.Menu(m, tearoff=0)
+        viewm.add_command(label="Life dashboard", accelerator="Ctrl+D",
+                          command=self._dashboard)
+        viewm.add_separator()
         viewm.add_command(label="Weekly summary", command=lambda: self._summary("week"))
         viewm.add_command(label="Monthly summary", command=lambda: self._summary("month"))
         viewm.add_command(label="Tasks / backlog…", command=self._tasks_win)
@@ -832,6 +880,9 @@ class App(tk.Tk):
                                variable=self.float_var, command=self._save_prefs)
         toolsm.add_command(label="Meeting mode (idle off 90 min)",
                            command=self._meeting_mode)
+        toolsm.add_separator()
+        toolsm.add_command(label="Data doctor — check & clean history…",
+                           command=self._data_doctor)
         toolsm.add_separator()
         toolsm.add_command(label="Global hotkey…", command=self._set_hotkey)
         toolsm.add_command(label="Deadline countdown…", command=self._set_deadline)
@@ -1099,6 +1150,7 @@ class App(tk.Tk):
         self.bind("<Control-space>", lambda e: self._toggle())
         self.bind("<Control-Return>", self._go)
         self.bind("<Control-r>", lambda e: self._reset())
+        self.bind("<Control-d>", self._dashboard)
         self.diary.bind("<F5>", self._insert_timestamp)
         self.task_box.bind("<Return>", self._go)
         self.task_box.bind("<<ComboboxSelected>>", self._switch)
@@ -2591,8 +2643,9 @@ class App(tk.Tk):
                            ("Done ✓", done), ("Delete", delete)):
             ttk.Button(bar, text=label, command=cmd).pack(side="left", padx=(4, 0))
         hint = 'Add as "write intro [2h]" — the [2h] becomes the estimate.'
-        f = self._estimate_factor()
-        if f:
+        ef = self._estimate_factor()
+        if ef:
+            f = ef[0]
             hint += (f"  Your history: actuals run ×{f:.1f} your estimates"
                      f" — [2h] realistically means {2 * f:.1f}h.")
         ttk.Label(win, text=hint, foreground="#777777",
@@ -2600,8 +2653,9 @@ class App(tk.Tk):
         refresh()
 
     def _estimate_factor(self):
-        """Median actual/estimate ratio from '--- Done: x (est Yh, actual
-        Zh)' lines across all day files. None until 3+ samples exist."""
+        """(median actual/estimate ratio, sample count) from '--- Done: x
+        (est Yh, actual Zh)' lines across all day files. None until 3+
+        samples exist."""
         pat = re.compile(r"--- Done: .*\(est ([0-9.]+)h, actual ([0-9.]+)h\)")
         ratios = []
         try:
@@ -2624,7 +2678,7 @@ class App(tk.Tk):
         if len(ratios) < 3:
             return None
         ratios.sort()
-        return ratios[len(ratios) // 2]
+        return ratios[len(ratios) // 2], len(ratios)
 
     # ----- deadline burn-down -----
 
@@ -2797,6 +2851,443 @@ class App(tk.Tk):
         cv.create_text(pad, H - 12, anchor="w", font=("Segoe UI", 8),
                        fill="#666666",
                        text="shade steps: 0 · <2h · <4h · <6h · <8h · 8h+")
+
+    # ----- the life record + dashboard (the consolidation) -----
+
+    def _sleep_h(self, iso):
+        """Sleep hours for one date: the right-click override wins over the
+        health import; None when neither knows."""
+        over = self.settings.get("sleep_over", {}).get(iso)
+        if over:
+            try:
+                bh, bm = map(int, over[0].split(":"))
+                wh, wm = map(int, over[1].split(":"))
+                return ((wh * 60 + wm - bh * 60 - bm) % 1440 or 1440) / 60
+            except ValueError:
+                pass
+        return self._health_data().get(iso, {}).get("sleep_h")
+
+    def _life_day(self, d, signal=True):
+        """Everything the app knows about one date, merged into ONE dict —
+        the unit every consolidated view consumes: timer minutes from the
+        csv, signal minutes per that day's own SIGNAL line, sleep/workout/
+        steps from the health import, meeting hours from the calendar, net
+        capacity from the week plan. A future data source (mood, money,
+        screen time) becomes a new key here — not a new parser per window."""
+        iso = d.isoformat()
+        base = day_index().get(iso) or {"work": 0, "brk": 0, "tasks": {}}
+        rec = {"date": d, "work": base["work"], "brk": base["brk"],
+               "tasks": dict(base["tasks"]),
+               "signal": self._day_signal(d)[0] if signal else None,
+               "sleep_h": self._sleep_h(iso),
+               "workout_min": self._health_data().get(iso, {}).get("workout_min"),
+               "steps": self._health_data().get(iso, {}).get("steps"),
+               "busy_h": self._busy_data().get(iso, 0.0),
+               "capacity_h": self._day_capacity(d)}
+        return rec
+
+    def _dashboard(self, event=None):
+        """One window instead of nine: today, the week, every deadline and
+        the cross-domain insights, plus one consolidated AI export."""
+        self._save_diary()
+        win = tk.Toplevel(self)
+        win.title("Life dashboard")
+        cv = tk.Canvas(win, width=660, height=150, background="white",
+                       highlightthickness=0)
+        cv.pack(padx=8, pady=(8, 4))
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10),
+                      width=88, height=26)
+        txt.pack(fill="both", expand=True, padx=8, pady=(0, 4))
+        txt.tag_configure("h", font=("Consolas", 10, "bold"))
+        txt.tag_configure("warn", foreground="#c03030")
+        bar = ttk.Frame(win)
+        bar.pack(fill="x", padx=8, pady=(0, 8))
+        shown = [""]
+
+        def render():
+            monday = self.today - dt.timedelta(days=self.today.weekday())
+            week = [self._life_day(monday + dt.timedelta(days=i))
+                    for i in range(7)]
+            self._draw_week_bars(cv, week)
+            lines = self._dashboard_lines(week)
+            shown[0] = "\n".join(lines)
+            txt.config(state="normal")
+            txt.delete("1.0", "end")
+            for ln in lines:
+                tag = ("h" if ln and not ln.startswith(" ") else
+                       "warn" if "⚠" in ln else ())
+                txt.insert("end", ln + "\n", tag)
+            txt.config(state="disabled")
+
+        def copy():
+            self.clipboard_clear()
+            self.clipboard_append(
+                shown[0] + "\n\nAsk: what slipped, what pattern am I not "
+                "seeing, what should next week look like?")
+            self.status.config(text="Dashboard copied — paste into Claude.")
+
+        ttk.Button(bar, text="Copy for AI review", command=copy).pack(side="left")
+        ttk.Button(bar, text="Refresh", command=render).pack(side="left", padx=6)
+        render()
+
+    def _dashboard_lines(self, week):
+        t = week[self.today.weekday()]
+        w = t["work"]
+        if self.state == "working" and self.work_start:
+            w += (dt.datetime.now() - self.work_start).total_seconds() / 60
+        lines = [f"TODAY — {self.today:%A %d.%m.%Y}"]
+        line = f"  {w / 60:.2f}h work"
+        if t["brk"]:
+            line += f" · {t['brk'] / 60:.2f}h breaks"
+        if t["signal"] and w:
+            line += f" · signal {round(100 * t['signal'] / w)}%"
+        target = self.settings.get("target_min", 0)
+        if target:
+            line += f" · target {min(100, round(100 * w / target))}%"
+        lines.append(line)
+        plan = self._plan_line()
+        if plan:
+            lines.append("  " + plan)
+        hl = []
+        if t["sleep_h"]:
+            hl.append(f"slept {fmt_sleep(t['sleep_h'])}")
+            past = [self._sleep_h((self.today - dt.timedelta(days=i)).isoformat())
+                    for i in range(1, 8)]
+            past = [s for s in past if s]
+            if past:
+                hl.append(f"7-day avg {fmt_sleep(sum(past) / len(past))}")
+        if t["workout_min"]:
+            hl.append(f"workout {round(t['workout_min'])}m")
+        if t["busy_h"]:
+            hl.append(f"{t['busy_h']:.1f}h of meetings today")
+        if hl:
+            lines.append("  " + " · ".join(hl))
+
+        lines += ["", f"THIS WEEK — W{self.today.isocalendar().week}"]
+        idx = day_index()
+        wk = sum(r["work"] for r in week)
+        brk = sum(r["brk"] for r in week)
+        lw = sum((idx.get((week[0]["date"] - dt.timedelta(days=7)
+                           + dt.timedelta(days=i)).isoformat())
+                  or {"work": 0})["work"]
+                 for i in range(self.today.weekday() + 1))
+        line = f"  {wk / 60:.2f}h tracked"
+        if lw:
+            line += (f" · last week at this point {lw / 60:.2f}h"
+                     f" ({(wk - lw) / 60:+.1f}h)")
+        if wk + brk:
+            line += f" · breaks {round(100 * brk / (wk + brk))}% of tracked time"
+        lines.append(line)
+        sig = sum(r["signal"] or 0 for r in week)
+        if sig and wk:
+            lines.append(f"  signal {sig / 60:.2f}h — {round(100 * sig / wk)}% "
+                         "of the week went to what you said matters")
+        tasks = {}
+        for r in week:
+            for k, m in r["tasks"].items():
+                tasks[k] = tasks.get(k, 0) + m
+        if tasks:
+            top = sorted(tasks.items(), key=lambda x: -x[1])[:6]
+            lines.append("  top: " + " · ".join(
+                f"{k} {m / 60:.1f}h" for k, m in top))
+
+        dls = self.deadlines()
+        if dls:
+            lines += ["", "DEADLINES"]
+            rows = read_rows()
+            for dl in dls:
+                try:
+                    p = self._dl_progress(dl, rows)
+                except (ValueError, KeyError):
+                    continue
+                seg = (f"  {'⚠' if p.get('behind') else '·'} {dl['name']} — "
+                       f"due {p['due']:%d.%m} ({p['left']}d)")
+                if p.get("total_h"):
+                    seg += (f": {p['done_h']:.1f}/{p['total_h']:g}h done"
+                            f" · needs {p['needed_per_day']:.1f}h/day now")
+                else:
+                    seg += f": {p['done_h']:.1f}h done"
+                lines.append(seg)
+            lines += [" " + s for s in self._capacity_lines()]
+
+        lines += ["", "INSIGHTS — your last 60 days, cross-referenced"]
+        ins = self._insight_lines()
+        if ins:
+            lines += ["  · " + s for s in ins]
+        else:
+            lines.append("  (still collecting — these appear as sleep, "
+                         "estimate and streak history builds up)")
+        return lines
+
+    def _insight_lines(self, days=60):
+        """Rule-based findings that each connect two data sources the app
+        already collects. Every line is your own history — it only speaks
+        when there are enough samples to mean something."""
+        out = []
+        idx = day_index()
+        # sleep x output — the reason the health import exists
+        good, short = [], []
+        for i in range(1, days + 1):            # today isn't finished yet
+            d = self.today - dt.timedelta(days=i)
+            sl = self._sleep_h(d.isoformat())
+            if sl:
+                w = (idx.get(d.isoformat()) or {"work": 0})["work"]
+                (good if sl >= 7 else short).append(w)
+        if len(good) >= 3 and len(short) >= 3:
+            g = sum(good) / len(good) / 60
+            s = sum(short) / len(short) / 60
+            out.append(f"sleep ≥7h → {g:.1f}h/day ({len(good)}d) · <7h → "
+                       f"{s:.1f}h/day ({len(short)}d): sleep is worth "
+                       f"{g - s:+.1f}h of daily output")
+        # deep hours — when the work actually happens
+        by_hour, tot = [0] * 24, 0
+        cutoff = (self.today - dt.timedelta(days=days)).isoformat()
+        for r in read_rows():
+            if r[1] == "break" or r[0] < cutoff:
+                continue
+            try:
+                h = int(r[2].split(":")[0]) % 24
+                m = int(r[4])
+            except (ValueError, IndexError):
+                continue
+            by_hour[h] += m
+            tot += m
+        if tot >= 20 * 60:
+            best, h0 = max((sum(by_hour[h:h + 3]), h) for h in range(22))
+            out.append(f"deep hours {h0:02d}–{h0 + 3:02d}: "
+                       f"{round(100 * best / tot)}% of all your work lands "
+                       "there — guard that window, schedule meetings outside it")
+        # focus block length — fragmentation trend
+        monday = self.today - dt.timedelta(days=self.today.weekday())
+        prev_lo = monday - dt.timedelta(days=21)
+        cur, prev = [], []
+        for r in read_rows():
+            if r[1] == "break":
+                continue
+            try:
+                d = dt.date.fromisoformat(r[0])
+                m = int(r[4])
+            except ValueError:
+                continue
+            if d >= monday:
+                cur.append(m)
+            elif d >= prev_lo:
+                prev.append(m)
+        if len(cur) >= 5 and len(prev) >= 10:
+            ca, pa = sum(cur) / len(cur), sum(prev) / len(prev)
+            verdict = ("more fragmented — batch the interruptions"
+                       if ca < 0.85 * pa else
+                       "deeper focus" if ca > 1.15 * pa else "steady")
+            out.append(f"average unbroken work block {ca:.0f}m this week vs "
+                       f"{pa:.0f}m the 3 weeks before — {verdict}")
+        # estimate honesty
+        ef = self._estimate_factor()
+        if ef:
+            out.append(f"estimates: actuals run ×{ef[0]:.1f} across "
+                       f"{ef[1]} finished tasks — read every [2h] as "
+                       f"{2 * ef[0]:.1f}h when planning")
+        # streaks
+        def active(d):
+            return (idx.get(d.isoformat()) or {"work": 0})["work"] >= 30
+        d = self.today if active(self.today) else self.today - dt.timedelta(days=1)
+        run = 0
+        while active(d):
+            run += 1
+            d -= dt.timedelta(days=1)
+        best = cur_s = 0
+        for i in range(112):
+            if active(self.today - dt.timedelta(days=111 - i)):
+                cur_s += 1
+                best = max(best, cur_s)
+            else:
+                cur_s = 0
+        if best:
+            out.append(f"streak: {run} active day(s) (≥30m) · best in "
+                       f"16 weeks: {best}")
+        return out
+
+    def _draw_week_bars(self, cv, week):
+        """Mon–Sun bars: blue work with the green signal share inside,
+        last week's same weekday as the grey ghost behind, the week-plan
+        capacity as a red dashed tick."""
+        cv.delete("all")
+        W, H = int(cv["width"]), int(cv["height"])
+        pad = 30
+        idx = day_index()
+        ghosts = [(idx.get((r["date"] - dt.timedelta(days=7)).isoformat())
+                   or {"work": 0})["work"] for r in week]
+        mx = max([r["work"] for r in week] + ghosts
+                 + [int(r["capacity_h"] * 60) for r in week] + [60])
+        bw = (W - 2 * pad) / 7
+
+        def y(m):
+            return H - 22 - (H - 44) * m / mx
+
+        for i, r in enumerate(week):
+            x0 = pad + i * bw
+            if ghosts[i]:
+                cv.create_rectangle(x0 + 6, y(ghosts[i]), x0 + bw - 6, H - 22,
+                                    fill="#e4e7ec", outline="")
+            if r["date"] <= self.today and r["work"]:
+                cv.create_rectangle(x0 + 12, y(r["work"]), x0 + bw - 12,
+                                    H - 22, fill=self.TL_WORK, outline="")
+                if r["signal"]:
+                    cv.create_rectangle(x0 + 12, y(r["signal"]), x0 + bw - 12,
+                                        H - 22, fill=self.TL_SIGNAL, outline="")
+                cv.create_text(x0 + bw / 2, y(r["work"]) - 8,
+                               text=f"{r['work'] / 60:.1f}",
+                               font=("Segoe UI", 7), fill="#555555")
+            cap = int(r["capacity_h"] * 60)
+            if cap:
+                cv.create_line(x0 + 4, y(cap), x0 + bw - 4, y(cap),
+                               fill="#c03030", dash=(2, 2))
+            cv.create_text(x0 + bw / 2, H - 12, text=r["date"].strftime("%a"),
+                           font=("Segoe UI", 8),
+                           fill="#000000" if r["date"] == self.today
+                           else "#666666")
+        cv.create_line(pad, H - 22, W - pad, H - 22)
+        cv.create_text(pad, 10, anchor="w", font=("Segoe UI", 8),
+                       fill="#777777",
+                       text="blue = work · green = signal share · grey = "
+                            "last week · red dash = planned capacity")
+
+    # ----- data doctor (keep the substrate clean) -----
+
+    def _doctor_scan(self):
+        """One pass over the csv: task-name spelling variants, junk rows,
+        exact duplicates, overlapping work intervals. Returns
+        (report_lines, rename_map, junk_count, dup_count)."""
+        rows = read_rows()
+        by_key, by_day = {}, {}
+        seen, junk, dups, overlaps = set(), 0, 0, 0
+        for r in rows:
+            tup = tuple(r)
+            if tup in seen:
+                dups += 1
+                continue
+            seen.add(tup)
+            try:
+                dt.date.fromisoformat(r[0])
+                ok = int(r[4]) > 0
+            except ValueError:
+                ok = False
+            if not ok:
+                junk += 1
+                continue
+            t = r[5].strip()
+            if t:
+                key = " ".join(t.lower().split())
+                sp = by_key.setdefault(key, {})
+                sp[t] = sp.get(t, 0) + int(r[4])
+            if r[1] != "break":
+                by_day.setdefault(r[0], []).append(r)
+        for rs in by_day.values():
+            ivs = []
+            for r in rs:
+                try:
+                    sh, sm = map(int, r[2].split(":")[:2])
+                    eh, em = map(int, r[3].split(":")[:2])
+                except (ValueError, IndexError):
+                    continue
+                a, b = sh * 60 + sm, eh * 60 + em
+                if b < a:
+                    b += 1440              # crossed midnight
+                ivs.append((a, b))
+            ivs.sort()
+            overlaps += sum(1 for p, q in zip(ivs, ivs[1:]) if q[0] < p[1] - 1)
+        rename = {}
+        for sp in by_key.values():
+            if len(sp) > 1:
+                canon = max(sp, key=sp.get)
+                for s in sp:
+                    if s != canon:
+                        rename[s] = canon
+        dates = sorted(r[0] for r in rows if len(r[0]) == 10)
+        lines = [f"{len(rows)} rows"
+                 + (f", {dates[0]} … {dates[-1]}" if dates else "")
+                 + f", {len(by_key)} distinct tasks", ""]
+        if rename:
+            lines.append("Task spelling variants (Clean merges each into "
+                         "the most-used spelling):")
+            for sp in by_key.values():
+                if len(sp) > 1:
+                    canon = max(sp, key=sp.get)
+                    lines.append(f"  → '{canon}'  absorbs  "
+                                 + ", ".join(f"'{s}' ({m / 60:.1f}h)"
+                                             for s, m in sp.items()
+                                             if s != canon))
+            lines.append("")
+        if junk:
+            lines.append(f"{junk} junk row(s) — unreadable date or ≤0 "
+                         "minutes; invisible to every view already. "
+                         "Clean drops them.")
+        if dups:
+            lines.append(f"{dups} exact duplicate row(s). Clean drops them.")
+        if overlaps:
+            lines.append(f"{overlaps} overlapping work interval pair(s) — "
+                         "usually a hand-added past session over tracked "
+                         "time. Listed only; fix via the csv if the totals "
+                         "matter.")
+        if not (rename or junk or dups or overlaps):
+            lines.append("Nothing to fix — the history is clean. ✓")
+        return lines, rename, junk, dups
+
+    def _data_doctor(self):
+        win = tk.Toplevel(self)
+        win.title("Data doctor — sessions.csv")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10),
+                      width=86, height=24)
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        bar = ttk.Frame(win)
+        bar.pack(fill="x", padx=8, pady=(0, 8))
+        btn = ttk.Button(bar, text="Clean now (backs up first)")
+        btn.pack(side="left")
+        note = ttk.Label(bar, text="", foreground="#777777")
+        note.pack(side="left", padx=8)
+
+        def render():
+            lines, rename, junk, dups = self._doctor_scan()
+            txt.config(state="normal")
+            txt.delete("1.0", "end")
+            txt.insert("1.0", "\n".join(lines))
+            txt.config(state="disabled")
+            btn.config(state="normal" if (rename or junk or dups)
+                       else "disabled")
+            return rename
+
+        def clean():
+            _lines, rename, _j, _d = self._doctor_scan()
+            bdir = os.path.join(data_dir(), "backups")
+            os.makedirs(bdir, exist_ok=True)
+            shutil.copy2(SESSIONS_CSV, os.path.join(
+                bdir, f"sessions_before_doctor_{dt.date.today()}.csv"))
+            seen, out = set(), []
+            for r in read_rows():
+                tup = tuple(r)
+                if tup in seen:
+                    continue
+                seen.add(tup)
+                try:
+                    dt.date.fromisoformat(r[0])
+                    if int(r[4]) <= 0:
+                        continue
+                except ValueError:
+                    continue
+                t = r[5].strip()
+                out.append(r[:5] + [rename.get(t, t)] + r[6:])
+            tmp = SESSIONS_CSV + ".tmp"
+            with open(tmp, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f, delimiter=";")
+                w.writerow(CSV_HEADER)
+                w.writerows(out)
+            os.replace(tmp, SESSIONS_CSV)
+            self._refresh_totals()
+            note.config(text=f"Cleaned — backup in backups\\. "
+                             f"{len(out)} rows kept.")
+            render()
+
+        btn.config(command=clean)
+        render()
 
     # ----- calendar export -----
 

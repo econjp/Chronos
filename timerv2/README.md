@@ -1,8 +1,49 @@
-# TimerDiary v5
+# TimerDiary v6
 
 The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
+
+## Where this is heading
+
+The long game is a **life management platform**, and the architecture now
+says so: everything the app learns about a date — tracked work, signal
+share, sleep, workouts, steps, meetings, planned capacity — is merged into
+**one day record** internally. Each capability is a *source* that writes
+into that record (timer → work, Apple Health → body, .ics → commitments,
+deadlines → goals, diary → memory), and each view is a *reader* of it.
+Adding a future source (mood, money, screen time) means one new key on the
+record, not another parser and another window. The **Life dashboard** is
+the single pane over the record, the **Data doctor** keeps the substrate
+trustworthy, and the weekly **AI review** is the analyst on top.
+
+### Life dashboard (v6.0) — `Ctrl+D`
+
+One window instead of nine: **today** (hours so far incl. the running
+session, signal %, the morning plan vs capacity, last night's sleep),
+**the week** as bars — green signal share inside blue work, last week as
+grey ghosts, planned capacity as a red dashed line — **every deadline**
+with done/scope, needed-per-day and the combined slack verdict, and
+**insights** cross-referencing the sources over your last 60 days:
+
+- *sleep ≥7h → 5.2h/day (18d) · <7h → 3.9h/day (12d): sleep is worth +1.3h*
+- *deep hours 09–12: 41% of all your work lands there — guard that window*
+- *average unbroken block 32m this week vs 41m before — more fragmented*
+- *estimates: actuals run ×1.5 across 13 finished tasks*
+- *streak: 4 active days · best in 16 weeks: 9*
+
+Every insight is your own history and only appears once there are enough
+samples. **Copy for AI review** puts the whole consolidated picture on the
+clipboard — one paste instead of stitching six windows together.
+
+### Data doctor (v6.0)
+
+Tools → Data doctor: one pass over `sessions.csv` reporting task-name
+spelling variants (`Thesis` / `thesis: ch4 `), junk rows, exact duplicates
+and overlapping intervals. **Clean now** merges each variant group into its
+most-used spelling and drops the junk — after copying a backup into
+`backups\`. Months of half-consistent task names stop poisoning the
+summaries.
 
 ## Daily flow
 
