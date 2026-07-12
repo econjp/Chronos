@@ -60,6 +60,12 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v7.5 (focus order names the leftover hours):
+  - "focus order today" now adds a final line when there's slack after
+    the deadlines are fed: "(5.5h uncommitted — pick from Task library:
+    reply to EU email)", naming your signal-priority backlog items
+    instead of leaving unclaimed capacity unexplained.
+
 New in v7.4 (insights v3):
   - weekday pattern: flags a genuinely weaker weekday once every day of
     the week has enough samples ("Tues average 2.3h vs Thus at 5.0h —
@@ -2400,6 +2406,17 @@ class App(tk.Tk):
         for i, (name, left, need, behind) in enumerate(items, 1):
             lines.append(f"  {i}. {name} — {need:.1f}h ({left}d left)"
                          + (" ⚠ behind pace" if behind else ""))
+        # uncommitted capacity: what's left after the deadlines are fed,
+        # pointing at signal-priority backlog items rather than leaving
+        # the reader to wonder what the leftover hours are even for
+        slack = self._day_capacity(self.today) - sum(x[2] for x in items)
+        if slack > 0.3:
+            signal_tasks = [tsk["name"] for tsk in self.settings.get("tasks", [])
+                            if tsk.get("priority") == "signal"]
+            line = f"  {len(items) + 1}. ({slack:.1f}h uncommitted"
+            line += (f" — pick from Task library: {', '.join(signal_tasks[:3])})"
+                     if signal_tasks else " — pick from Task library)")
+            lines.append(line)
         return lines
 
     def _week_review_block(self):

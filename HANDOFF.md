@@ -483,15 +483,13 @@ the three-bucket model is already correct and more honest than a blend.
        `_capacity_lines`: when total needed-hours across active
        deadlines exceeds net capacity, states explicitly which is fully
        funded and which takes the cut, by how much.
-    b) ~~Suggested focus list~~ — DONE v7.3, `_focus_order_lines`: new
-       day headers get a "focus order today" block when 2+ scoped
-       deadlines compete — most urgent first (behind-pace overrides a
-       merely-sooner due date), each with its needed h/day. Does NOT
-       yet fold in task-library items with no deadline (the "3.
-       (1.9h uncommitted — pick from Task library)" line from the
-       original sketch) — still a real gap if the user wants unscoped
-       backlog items included in the ordering, not just deadline-backed
-       work.
+    b) ~~Suggested focus list~~ — DONE v7.3 + v7.5: new day headers get
+       a "focus order today" block when 2+ scoped deadlines compete —
+       most urgent first (behind-pace overrides a merely-sooner due
+       date), each with its needed h/day, plus (v7.5) a final line
+       naming signal-priority Task-library items when slack remains
+       after the deadlines are fed. Matches the original sketch fully
+       now.
     c) **True time-blocked schedule** ("09:00-11:30 Thesis, 11:30-12:00
        email [boxed]...") — needs the `parse_ics_busy` interval upgrade
        above to respect WHERE in the day meetings actually are, not just
