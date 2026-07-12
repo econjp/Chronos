@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Deadlines linked to goals (v6.7)
+
+Tools → Deadline countdowns has a Goal column now — pick one, and that
+goal's one-line "why" shows up next to the deadline wherever you see it
+countdown (Life dashboard, burn-down chart title). Seeing "Thesis — 5d
+left (finish before the fall offer starts)" is a different feeling than
+just "5d left."
+
 ### Faster inputs (v6.6)
 
 Right-click the timeline to set last night's sleep: bed/wake times now

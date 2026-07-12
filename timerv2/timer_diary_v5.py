@@ -60,6 +60,12 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v6.7 (link the faces):
+  - Deadlines can now point at a Goal (dropdown in Tools > Deadline
+    countdowns). The linked goal's one-line "why" shows next to the
+    deadline in the Life dashboard and the burn-down window title —
+    seeing why a deadline matters next to when it's due.
+
 New in v6.6 (friction pass + lens convergence finished):
   - sleep-override time entry accepts 1/01/0120/120/1:20 — no colon, no
     leading zero required.
@@ -1051,19 +1057,25 @@ class App(tk.Tk):
         win.resizable(False, False)
         win.grab_set()
         cols = ("Name (empty = off)", "Start (opt)", "Due (YYYY-MM-DD)",
-                "Total h (opt)", "h/week (opt)", "Tasks containing")
-        keys = ("name", "start", "date", "total_h", "target_h", "match")
+                "Total h (opt)", "h/week (opt)", "Tasks containing", "Goal (opt)")
+        keys = ("name", "start", "date", "total_h", "target_h", "match", "goal")
         for c, lbl in enumerate(cols):
             ttk.Label(win, text=lbl).grid(row=0, column=c, padx=4, pady=(8, 2))
         cur = self.deadlines()
+        goal_names = [""] + [g["name"] for g in self.goals()]
         grid = []
         for i in range(4):
             row = []
             d = cur[i] if i < len(cur) else {}
             for c, key in enumerate(keys):
-                e = ttk.Entry(win, width=13 if c in (0, 5) else 10)
-                v = d.get(key, "")
-                e.insert(0, str(v) if v else "")
+                if key == "goal":
+                    e = ttk.Combobox(win, state="readonly", width=11,
+                                     values=goal_names)
+                    e.set(d.get("goal") or "")
+                else:
+                    e = ttk.Entry(win, width=13 if c in (0, 5) else 10)
+                    v = d.get(key, "")
+                    e.insert(0, str(v) if v else "")
                 e.grid(row=i + 1, column=c, padx=4, pady=2)
                 row.append(e)
             grid.append(row)
@@ -1071,7 +1083,8 @@ class App(tk.Tk):
         def save():
             out = []
             for row in grid:
-                vals = {k: row[c].get().strip() for c, k in enumerate(keys)}
+                vals = {k: (row[c].get() if k == "goal" else row[c].get().strip())
+                        for c, k in enumerate(keys)}
                 if not vals["name"]:
                     continue
                 try:
@@ -1087,7 +1100,8 @@ class App(tk.Tk):
                     return
                 out.append({"name": vals["name"], "start": vals["start"],
                             "date": vals["date"], "total_h": total,
-                            "target_h": target, "match": vals["match"]})
+                            "target_h": target, "match": vals["match"],
+                            "goal": vals["goal"] or None})
             self.settings["deadlines"] = out
             self.settings["dl_name"] = ""      # retire the legacy single form
             save_settings(self.settings)
@@ -1095,7 +1109,14 @@ class App(tk.Tk):
             win.destroy()
 
         ttk.Button(win, text="Save", command=save).grid(
-            row=5, column=5, sticky="e", padx=4, pady=8)
+            row=5, column=6, sticky="e", padx=4, pady=8)
+
+    def _goal_why(self, name):
+        """The one-line 'why' text for a linked goal, or ''."""
+        for g in self.goals():
+            if g["name"] == name:
+                return g.get("why") or ""
+        return ""
 
     # ----- goals (the why layer above deadlines) -----
 
@@ -3352,6 +3373,9 @@ class App(tk.Tk):
                       f" · needs {p['needed_per_day']:.1f}h/day")
         elif float(dl.get("target_h") or 0):
             title += f" · target {dl['target_h']:g}h/wk"
+        why = self._goal_why(dl.get("goal"))
+        if why:
+            title += f" — {why}"
         win = tk.Toplevel(self)
         win.title(title)
         W, H, PAD = 560, 320, 40
@@ -3669,6 +3693,9 @@ class App(tk.Tk):
                             f" · needs {p['needed_per_day']:.1f}h/day now")
                 else:
                     seg += f": {p['done_h']:.1f}h done"
+                why = self._goal_why(dl.get("goal"))
+                if why:
+                    seg += f"  ({why})"
                 lines.append(seg)
             lines += [" " + s for s in self._capacity_lines()]
 

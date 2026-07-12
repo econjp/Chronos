@@ -217,9 +217,14 @@ v6.6):
    ever called `_dl_progress`). Side effect worth knowing: deadlines'
    `match` field now accepts **comma-separated multi-keyword** matching,
    same as Goals/SIGNAL — was previously a single substring only.
-   Still open: **link the faces** — a deadline pointing at a goal
-   (dropdown of goal names); SIGNAL already seeds from goals; review
-   block could show goal-vs-ambition arrows. One system, three faces.
+   ~~Link the faces~~ — DONE v6.7: deadlines carry an optional `goal`
+   field (dropdown of goal names in the Deadline dialog, `_goal_why`
+   resolves it); the linked goal's one-line "why" now shows next to the
+   deadline in the dashboard's DEADLINES section and in the burn-down
+   window title — seeing WHY next to WHEN. SIGNAL already seeded from
+   goals (v6.2). Still open: task-library items only link to a goal, not
+   a deadline (see 2c below); no reverse view yet ("which deadlines/
+   tasks point at this goal" from the Goals dialog itself).
 2b. **Themed writing v2** (v1 done in v6.4): progression view could diff
    or highlight changed stance between entries on the same topic ("your
    thinking on X shifted here"); consider a lightweight `#tag` alternative
