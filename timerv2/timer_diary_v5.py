@@ -60,6 +60,14 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v7.8 (on this day):
+  - the morning header now checks for a day file exactly one year ago
+    (same month/day; Feb 29 falls back to -365 days) and, if one exists,
+    prints "on this day, 2025: 3h12m work — <first diary line>" — the
+    "keeps the data forever" idea paid back as a quiet delight instead
+    of a feature you have to go open a window for. Read-only, never
+    touches last year's file.
+
 New in v7.7 (per-task clock, so switching doesn't look like it lied):
   - the big clock has always shown SESSION-cumulative time (matches the
     old app's "studying duration" — only Reset clears it, a task Switch
@@ -2449,6 +2457,9 @@ class App(tk.Tk):
             v = self._verdict(yw, ysig, ywork)
             if v:
                 parts.append(v)
+        otd = self._on_this_day_line()
+        if otd:
+            parts.append(otd)
         plan = self._plan_line()
         if plan:
             parts.append(plan)
@@ -2466,6 +2477,43 @@ class App(tk.Tk):
         except OSError:
             pass
         return "\n".join(parts)
+
+    def _on_this_day_line(self):
+        """One year ago today, if a day file exists — the "keeps the
+        data forever" vision paid back as a small, zero-effort delight
+        rather than a feature you have to open a window for. Read-only:
+        never touches last year's file."""
+        try:
+            last_year = self.today.replace(year=self.today.year - 1)
+        except ValueError:
+            last_year = self.today - dt.timedelta(days=365)  # Feb 29
+        path = self.diary_path(last_year)
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            return None
+        skip_res = [p for p, _ in self._LINE_TAG_RULES]
+        snippet = None
+        for ln in text.splitlines():
+            s = ln.strip()
+            if len(s) < 4 or any(p.search(s) for p in skip_res):
+                continue
+            snippet = s
+            break
+        w, _ = day_totals(last_year.isoformat())
+        if not w and not snippet:
+            return None
+        line = f"on this day, {last_year.year}: "
+        if w:
+            line += f"{w // 60}h{w % 60:02}m work"
+            if snippet:
+                line += " — "
+        if snippet:
+            line += snippet[:140] + ("…" if len(snippet) > 140 else "")
+        return line
 
     def _plan_line(self):
         """Today's mission: needed h/day per scoped deadline vs today's

@@ -314,6 +314,19 @@ the three-bucket model is already correct and more honest than a blend.
   by a direct complaint ("messy to read... ass to scroll") — the fix
   respects design rule #1 (day file is the app) by changing nothing
   about the file, only how Tk renders it.
+- **v7.7**: per-task clock. The big clock is session-cumulative on
+  purpose (matches the old app's "studying duration," only Reset clears
+  it) but visually read as "the timer kept going" across a Switch. New
+  small readout — "this task: 3:12" — shows current-interval elapsed
+  time only, resets to 0:00 on Switch/Start. Confirmed the csv/day-file
+  attribution was already correct per task; this was a display gap, not
+  a logging bug.
+- **v7.8** (on this day): morning header checks for a day file exactly
+  one year ago (same month/day; Feb 29 falls back to -365 days) and
+  prints a one-line callback — hours worked + the first free-typed line
+  — if one exists. Read-only, zero setup, pays back the "keeps the data
+  forever" idea directly in the file the user already reads every
+  morning rather than as a separate view to remember to open.
 
 ## BACKLOG (priority order — continue here)
 
@@ -537,6 +550,73 @@ the three-bucket model is already correct and more honest than a blend.
     surface and should be cut back to something that just states a
     recommendation in the day file and moves on — same pattern as the
     morning verdict, which works precisely because it's not interactive.
+
+12. ~~On this day~~ — DONE v7.8 (see version history above). Small, but
+    the first feature to look BACKWARD across the whole archive rather
+    than at the current week — worth naming as its own category because
+    the next three ideas extend it.
+
+13. **Deadline finish-date projection (velocity-based forecast).**
+    Currently `_dl_progress`/`_capacity_lines`/burn-down all answer "what
+    pace do you NEED" — none answer "at your ACTUAL recent pace, when do
+    you actually land." `_task_velocity` (v6/v7.0) already computes real
+    h/day on a matched task; extend it (or a sibling) to project forward:
+    take the trailing-N-day real average (not the whole history — recent
+    behavior predicts near-term better than a stale average) and a
+    trailing "active-day rate" (fraction of days with any tracked time on
+    it, since "2h/active-day, active 40% of the time" ≠ "2h/day"), then
+    solve for the date the remaining hours clear at that combined rate.
+    Surface as one line, probably in `_plan_line` or a burn-down window
+    addition: "at your current pace (2.3h on active days, active 55% of
+    the time) you land around Jul 28 — 5 days past the Jul 23 deadline."
+    Deliberately more honest than the existing "Xh/day needed" framing,
+    which silently assumes perfect future compliance — this instead
+    extrapolates from what actually happened, matching the project's
+    established taste for blunt math over soft encouragement (the
+    overbooked-capacity line, the morning verdict, all already work this
+    way). Pair naturally with a one-line sensitivity add-on ("+1h/day
+    from tomorrow would land you 4 days earlier") since the same
+    projection function gives you that for free by re-solving at a
+    higher rate — cheap, and turns a diagnosis into a lever. Purely a
+    VIEW over `_task_velocity` + `_dl_progress`'s existing numbers, no
+    new data source; needs n≥5ish real intervals on a task before it
+    speaks, same honesty gate as insights v3.
+
+14. **"Ask your diary" — smart multi-day search, still copy-paste not
+    API.** Search-all-days (existing) is a literal substring match.
+    The gap: with a year+ of day files accumulating, "when did I last
+    mention the EU thing" or "what did I decide about X" needs more than
+    exact-string recall. Given the no-dependencies rule rules out real
+    embeddings/vector search, the honest stdlib-only version is a BETTER
+    keyword search, not fake semantic search: split the query into terms,
+    OR-match across them, rank hits by term-overlap count and recency,
+    and — this is the actual new idea — extend "Copy for AI review" (v5.1,
+    already ships week/day text + totals to the clipboard for pasting
+    into an AI chat) into "Copy matching days for AI review": run the
+    ranked search, paste the top N matching day-file excerpts (not the
+    whole file) onto the clipboard with dates as headers, ready to paste
+    into Claude/whatever with the user's own question on top. Keeps the
+    existing manual-copy-paste pattern (no API key, no credential
+    question like item 10's weekly-report idea) while making the archive
+    actually queryable instead of just greppable. Medium effort — mostly
+    a ranking function plus a clipboard-format function, both new but
+    small; reuses `diary_path`/day iteration already used by Search all
+    days and the JSON export.
+
+15. **Year in review.** Every existing view (dashboard, weekly, monthly,
+    8-week trend, heatmap) tops out at roughly a season. Once a
+    reasonable amount of history exists (first natural trigger: the
+    thesis defense, or just New Year), a single long-horizon summary —
+    total hours by goal across the whole year, signal% trend, the
+    deadline wins and misses, sleep/workout consistency, the single
+    longest streak and the single worst week — read once and put away,
+    not a working view. Lowest urgency of the four new ideas here (needs
+    real time to accumulate to be worth anything, and the payoff is a
+    once-a-year moment rather than daily utility) but worth having
+    designed before the point where it'd actually matter arrives. Would
+    reuse `day_index()` + the same lens primitives as everything else;
+    the only new part is the wider date range and a text layout suited
+    to a once-a-year read rather than a daily glance.
 
 ## How to verify changes without Windows
 
