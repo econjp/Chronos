@@ -141,6 +141,35 @@ every place that asks "what does the app know about day D" calls
   after a full re-review + regression pass and a from-scratch re-author
   as the user with no AI trailers — see CLAUDE.md incident log, not
   duplicated here since it's private/operational, not architecture.
+- **v6.5**: **the task library** — Goals/Tasks/TODO/SOMEDAY were four
+  overlapping half-systems (user's own diagnosis: "so scattered"). Unified
+  around the existing `settings["tasks"]` backlog rather than inventing a
+  fifth: every item now carries `priority` (signal/normal/someday, click
+  to cycle in the Tasks window — `_PRI_NEXT`), an optional linked `goal`,
+  and a `source` (which day or theme it came from). `TODO:`/`SOMEDAY:`
+  bullets anywhere — main diary or a themed-writing session — auto-capture
+  into the library via `_extract_bullets`/`_add_task` (deduped by
+  normalized name), immediately on a themed-writing save and at day
+  rollover for the main diary; the bullet text stays visible in the day
+  file too, the library is a tracked *copy*, never the only place it
+  lives. Status bar quietly flags `⚠ not today's signal` when the active
+  task doesn't match SIGNAL — informational, deliberately not the
+  drift-prompt/priority-gate that's still on hold (see below). Also this
+  release: per-monitor DPI awareness set at startup (root cause of
+  dashboard widgets overlapping on the user's mixed-DPI laptop+monitor
+  setup — Tk was never told the process is DPI-aware); dashboard given
+  explicit geometry + a scrollbar as defense in depth; workout-dot on the
+  sleep graph now needs ≥10 min (was flagging Apple Watch's auto-detected
+  "Other" activity blips as young as 5 min as a full workout).
+- Outlook `.ics` export researched 2026-07-13: **new Outlook and the
+  classic Import/Export wizard no longer offer iCalendar export at all**
+  (CSV or PST only — matches what the user found). The working path is
+  Outlook on the web → Settings → Calendar → Shared calendars → **Publish
+  a calendar**, detail level "Availability only" (no titles/attendees —
+  matches the user's privacy instinct and is all `parse_ics_busy` reads
+  anyway), which gives an `.ics` URL to periodically re-download. May be
+  disabled by org policy on managed accounts. No code change from this —
+  advisory only, logged here so it isn't re-researched from scratch.
 
 ## BACKLOG (priority order — continue here)
 
@@ -157,7 +186,20 @@ every place that asks "what does the app know about day D" calls
    thinking on X shifted here"); consider a lightweight `#tag` alternative
    for one-line mentions that don't deserve a whole popup session (the
    user floated this as option A before picking C — still cheap to add
-   alongside, not a replacement).
+   alongside, not a replacement). User asked whether the writing popup
+   should show old entries inline while continuing a topic — declined for
+   now, Browse Themes open in a second window already covers it; revisit
+   only if that workflow proves annoying in practice.
+2c. **Task library v2** (v1 done in v6.5): the library still only links
+   to ONE goal per item and has no due-date/deadline link — could point a
+   task at a deadline the same way it points at a goal. Priority is a
+   flat 3-state cycle; if the user wants more granularity later (e.g. a
+   4th state, or per-goal color) extend `_PRI_ICON`/`_PRI_NEXT`, don't
+   add a parallel priority concept. Auto-capture only fires on themed-
+   writing save and day rollover — a TODO: bullet typed straight into the
+   main diary and never revisited won't be captured until the day rolls
+   over; acceptable (matches how carry-over already worked) but worth
+   knowing if the user asks "why isn't X in the library yet".
 3b. **Screen-time / doomscroll source**: the 19–21 window is documented;
    import phone screen-time (csv drop like health) → new day-record key →
    insight "scroll vs next-day energy".

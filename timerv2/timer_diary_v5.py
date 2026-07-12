@@ -60,6 +60,20 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v6.5 (the task library):
+  - TASK LIBRARY: Goals/Tasks/TODO/SOMEDAY unified around the existing
+    Tasks window. Every item now has a priority you click to cycle
+    (signal/normal/someday), an optional linked goal, and a source (which
+    day or theme it came from). TODO:/SOMEDAY: bullets anywhere — main
+    diary or a themed-writing session — auto-capture into the library;
+    the bullet text still lives in the day file too, this just tracks it.
+  - status bar quietly flags "not today's signal" when the active task
+    doesn't match SIGNAL — visibility, not a blocking gate.
+  - per-monitor DPI awareness set at startup — fixes dashboard widgets
+    overlapping on a mixed-DPI laptop+monitor setup.
+  - workout dot on the sleep graph now needs >=10 min (was flagging tiny
+    Apple Watch "Other" activity blips as a workout).
+
 New in v6.4 (themed writing + honest insights):
   - THEMED WRITING (Ctrl+T / View > Browse themes): a distraction-free
     popup for anything that isn't work — career thinking, a house move,
@@ -1428,6 +1442,9 @@ class App(tk.Tk):
                 v = self._task_velocity(self.active_task)
                 if v:
                     note += f" · pace {v[0] / 60:.2f}h/active-day ({v[1]}d of last 14)"
+                kws = self._signal_kws()
+                if kws and not self._is_signal(self.active_task, kws):
+                    note += " · ⚠ not today's signal"
             self.status.config(text=f"Working — {self.active_task or '(no task)'}{note}")
         elif self.settings.get("float_break", True):
             self.status.config(text="On break — the floating clock counts it; "
@@ -1934,6 +1951,8 @@ class App(tk.Tk):
 
     TL_WORK, TL_BREAK, TL_SIGNAL = "#4a6fa5", "#e0a44c", "#3a8a3a"
     TL_SLEEP = "#454569"
+    WORKOUT_DOT_MIN = 10   # minutes — filters Apple Watch's auto-detected
+                            # "Other" activity blips from a real workout
 
     def _sleep_band(self):
         """Sleep band for today's 00-24 bar: (start_min, end_min, exact)
@@ -2112,6 +2131,11 @@ class App(tk.Tk):
         todos = self._carry_todos(yday)
         if todos:
             parts += ["", "TODO (carried from yesterday):"] + todos
+        try:
+            with open(self.diary_path(yday), encoding="utf-8") as f:
+                self._auto_capture_bullets(f.read(), f"{yday} diary")
+        except OSError:
+            pass
         return "\n".join(parts)
 
     def _plan_line(self):
@@ -2225,6 +2249,56 @@ class App(tk.Tk):
             if low in ("todo:", "todo") and not low.startswith("todo (carried"):
                 grab = True
         return out[:12]
+
+    # ----- task library (the one place messy ideas/todos live) -----
+
+    def _extract_bullets(self, text):
+        """[(kind, item_text), ...] for every bullet under a 'TODO:' or
+        'SOMEDAY:' header anywhere in `text`. kind is 'normal' or
+        'someday' — the same bullet syntax, just a different header, so
+        no new parsing rule to learn."""
+        out, grab = [], None
+        for ln in text.splitlines():
+            s = ln.strip()
+            low = s.lower()
+            if grab:
+                m = self._BULLET_RE.match(s)
+                if m:
+                    out.append((grab, s[m.end() - 1:].strip()))
+                    continue
+                if s == "":
+                    continue
+                grab = None
+            if low in ("todo:", "todo") and not low.startswith("todo (carried"):
+                grab = "normal"
+            elif low in ("someday:", "someday"):
+                grab = "someday"
+        return out
+
+    def _add_task(self, name, est_h=0, priority="normal", goal=None, source=None):
+        """Add to the library, deduped by normalized name — the same
+        bullet carried unchanged for a few days doesn't create
+        duplicates every time it's re-scanned."""
+        name = name.strip()
+        if not name:
+            return
+        key = " ".join(name.lower().split())
+        tasks = self.settings.setdefault("tasks", [])
+        if any(" ".join(t["name"].lower().split()) == key for t in tasks):
+            return
+        tasks.append({"name": name, "est_h": est_h, "priority": priority,
+                      "goal": goal, "source": source,
+                      "added": self.today.isoformat()})
+        save_settings(self.settings)
+
+    def _auto_capture_bullets(self, text, source):
+        """Every TODO:/SOMEDAY: bullet in `text` lands in the task
+        library automatically — write one anywhere (main diary, a
+        themed-writing session) and it's tracked, not just carried
+        forward as raw text until you happen to reread it."""
+        for kind, item in self._extract_bullets(text):
+            self._add_task(item, priority=("someday" if kind == "someday"
+                                           else "normal"), source=source)
 
     def _carry_signal(self):
         """Yesterday's SIGNAL line text (original case), or ''."""
@@ -2348,6 +2422,7 @@ class App(tk.Tk):
                 mins = max(1, round((dt.datetime.now() - start).total_seconds() / 60))
                 self._append_text(f"=== THEME: {name} — {start:%H:%M} "
                                   f"({mins}m) ===\n{body}\n=== END THEME ===")
+                self._auto_capture_bullets(body, f"theme: {name}")
                 self.status.config(text=f"Saved {mins}m of themed writing — {name}")
             p.destroy()
 
@@ -2943,16 +3018,30 @@ class App(tk.Tk):
 
     # ----- task backlog -----
 
+    _PRI_ICON = {"signal": "●", "normal": "○", "someday": "‥"}
+    _PRI_NEXT = {"normal": "signal", "signal": "someday", "someday": "normal"}
+
     def _tasks_win(self):
+        """The library: everything that would otherwise live in a
+        WhatsApp-to-self thread — todos, someday ideas, real backlog
+        with estimates — in one scrollable, click-to-prioritize list.
+        TODO:/SOMEDAY: bullets from the diary or a themed session land
+        here on their own; this window is where you triage them."""
         win = tk.Toplevel(self)
-        win.title("Tasks — estimate, start, finish")
-        win.geometry("520x360")
-        cols = ("task", "est", "actual")
+        win.title("Tasks / Library")
+        win.geometry("780x420")
+        cols = ("pri", "task", "est", "actual", "goal", "source")
+        heads = {"pri": "!", "task": "task", "est": "est", "actual": "actual",
+                 "goal": "goal", "source": "from"}
+        widths = {"pri": 26, "task": 260, "est": 55, "actual": 70,
+                  "goal": 110, "source": 160}
         tree = ttk.Treeview(win, columns=cols, show="headings")
-        for c, wdt in zip(cols, (280, 70, 90)):
-            tree.heading(c, text=c)
-            tree.column(c, width=wdt, anchor="w")
+        for c in cols:
+            tree.heading(c, text=heads[c])
+            tree.column(c, width=widths[c], anchor="w")
         tree.pack(fill="both", expand=True, padx=8, pady=(8, 4))
+        tree.tag_configure("signal", foreground="#2e8b2e")
+        tree.tag_configure("someday", foreground="#999999")
 
         def task_actual_h(name, added):
             t, tot = name.strip().lower(), 0
@@ -2968,31 +3057,49 @@ class App(tk.Tk):
         def refresh():
             tree.delete(*tree.get_children())
             for i, t in enumerate(self.settings.get("tasks", [])):
+                pri = t.get("priority", "normal")
                 est = t.get("est_h")
-                tree.insert("", "end", iid=str(i), values=(
-                    t["name"], f"{est:g}h" if est else "—",
-                    f"{task_actual_h(t['name'], t['added']):.2f}h"))
+                tree.insert("", "end", iid=str(i), tags=(pri,), values=(
+                    self._PRI_ICON.get(pri, "○"), t["name"],
+                    f"{est:g}h" if est else "—",
+                    f"{task_actual_h(t['name'], t['added']):.2f}h",
+                    t.get("goal") or "—", t.get("source") or "—"))
+
+        def picked():
+            sel = tree.selection()
+            return int(sel[0]) if sel else None
+
+        def toggle_priority(event):
+            row, col = tree.identify_row(event.y), tree.identify_column(event.x)
+            if not row or col != "#1":
+                return
+            i = int(row)
+            cur = self.settings["tasks"][i].get("priority", "normal")
+            self.settings["tasks"][i]["priority"] = self._PRI_NEXT[cur]
+            save_settings(self.settings)
+            refresh()
+
+        tree.bind("<Button-1>", toggle_priority)
 
         bar = ttk.Frame(win)
-        bar.pack(fill="x", padx=8, pady=(0, 8))
+        bar.pack(fill="x", padx=8, pady=(0, 4))
         entry = ttk.Entry(bar)
         entry.pack(side="left", fill="x", expand=True)
+        goal_var = tk.StringVar()
+        goal_box = ttk.Combobox(bar, textvariable=goal_var, state="readonly",
+                                width=14,
+                                values=[""] + [g["name"] for g in self.goals()])
+        goal_box.pack(side="left", padx=(4, 0))
 
         def add(event=None):
             raw = entry.get().strip()
             if not raw:
                 return
             name, box = self._parse_box(raw)
-            self.settings.setdefault("tasks", []).append(
-                {"name": name, "est_h": (box / 3600 if box else 0),
-                 "added": self.today.isoformat()})
-            save_settings(self.settings)
+            self._add_task(name, est_h=(box / 3600 if box else 0),
+                           goal=goal_var.get() or None, source="added manually")
             entry.delete(0, "end")
             refresh()
-
-        def picked():
-            sel = tree.selection()
-            return int(sel[0]) if sel else None
 
         def start():
             i = picked()
@@ -3027,14 +3134,14 @@ class App(tk.Tk):
         for label, cmd in (("Add", add), ("Start ▶", start),
                            ("Done ✓", done), ("Delete", delete)):
             ttk.Button(bar, text=label, command=cmd).pack(side="left", padx=(4, 0))
-        hint = 'Add as "write intro [2h]" — the [2h] becomes the estimate.'
+        hint = ("Click ! to cycle priority (● signal / ○ normal / ‥ someday). "
+               'Add as "write intro [2h]" for an estimate. TODO:/SOMEDAY: '
+               "bullets anywhere (diary, themed writing) land here on their own.")
         ef = self._estimate_factor()
         if ef:
-            f = ef[0]
-            hint += (f"  Your history: actuals run ×{f:.1f} your estimates"
-                     f" — [2h] realistically means {2 * f:.1f}h.")
+            hint += f"  Your history: actuals run ×{ef[0]:.1f} your estimates."
         ttk.Label(win, text=hint, foreground="#777777",
-                  wraplength=500).pack(anchor="w", padx=8, pady=(0, 6))
+                  wraplength=760).pack(anchor="w", padx=8, pady=(0, 6))
         refresh()
 
     def _estimate_factor(self):
@@ -3278,15 +3385,22 @@ class App(tk.Tk):
         self._save_diary()
         win = tk.Toplevel(self)
         win.title("Life dashboard")
+        win.geometry("700x820")
+        win.minsize(680, 500)
         cv = tk.Canvas(win, width=660, height=150, background="white",
                        highlightthickness=0)
         cv.pack(padx=8, pady=(8, 4))
         sleep_cv = tk.Canvas(win, width=660, height=80, background="white",
                              highlightthickness=0)
         sleep_cv.pack(padx=8, pady=(0, 4))
-        txt = tk.Text(win, wrap="word", font=("Consolas", 10),
-                      width=88, height=26)
-        txt.pack(fill="both", expand=True, padx=8, pady=(0, 4))
+        txt_frame = ttk.Frame(win)
+        txt_frame.pack(fill="both", expand=True, padx=8, pady=(0, 4))
+        txt_scroll = ttk.Scrollbar(txt_frame, orient="vertical")
+        txt = tk.Text(txt_frame, wrap="word", font=("Consolas", 10),
+                      width=88, height=18, yscrollcommand=txt_scroll.set)
+        txt_scroll.config(command=txt.yview)
+        txt_scroll.pack(side="right", fill="y")
+        txt.pack(side="left", fill="both", expand=True)
         txt.tag_configure("h", font=("Consolas", 10, "bold"))
         txt.tag_configure("warn", foreground="#c03030")
         bar = ttk.Frame(win)
@@ -3664,7 +3778,7 @@ class App(tk.Tk):
                 cv.create_rectangle(x0, y(sl), x1, H - 16,
                                     fill=self.TL_SLEEP if sl >= 7 else "#c98a3a",
                                     outline="")
-            if wk:
+            if wk and wk >= self.WORKOUT_DOT_MIN:
                 cv.create_oval((x0 + x1) / 2 - 3, 4, (x0 + x1) / 2 + 3, 10,
                                fill="#3a8a3a", outline="")
             if d == self.today:
@@ -3899,6 +4013,16 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
+    # per-monitor DPI awareness — without this, Tk mis-scales/overlaps
+    # widgets on a laptop+external-monitor setup with different scaling
+    # (must run before any Tk() is created)
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)   # per-monitor v2
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()     # system-DPI fallback
+        except Exception:
+            pass
     if already_running():
         root = tk.Tk()
         root.withdraw()

@@ -4,6 +4,27 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Task library (v6.5) — View → Tasks / Library
+
+The one place for messy ideas and todos — everything that used to live in a
+WhatsApp-to-self thread. Write `TODO:` / `-` bullets anywhere (the main
+diary, a themed-writing session) and they land here automatically, no extra
+step — the text stays visible in the day file too, this is a tracked copy,
+not a replacement. Low-priority `SOMEDAY:` bullets land here too, tagged
+accordingly, and are never nagged into tomorrow's carry-over.
+
+Each item has a **priority you click to cycle** — `●` signal (green) /
+`○` normal / `‥` someday (grey) — so the backlog itself tells you what's
+actually important, not just what's next. Optionally link an item to a
+**goal** (the dropdown next to Add), and every auto-captured item carries
+its **source** (which theme, which day) so you can trace it back. Start ▶
+drops it straight into the timer; Done ✓ writes est-vs-actual into the day
+file, same as before.
+
+While working, if today's `SIGNAL:` line is set and the active task
+doesn't match it, the status bar quietly says so — `⚠ not today's signal`
+— visibility, not a blocking gate.
+
 ### Themed writing (v6.4) — `Ctrl+T`
 
 For everything that isn't work: career thinking, a house move, a business
