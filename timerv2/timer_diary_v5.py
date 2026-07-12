@@ -60,6 +60,19 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v7.1 (fix + first recommendation-engine piece):
+  - fix: Life dashboard tabs were empty (real bug — the tab-content
+    frames were created as children of the window instead of the
+    Notebook, so nb.add() couldn't actually attach them).
+  - Week plan / capacity, when overbooked across multiple deadlines,
+    now states a PRIORITY ORDER — most-urgent-first allocation of the
+    shared capacity pool — instead of just an aggregate "overbooked by
+    Xh": which deadline is fully funded, which takes the cut, by how
+    much. Plain arithmetic over numbers already computed elsewhere, the
+    first piece of the planning/recommendation direction (see
+    HANDOFF.md's backlog for the fuller design — a suggested-focus-list
+    view and a true time-blocked schedule are the next two steps).
+
 New in v7.0 (the day file becomes provably the source of truth):
   - REBUILD sessions.csv FROM DAY FILES (Tools menu): parse_day_file_to_
     rows() is the exact inverse of event_line() — given a day file's own
@@ -3172,8 +3185,15 @@ class App(tk.Tk):
         return total
 
     def _capacity_lines(self):
-        """The honest verdict: available hours vs deadline demand."""
-        lines, reqs, far = [], [], None
+        """The honest verdict: available hours vs deadline demand. When
+        overbooked, also states a priority order — most-urgent-first
+        allocation of the same shared pool the aggregate check already
+        uses — so "cut scope" becomes "cut THIS, by THIS much" instead of
+        a number with no owner. Plain arithmetic over numbers already
+        computed elsewhere (_dl_progress, _avail_hours), not a new
+        scheduling model — see HANDOFF.md's planning-engine backlog entry
+        for why a real per-window allocation is a bigger, separate task."""
+        lines, items, far = [], [], None
         busy = self._busy_data()
         if busy:
             nxt14 = sum(h for iso, h in busy.items()
@@ -3203,20 +3223,37 @@ class App(tk.Tk):
             lines.append(f" {mark} {dl['name']} — due {p['due']:%d.%m} "
                          f"({p['left']}d): needs {req:.1f}h, "
                          f"{avail:.1f}h available → slack {slack:+.1f}h")
-            reqs.append(req)
+            items.append((dl["name"], p["left"], req))
             far = max(far or p["due"], p["due"])
-        if len(reqs) > 1 and far:
+        if len(items) > 1 and far:
             avail = self._avail_hours(far)
-            slack = avail - sum(reqs)
+            total_req = sum(x[2] for x in items)
+            slack = avail - total_req
             lines.append("")
             if slack >= 0:
-                lines.append(f" ALL deadlines together: {sum(reqs):.1f}h needed, "
+                lines.append(f" ALL deadlines together: {total_req:.1f}h needed, "
                              f"{avail:.1f}h available → {slack:.1f}h of real slack."
                              " The friend on Tuesday is fine.")
             else:
-                lines.append(f" ⚠ ALL deadlines together: {sum(reqs):.1f}h needed "
+                lines.append(f" ⚠ ALL deadlines together: {total_req:.1f}h needed "
                              f"but only {avail:.1f}h available → overbooked by "
                              f"{-slack:.1f}h. Cut scope or say no to something.")
+                lines.append(" priority order (most urgent first — cut from")
+                lines.append(" the bottom, not the top):")
+                remaining = avail
+                for name, left, req in sorted(items, key=lambda x: x[1]):
+                    if remaining >= req:
+                        lines.append(f"   ✓ {name} ({left}d left) — fully "
+                                     f"funded, {req:.1f}h")
+                        remaining -= req
+                    elif remaining > 0:
+                        lines.append(f"   ⚠ {name} ({left}d left) — only "
+                                     f"{remaining:.1f}h of {req:.1f}h fits, "
+                                     f"short {req - remaining:.1f}h")
+                        remaining = 0
+                    else:
+                        lines.append(f"   ✗ {name} ({left}d left) — 0h fits; "
+                                     f"the full {req:.1f}h is the cut")
         return lines
 
     def _capacity_win(self):

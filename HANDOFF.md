@@ -287,16 +287,17 @@ v6.6):
    should show old entries inline while continuing a topic — declined for
    now, Browse Themes open in a second window already covers it; revisit
    only if that workflow proves annoying in practice.
-2c. **Task library v2** (v1 done in v6.5): the library still only links
-   to ONE goal per item and has no due-date/deadline link — could point a
-   task at a deadline the same way it points at a goal. Priority is a
-   flat 3-state cycle; if the user wants more granularity later (e.g. a
-   4th state, or per-goal color) extend `_PRI_ICON`/`_PRI_NEXT`, don't
-   add a parallel priority concept. Auto-capture only fires on themed-
-   writing save and day rollover — a TODO: bullet typed straight into the
-   main diary and never revisited won't be captured until the day rolls
-   over; acceptable (matches how carry-over already worked) but worth
-   knowing if the user asks "why isn't X in the library yet".
+2c. **Task library v2** (v1 done in v6.5, deadline-link done in v7.0 —
+   right-click a row to set/change goal or deadline). Still open:
+   priority is a flat 3-state cycle; if the user wants more granularity
+   later (a 4th state, or per-goal color) extend `_PRI_ICON`/`_PRI_NEXT`,
+   don't add a parallel priority concept. Auto-capture now also fires on
+   the live 10s autosave (v6.8), so same-day main-diary TODOs land
+   within seconds — the "won't be captured until rollover" limitation
+   noted here originally no longer applies, only themed-writing-save and
+   rollover triggers remain relevant to keep in mind for edge cases
+   (e.g. a TODO written and the app closed within 10s, before an
+   autosave tick fires).
 3b. **Screen-time / doomscroll source**: the 19–21 window is documented;
    import phone screen-time (csv drop like health) → new day-record key →
    insight "scroll vs next-day energy".
@@ -349,7 +350,124 @@ v6.6):
      need harder-line presentation rather than new math — likely the
      latter, since `_capacity_lines` already produces a "⚠ overbooked by
      Xh" verdict; the ask is about surfacing it in the day file's morning
-     plan line, not inventing the number.
+     plan line, not inventing the number. **Update 2026-07-13: partially
+     done as of the capacity-conflict-prioritization work below** — that
+     is plain math over already-computed numbers (not the Reopening-
+     Guard-style relitigating/FOMO gate the career chat was actually
+     warning against), so it shipped; re-check against the career chat's
+     framing before adding anything that asks the user to justify or
+     confirm a decision, which is the part that's still deliberately held.
+
+10. **Recovered from old version-history "still open" notes that never
+    got promoted to this list — a real gap the 2026-07-13 audit found,
+    not new ideas:**
+    - **Weekly report generator, AI-written.** Different from "Copy for
+      AI review" (manual copy-paste, exists since v5.x): this would call
+      an LLM API automatically (Friday, on rollover, or on demand) with
+      the week's consolidated data and write the response INTO the day
+      file as a real paragraph, not just prep the clipboard. Needs an
+      API key stored somewhere (`settings.json`? a separate untracked
+      file, given CLAUDE.md's OSINT sensitivity around what's committed)
+      and a stdlib-only HTTP call (`urllib.request`, no `requests` dep).
+      Real design question before building: does an API key belong in
+      settings.json at all, given that file is OneDrive-synced and
+      partially exported via the JSON life-record export? Probably needs
+      its own gitignored/unexported file. Ask the user before touching
+      this — it's the one item here with a real credential-handling
+      decision attached, not just code.
+    - **Real bed/wake times for the sleep band** (currently estimated —
+      `_sleep_band`, v5.4 — or manually overridden — `_set_sleep_override`,
+      v5.6). Health Auto Export (the paid app recommended to the user
+      back in the health-automation research) exports actual sleep-phase
+      start/end times, not just a daily total; the free FUNN Media app
+      currently in use only gives totals. No code change possible until
+      the user's actual data source changes — revisit if they switch
+      apps, don't build speculatively against a format that doesn't
+      reach this machine yet.
+    - **`.ics` recurring-event (RRULE) expansion.** `parse_ics_busy`
+      (v5.9) explicitly skips RRULE events — stated as a known limitation
+      at the time, never revisited. If the user's real calendar leans on
+      recurring meetings (a "very booked" calendar, per their own words,
+      plausibly does), capacity numbers are undercounting busy time.
+      RRULE expansion (even just weekly/daily, skip the gnarlier
+      monthly/yearly cases) is a real, scoped, stdlib-only task — the
+      `icalendar` PyPI package would make this trivial but violates the
+      no-dependencies rule, so it's a manual RRULE parser, which is
+      fiddlier than it sounds (UNTIL/COUNT bounds, BYDAY lists, timezone
+      handling). Medium effort, real payoff if the calendar sync (v5.9,
+      still advisory-only per the 2026-07-13 Outlook research) actually
+      gets set up.
+    - **Per-task-category estimate factor.** `_estimate_factor` (v5.8)
+      returns ONE global actual/estimate multiplier across every
+      finished task. Splitting by category (the `project:` prefix
+      convention already used elsewhere — Data doctor, category totals
+      in `_summary`) would be more honest: "thesis-type tasks run ×2.4,
+      admin-type tasks run ×1.1" is more useful than one blended number.
+      Needs enough Done-lines per category to be meaningful (n≥3, same
+      honesty gate as everywhere else) — likely not enough data yet;
+      revisit once the task library (v6.5+) has accumulated more Done
+      history.
+
+11. **Planning & recommendation engine — the user's 2026-07-13 ask,
+    "daily/weekly/monthly recommendations... calendaring... planning my
+    time and schedules."** This is a real, coherent NEW direction, not a
+    tweak to something existing, and deserves a full design pass before
+    a big build — logged here in detail so a future session doesn't
+    start from zero. Important framing up front: this repo is stdlib-only
+    (design rule #2), so "ML" in the literal sense (numpy/sklearn/a
+    trained model) is off the table — everything here has to be honest
+    rule-based heuristics, which is genuinely how most calendar apps'
+    "smart suggestions" work anyway, not a downgrade.
+
+    **What already exists that this would build on** (don't rebuild):
+    `_dl_progress` (needed-h/day per deadline), `_day_capacity`/
+    `_avail_hours` (net capacity per day, calendar-aware since v5.9),
+    `_capacity_lines` (slack/overbooked verdict across all deadlines),
+    `_plan_line` (today's needed-vs-available one-liner in the day
+    header), the task library's `priority`/`goal`/`deadline` fields
+    (v6.5, v7.0) and `est_h`. A real recommender is mostly a NEW VIEW
+    over data that's already computed, not a new data pipeline —
+    matches the concept model's own "sources/lenses/views" shape (see
+    above): this would be a view, arguably the most important one.
+
+    **The one real infrastructure gap**: `parse_ics_busy` (v5.9) returns
+    `{date_iso: total_busy_hours}` — a per-day SCALAR, not actual time
+    RANGES within the day. A genuinely gap-aware scheduler ("you're free
+    09-11 and 14-17") needs interval-level busy data, which means
+    extending `parse_ics_busy` (or a sibling function) to return
+    `{date_iso: [(start_time, end_time), ...]}` instead of a sum. This
+    is the prerequisite for the ambitious version below; the modest
+    version doesn't need it.
+
+    **Three scopes, cheapest first — pick one, don't build all three
+    at once:**
+    a) **Priority ordering when capacity is scarce** (buildable NOW, no
+       new infra) — when total needed-hours across active deadlines
+       exceeds net capacity, say explicitly which to prioritize and by
+       how much the others get cut, instead of just an aggregate ⚠. Pure
+       arithmetic over already-computed numbers.
+    b) **Suggested focus list** (buildable now, no new infra) — an
+       ordered list view: "1. Thesis — 5.4h needed (⚠ behind, 5d left) ·
+       2. TUTA — 0.7h needed · 3. (1.9h uncommitted — pick from Task
+       library)". A rule-based priority sort (days-left ascending,
+       behind-pace first), not a time-blocked calendar — doesn't need
+       interval-level busy data, just orders what already gets computed.
+    c) **True time-blocked schedule** ("09:00-11:30 Thesis, 11:30-12:00
+       email [boxed]...") — needs the `parse_ics_busy` interval upgrade
+       above to respect WHERE in the day meetings actually are, not just
+       how many hours they consume. Bigger lift; do (a) and (b) first
+       and see if they're enough before reaching for this.
+
+    **Guardrail, matching the career-chat prompt's caution (item 9
+    above) even though this is a different feature**: a recommendation
+    is a VIEW the user glances at and either follows or ignores — it
+    must never become a thing they configure, tune, or negotiate with
+    (no "accept/reject suggestion" UI, no learning-from-rejections
+    loop, no separate settings panel). If it starts accumulating its own
+    options and toggles, that's the signal it's turned into a grooming
+    surface and should be cut back to something that just states a
+    recommendation in the day file and moves on — same pattern as the
+    morning verdict, which works precisely because it's not interactive.
 
 ## How to verify changes without Windows
 
