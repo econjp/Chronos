@@ -3683,32 +3683,58 @@ class App(tk.Tk):
                "capacity_h": self._day_capacity(d)}
         return rec
 
-    def _dashboard(self, event=None):
-        """One window instead of nine: today, the week, every deadline and
-        the cross-domain insights, plus one consolidated AI export."""
-        self._save_diary()
-        win = tk.Toplevel(self)
-        win.title("Life dashboard")
-        win.geometry("700x820")
-        win.minsize(680, 500)
-        cv = tk.Canvas(win, width=660, height=150, background="white",
-                       highlightthickness=0)
-        cv.pack(padx=8, pady=(8, 4))
-        sleep_cv = tk.Canvas(win, width=660, height=80, background="white",
-                             highlightthickness=0)
-        sleep_cv.pack(padx=8, pady=(0, 4))
-        txt_frame = ttk.Frame(win)
-        txt_frame.pack(fill="both", expand=True, padx=8, pady=(0, 4))
-        txt_scroll = ttk.Scrollbar(txt_frame, orient="vertical")
-        txt = tk.Text(txt_frame, wrap="word", font=("Consolas", 10),
-                      width=88, height=18, yscrollcommand=txt_scroll.set)
-        txt_scroll.config(command=txt.yview)
-        txt_scroll.pack(side="right", fill="y")
+    @staticmethod
+    def _scrolled_text(parent):
+        """A Text+Scrollbar pair packed into `parent`, returns the Text."""
+        frame = ttk.Frame(parent)
+        frame.pack(fill="both", expand=True, padx=4, pady=4)
+        scroll = ttk.Scrollbar(frame, orient="vertical")
+        txt = tk.Text(frame, wrap="word", font=("Consolas", 10),
+                      width=84, height=18, yscrollcommand=scroll.set)
+        scroll.config(command=txt.yview)
+        scroll.pack(side="right", fill="y")
         txt.pack(side="left", fill="both", expand=True)
         txt.tag_configure("h", font=("Consolas", 10, "bold"))
         txt.tag_configure("warn", foreground="#c03030")
+        return txt
+
+    def _dashboard(self, event=None):
+        """The home screen: tabs over the same computed lines (Today &
+        Week / Deadlines & Goals / Insights), plus a hub row linking to
+        every detail view (weekly/monthly tables, the 8-week trend, the
+        health table, the heatmap) — a real front door, not a
+        replacement for the drill-downs that still hold unique detail."""
+        self._save_diary()
+        win = tk.Toplevel(self)
+        win.title("Life dashboard")
+        win.geometry("740x780")
+        win.minsize(680, 500)
+
+        top_tab = ttk.Frame(win)
+        cv = tk.Canvas(top_tab, width=660, height=150, background="white",
+                       highlightthickness=0)
+        cv.pack(padx=4, pady=(4, 2))
+        sleep_cv = tk.Canvas(top_tab, width=660, height=80, background="white",
+                             highlightthickness=0)
+        sleep_cv.pack(padx=4, pady=(0, 2))
+        txt_today = self._scrolled_text(top_tab)
+
+        goals_tab = ttk.Frame(win)
+        txt_goals = self._scrolled_text(goals_tab)
+
+        insights_tab = ttk.Frame(win)
+        txt_insights = self._scrolled_text(insights_tab)
+
+        nb = ttk.Notebook(win)
+        nb.pack(fill="both", expand=True, padx=8, pady=(8, 4))
+        nb.add(top_tab, text="Today & Week")
+        nb.add(goals_tab, text="Deadlines & Goals")
+        nb.add(insights_tab, text="Insights")
+
         bar = ttk.Frame(win)
-        bar.pack(fill="x", padx=8, pady=(0, 8))
+        bar.pack(fill="x", padx=8, pady=(0, 4))
+        hub = ttk.Frame(win)
+        hub.pack(fill="x", padx=8, pady=(0, 8))
         shown = [""]
 
         def render():
@@ -3719,13 +3745,30 @@ class App(tk.Tk):
             self._draw_sleep_bars(sleep_cv)
             lines = self._dashboard_lines(week)
             shown[0] = "\n".join(lines)
-            txt.config(state="normal")
-            txt.delete("1.0", "end")
+
+            sections, cur = {}, None
             for ln in lines:
-                tag = ("h" if ln and not ln.startswith(" ") else
-                       "warn" if "⚠" in ln else ())
-                txt.insert("end", ln + "\n", tag)
-            txt.config(state="disabled")
+                if ln and not ln.startswith(" "):
+                    cur = ln
+                    sections[cur] = []
+                elif cur is not None:
+                    sections[cur].append(ln)
+
+            def fill(txt, prefixes):
+                txt.config(state="normal")
+                txt.delete("1.0", "end")
+                for k, body in sections.items():
+                    if not any(k.startswith(p) for p in prefixes):
+                        continue
+                    txt.insert("end", k + "\n", "h")
+                    for ln in body:
+                        txt.insert("end", ln + "\n", "warn" if "⚠" in ln else ())
+                    txt.insert("end", "\n")
+                txt.config(state="disabled")
+
+            fill(txt_today, ("TODAY", "THIS WEEK", "LIFE BALANCE"))
+            fill(txt_goals, ("GOALS", "DEADLINES"))
+            fill(txt_insights, ("INSIGHTS",))
 
         def copy():
             self.clipboard_clear()
@@ -3736,6 +3779,16 @@ class App(tk.Tk):
 
         ttk.Button(bar, text="Copy for AI review", command=copy).pack(side="left")
         ttk.Button(bar, text="Refresh", command=render).pack(side="left", padx=6)
+
+        ttk.Label(hub, text="Detail views:", foreground="#777777").pack(side="left")
+        for label, cmd in (
+                ("Weekly", lambda: self._summary("week")),
+                ("Monthly", lambda: self._summary("month")),
+                ("Trend (8wk)", self._trend),
+                ("Health (14d)", self._health_view),
+                ("Heatmap", self._heatmap),
+                ("Burn-down", self._burndown)):
+            ttk.Button(hub, text=label, command=cmd).pack(side="left", padx=(4, 0))
         render()
 
     def _dashboard_lines(self, week):
