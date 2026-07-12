@@ -283,6 +283,37 @@ the three-bucket model is already correct and more honest than a blend.
   replaces existing) and day files (only ones missing locally, never
   overwrites current work) from a previous export — paired with the csv
   rebuild for a full, lossless recovery path.
+- **v7.1**: Week plan / capacity, when overbooked, states a priority
+  order (most-urgent-first allocation of the shared pool) instead of
+  just an aggregate ⚠ — first tier of the planning engine.
+- **v7.2**: the "not today's signal" status flag checks whether the
+  active task matches a GOAL even though it's off-signal — "not
+  today's signal, but counts toward: X" instead of a bare warning.
+- **v7.3**: the day timeline paints goal-aligned-but-not-signal work
+  (a run, when today's signal is thesis) in a third color — signal /
+  goal-aligned / plain-work are three buckets, not a binary (see the
+  "signal vs. maintenance" design note above). New day headers get a
+  "focus order today" block when 2+ scoped deadlines compete — second
+  tier of the planning engine.
+- **v7.4** (Insights v3): weekday pattern (needs every weekday
+  represented, n≥3, before it speaks), meeting-load vs deep-hours,
+  break-ratio drift — all reuse existing data, no new sources.
+- **v7.5**: focus order names the uncommitted hours — when slack
+  remains after deadlines are fed, points at signal-priority Task
+  library items instead of leaving leftover capacity unexplained.
+- **v7.6** (readable diary, pure view layer): syntax highlighting in
+  the diary Text widget — day headers bold, SIGNAL/ENERGY/TODO/WEEK
+  REVIEW headers bold green, themed-writing blocks purple, warnings
+  red, raw `Start;`/`Stop;`/`Reset;` bookkeeping lines small grey,
+  free-typed text untouched. Tools > "Hide raw timer lines" folds the
+  raw event lines out of view entirely via Tk's `elide` tag option
+  (zero rendered height, not just invisible) — verified the file on
+  disk stays byte-identical regardless of fold state, this is
+  presentation only. On the user's real file: 255 lines, 35% raw
+  events — folding shrinks the visible document by a third. Prompted
+  by a direct complaint ("messy to read... ass to scroll") — the fix
+  respects design rule #1 (day file is the app) by changing nothing
+  about the file, only how Tk renders it.
 
 ## BACKLOG (priority order — continue here)
 

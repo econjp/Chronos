@@ -60,6 +60,19 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v7.6 (readable diary — pure view layer, file untouched):
+  - syntax highlighting in the diary pane: day headers bold, SIGNAL/
+    ENERGY/TODO/WEEK REVIEW headers bold green, themed-writing blocks
+    purple, warnings red, raw Start;/Stop;/Reset; bookkeeping lines
+    small and grey, everything you actually typed left alone. Tags
+    style how Tk renders the text; the file on disk is byte-identical
+    either way — verified directly, not just claimed.
+  - Tools > "Hide raw timer lines" folds Start;/Stop;/Reset; lines out
+    of view entirely (Tk elide — zero height, not just invisible),
+    reversible any time. On the real file this was built against: 255
+    lines, 35% of them raw events — folding shrinks the visible
+    document by a third immediately. Setting persists across restarts.
+
 New in v7.5 (focus order names the leftover hours):
   - "focus order today" now adds a final line when there's slack after
     the deadlines are fed: "(5.5h uncommitted — pick from Task library:
@@ -1164,6 +1177,11 @@ class App(tk.Tk):
         self.float_var = tk.BooleanVar(value=self.settings.get("float_break", True))
         toolsm.add_checkbutton(label="Floating break timer",
                                variable=self.float_var, command=self._save_prefs)
+        self.hide_raw_var = tk.BooleanVar(
+            value=self.settings.get("hide_raw_lines", False))
+        toolsm.add_checkbutton(label="Hide raw timer lines in the diary",
+                               variable=self.hide_raw_var,
+                               command=self._toggle_raw_lines)
         toolsm.add_command(label="Meeting mode (idle off 90 min)",
                            command=self._meeting_mode)
         toolsm.add_separator()
@@ -1185,6 +1203,16 @@ class App(tk.Tk):
     def _save_prefs(self):
         self.settings["nudge"] = self.nudge_var.get()
         self.settings["float_break"] = self.float_var.get()
+        save_settings(self.settings)
+
+    def _toggle_raw_lines(self):
+        """Folds the Start;/Stop;/Reset; bookkeeping lines out of view —
+        elide hides them from Tk's rendering, the file on disk and the
+        widget's own buffer are untouched, so this is purely a reading
+        aid, reversible any time, never a risk to the sacred day file."""
+        hide = self.hide_raw_var.get()
+        self.diary.tag_configure("raw_event", elide=hide)
+        self.settings["hide_raw_lines"] = hide
         save_settings(self.settings)
 
     def deadlines(self):
@@ -1478,6 +1506,23 @@ class App(tk.Tk):
         self.diary = tk.Text(self.body, wrap="word", font=("Consolas", 10),
                              undo=True, relief="sunken", borderwidth=1)
         self.diary.pack(fill="both", expand=True, padx=8, pady=(2, 4))
+        # syntax highlighting is purely a VIEW layer — tags style how Tk
+        # renders the text, the underlying file is untouched, byte-
+        # identical either way. raw_event is also elide-able (Tools >
+        # Hide raw timer lines): a real fold, not a color trick, since
+        # those lines are pure machine bookkeeping no human needs to read.
+        self.diary.tag_configure("raw_event", foreground="#b5b5b5",
+                                 font=("Consolas", 8))
+        self.diary.tag_configure("struct", foreground="#7a7a8c")
+        self.diary.tag_configure("day_header", foreground="#1a4a7a",
+                                 font=("Consolas", 11, "bold"))
+        self.diary.tag_configure("meta_header", foreground="#2e6b2e",
+                                 font=("Consolas", 10, "bold"))
+        self.diary.tag_configure("theme_block", foreground="#8a5ba3")
+        self.diary.tag_configure("warn_line", foreground="#c0392b",
+                                 font=("Consolas", 10, "bold"))
+        self.diary.tag_configure("raw_event", elide=self.settings.get(
+            "hide_raw_lines", False))
 
         self.status = ttk.Label(self, text="", anchor="w")
         self.status.pack(fill="x", side="bottom", padx=8, pady=(0, 4))
@@ -1549,6 +1594,40 @@ class App(tk.Tk):
 
     # ----- text log helpers -----
 
+    # order matters: first match wins, so more specific patterns
+    # (theme block delimiters) must precede their generic parents
+    # (the day-header "===" rule)
+    _LINE_TAG_RULES = [
+        (re.compile(r"^(Start|Stop|Reset);"), "raw_event"),
+        (re.compile(r"^=== (THEME|END THEME)"), "theme_block"),
+        (re.compile(r"^==="), "day_header"),
+        (re.compile(r"^(SIGNAL:|ENERGY:|TODO|SOMEDAY:|WEEK REVIEW|"
+                    r"plan today:|focus order today)"), "meta_header"),
+        (re.compile(r"⚠|^!!!"), "warn_line"),
+        (re.compile(r"^---"), "struct"),
+    ]
+
+    def _tag_lines(self, start_line, end_line):
+        """Apply syntax-highlight tags to lines [start_line, end_line]
+        (1-indexed, inclusive) — a pure view layer, never touches the
+        buffer content or the file on disk."""
+        for lineno in range(start_line, end_line + 1):
+            ls, le = f"{lineno}.0", f"{lineno}.end"
+            content = self.diary.get(ls, le)
+            for pattern, tag in self._LINE_TAG_RULES:
+                if pattern.search(content):
+                    self.diary.tag_add(tag, ls, le)
+                    break
+
+    def _retag_diary(self):
+        """Full re-tag, for when the whole buffer changed at once (a
+        fresh load) rather than one appended block."""
+        for tag in ("raw_event", "struct", "day_header", "meta_header",
+                   "theme_block", "warn_line"):
+            self.diary.tag_remove(tag, "1.0", "end")
+        last_line = int(self.diary.index("end-1c").split(".")[0])
+        self._tag_lines(1, last_line)
+
     def _append_text(self, text, cursor_to_line_end=False):
         """Append at end of the day file text; optionally park the cursor at
         the end of the first appended line (so you can type a break note)."""
@@ -1556,7 +1635,10 @@ class App(tk.Tk):
         if cur and not cur.endswith("\n"):
             self.diary.insert("end", "\n")
         index_before = self.diary.index("end-1c")
+        start_line = int(index_before.split(".")[0])
         self.diary.insert("end", text + "\n")
+        end_line = int(self.diary.index("end-1c").split(".")[0])
+        self._tag_lines(start_line, end_line)
         if cursor_to_line_end:
             line = index_before.split(".")[0]
             self.diary.mark_set("insert", f"{line}.end")
@@ -2321,6 +2403,7 @@ class App(tk.Tk):
             self._save_diary()
         self.diary.mark_set("insert", "end")
         self.diary.edit_modified(False)
+        self._retag_diary()
         self._maybe_insert_health()
 
     def _new_day_header(self):
