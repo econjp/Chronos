@@ -2185,7 +2185,12 @@ class App(tk.Tk):
                         return s[7:].strip()
         except OSError:
             pass
-        return ""
+        # no signal yet? goals seed it — the why layer sets today's focus
+        kws = []
+        for g in self.goals():
+            kws += [k.strip() for k in g.get("match", "").split(",")
+                    if k.strip()]
+        return ", ".join(dict.fromkeys(kws))
 
     # ----- health import -----
 
