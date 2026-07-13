@@ -4,6 +4,19 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Where you left off (v8.9)
+
+Start (or switch to) any task you've worked before and the status bar
+hands you back **the last thing you wrote about it**:
+
+```
+Working — thesis: ch4 · last time (08.07): "stuck on regression table, try clustered SEs next"
+```
+
+The biggest hidden cost of resuming a task is re-finding the thread; now
+your own note from last time is waiting at the exact moment you need it.
+Read-only — it just reads the old day file, nothing is changed.
+
 ### Energy-aware scheduling (v8.8)
 
 The morning schedule got smart. Instead of dropping each deadline into the

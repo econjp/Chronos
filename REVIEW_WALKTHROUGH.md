@@ -23,10 +23,11 @@ scaffolding, not documentation.** HANDOFF.md stays the permanent brain.
 | 7 | 1cb04db | 8.7 | "What should I do now?" (learned deep-window recommender) | view | low |
 | 8 | 2f74cad | 8.8 | scheduler places hardest work into your learned peak hours | behavior change | med |
 | 9 | a3bf364 | — | `timerv2/selftest.py` (8 logic suites) + review kit + backlog | tooling/docs | none |
-| 10 | (this) | — | this walkthrough + backlog #24–27 | docs | none |
+| 10 | e3ab8b0 | — | this walkthrough + backlog #24–27 | docs | none |
+| 11 | (tip) | 8.9 | "where you left off": task start shows your last note about it | view (status bar) | low |
 
 **Dependencies (corrected — the HANDOFF kit's first version understated
-these):** 8.1, 8.2, 8.4, 8.8 are standalone. 8.3 and 8.7 need 8.1.
+these):** 8.1, 8.2, 8.4, 8.8 and 8.9 are standalone. 8.3 and 8.7 need 8.1.
 **8.5 needs 8.1+8.2+8.3+8.4** (it composes all of them). 8.6 needs 8.5.
 Practical rule: either take the whole set, or if anything in 8.1–8.4
 fails your audit, also drop 8.5 and 8.6. `selftest.py` expects the full

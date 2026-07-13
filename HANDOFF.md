@@ -292,6 +292,14 @@ purpose; the *walls* are the major thing, and they're now named.
 
 ## Version history (one line each)
 
+- **v8.9** (where you left off — backlog #27). `_last_context(task)`:
+  most recent tracked day for the task via `day_index`, then the last
+  human line after that day's final `--- Task:` marker (machine lines
+  skipped via `_LINE_TAG_RULES`); surfaced in the Working status line and
+  on Switch — 'last time (08.07): "…"'. Read-only, standalone (no deps on
+  other branch commits beyond v8.0). selftest suite 9 covers marker
+  priority, skip rules, no-history/empty/missing-file gates. Walkthrough
+  table gains this commit; same audit rules apply.
 - **(docs, no version bump)** `REVIEW_WALKTHROUGH.md` at repo root: the
   full landing guide for the main machine (pre-flight + policy-compliance
   commands, per-commit think-through with revert costs, Path A/B landing,
@@ -1032,15 +1040,45 @@ purpose; the *walls* are the major thing, and they're now named.
     most striking "life memory" visual available for the data already
     collected.
 
-27. **"Where you left off" — context restore on task start (USABILITY).**
-    The biggest hidden cost of task-switching is re-finding the thread.
-    On Start/Switch of a task with history: fish the last day file that
-    task appears in, grab the diary lines written around its last
-    interval, and show one line in the status bar — "last time (Tue):
-    'stuck on the regression table, try clustered SEs next'" — your own
-    note handed back exactly when it's useful. Read-only, reuses
-    `diary_path` + csv task rows; pairs naturally with #19 quick-capture.
-    Probably the highest daily-felt value per line of code in this list.
+27. ~~**"Where you left off" — context restore on task start.**~~ — DONE
+    v8.9. `_last_context(task)` + hooks in the Working-status line and
+    `_switch`. Still open (small): a hover/click on the status bar to see
+    MORE than one line of the old context; and surfacing it in the Tasks/
+    Library window's Start ▶ path too (currently only timer-box starts).
+
+28. **Deadline post-mortem (FEEDBACK/MEMORY).** When a scoped deadline's
+    date passes (or its task is Done), write one retro block into that
+    day's file: scope vs actual hours, the estimate factor on THIS
+    project, what the v8.1 projection predicted vs what happened
+    ("projection ran 4d pessimistic"), pace curve in one line. Each
+    deadline closed becomes calibration data — and the projection engine
+    can later quote its own track record ("my forecasts have run ±3d on
+    your last 4 deadlines"), which is the honest version of trust.
+
+29. **Energy forecast for today (ANALYSIS/PLANNING).** Morning header
+    line predicting today's likely capacity band from last night's
+    imported sleep + trailing sleep debt + your weekday pattern: "today
+    smells like a 3.5–4.5h day — put the must-do inside that." The
+    weekday capacity table says what you PLAN to have; this says what
+    your body's data suggests you'll ACTUALLY have. Same honesty gates;
+    feeds the #25 realism direction.
+
+30. **Break quality ledger (ANALYSIS — novel, data already exists).**
+    Break notes are typed right after "--- Break duration:" lines (walk,
+    food, scroll, jt viestei…). Classify by keyword, then correlate break
+    TYPE with the length/signal of the following work block: "after
+    walk-breaks your next block averages 41m; after scroll-breaks 19m —
+    the doomscroll tax, measured at block level." Nothing new to log;
+    the diary has been collecting the labels for years.
+
+31. **Morning brief beyond the desktop (USABILITY/PLATFORM).** On day
+    rollover, also write a tiny `brief_today.txt` (plan line, co-pilot
+    line, schedule, top anomaly) into the OneDrive-synced diary folder —
+    so the phone shows the morning brief before the PC is even on. The
+    platform escaping the desktop with zero new infrastructure: one extra
+    file write into a folder that already syncs. (Check CLAUDE.md
+    sensitivity: the brief must contain nothing beyond what the day file
+    itself already holds.)
 
 ## BRANCH REVIEW KIT — claude/finish-date-projection (for the hand-audit)
 

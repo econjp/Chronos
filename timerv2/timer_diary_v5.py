@@ -60,6 +60,17 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.9 (where you left off — the diary pays you back at task start):
+  - starting or switching to a task with history now hands you back the
+    LAST line you wrote about it, right in the status bar: 'Working —
+    thesis: ch4 · last time (08.07): "stuck on regression table, try
+    clustered SEs next"'. _last_context() finds the most recent tracked
+    day for the task and the last human-written line after that day's
+    final "--- Task:" marker (machine lines skipped via the highlighter's
+    own rules). Kills the re-finding-the-thread cost of every resume —
+    the Memory pillar paid out at the exact moment it's useful.
+    Read-only; tested in selftest (suite 9).
+
 New in v8.8 (energy-aware scheduling — the morning plan gets smart):
   - the v8.0 time-blocked schedule stops placing work in the earliest free
     gap and starts placing it by the QUALITY of the hour. _hour_quality()
@@ -2094,6 +2105,9 @@ class App(tk.Tk):
                              None)
                     note += (f" · not today's signal, but counts toward: {g}"
                              if g else " · ⚠ not today's signal (no goal either)")
+                ctx = self._last_context(self.active_task)
+                if ctx:
+                    note += f' · last time ({ctx[0]:%d.%m}): "{ctx[1][:60]}"'
             self.status.config(text=f"Working — {self.active_task or '(no task)'}{note}")
         elif self.settings.get("float_break", True):
             self.status.config(text="On break — the floating clock counts it; "
@@ -2154,7 +2168,11 @@ class App(tk.Tk):
         self.work_start = now
         self._save_state()
         self._refresh_totals()
-        self.status.config(text=f"Switched to {self.active_task or '(no task)'}")
+        text = f"Switched to {self.active_task or '(no task)'}"
+        ctx = self._last_context(self.active_task) if self.active_task else None
+        if ctx:
+            text += f' · last time ({ctx[0]:%d.%m}): "{ctx[1][:60]}"'
+        self.status.config(text=text)
         self.diary.focus_set()
 
     def _task_velocity(self, task, days=14):
@@ -2176,6 +2194,54 @@ class App(tk.Tk):
         if not per_day:
             return None
         return sum(per_day.values()) / len(per_day), len(per_day)
+
+    def _last_context(self, task, max_days=120):
+        """Where you left off: the last diary line you wrote about this
+        task, with its date — your own note handed back at the moment you
+        resume, so the thread doesn't have to be re-found. Looks for the
+        most recent day the task was tracked, then the last human-written
+        line after that day's final '--- Task:' marker for it (machine
+        lines skipped via the same rules the highlighter uses). Returns
+        (date, snippet) or None. Read-only."""
+        t = (task or "").strip().lower()
+        if not t:
+            return None
+        idx = day_index()
+        last = None
+        for i in range(1, max_days + 1):
+            d = self.today - dt.timedelta(days=i)
+            rec = idx.get(d.isoformat())
+            if rec and any(k.lower() == t for k in rec["tasks"]):
+                last = d
+                break
+        if last is None:
+            return None
+        try:
+            with open(self.diary_path(last), encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        except OSError:
+            return None
+        skip = [p for p, _ in self._LINE_TAG_RULES]
+        start = 0
+        for i, ln in enumerate(lines):
+            s = ln.strip().lower()
+            if s.startswith("--- task:") and t in s:
+                start = i + 1
+
+        def pick(seq):
+            out = None
+            for ln in seq:
+                s = ln.strip()
+                if len(s) >= 4 and not any(p.search(s) for p in skip):
+                    out = s
+            return out
+
+        snippet = pick(lines[start:]) or (pick(lines) if start else None)
+        if not snippet:
+            return None
+        if len(snippet) > 118:
+            snippet = snippet[:117] + "…"
+        return last, snippet
 
     # ----- deadline finish-date projection (real-pace forecast) -----
 

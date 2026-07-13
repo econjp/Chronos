@@ -33,7 +33,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
         "_life_review_lines", "_anomaly_lines", "_copilot_note",
-        "_recommend_now", "_deep_window", "_hour_quality", "_energy_place"}
+        "_recommend_now", "_deep_window", "_hour_quality", "_energy_place",
+        "_last_context"}
 STATIC = {"_match_kws"}   # ast extraction drops @staticmethod — restore it
 
 _text = open(SRC, encoding="utf-8").read()
@@ -304,11 +305,39 @@ def suite_energy_place():
     assert hq[9] == 1.0 and hq[12] == 0.0, hq
 
 
+def suite_last_context():
+    D, ns = fresh()
+    seed(ns, THESIS)                       # last thesis day: 2026-07-13
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    day = "2026-07-13"
+    with open(os.path.join(tmp, day + ".txt"), "w", encoding="utf-8") as f:
+        f.write("=== Monday 13.07.2026 ===\n"
+                "SIGNAL: thesis\n"
+                "random earlier note\n"
+                "--- Task: thesis: ch4\n"
+                "Start;2026-07-13;09:00:00;0;0;0\n"
+                "stuck on regression table, try clustered SEs next\n"
+                "Stop;2026-07-13;10:00:00;0;0;3600\n")
+    d = _mk(D, diary_path=lambda dd: os.path.join(tmp, dd.isoformat() + ".txt"),
+            _LINE_TAG_RULES=[(re.compile(p), None) for p in
+                             (r"^---", r"^(?:Start|Stop|Reset);", r"^===",
+                              r"^SIGNAL:", r"^ENERGY:")])
+    d.today = dt.date(2026, 7, 14)         # so 07-13 is "the last time"
+    ctx = D._last_context(d, "thesis: ch4")
+    assert ctx and ctx[0] == dt.date(2026, 7, 13), ctx
+    assert ctx[1] == "stuck on regression table, try clustered SEs next", ctx
+    assert D._last_context(d, "never-worked") is None
+    assert D._last_context(d, "") is None
+    os.remove(os.path.join(tmp, day + ".txt"))     # file gone -> None
+    assert D._last_context(d, "thesis: ch4") is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
           ("recommend-now", suite_recommend_now),
-          ("energy-place", suite_energy_place)]
+          ("energy-place", suite_energy_place),
+          ("last-context", suite_last_context)]
 
 
 def main():
