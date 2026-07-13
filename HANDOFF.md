@@ -272,13 +272,17 @@ platform manages *commitments, decisions and values*. Two moves:
 
 **The connective tissue — an AI analyst layer.**
 "Copy for AI review" (v5.1) is v0 of this: the whole record already
-serialises to text/JSON. The real version calls an LLM automatically and
-writes narrative feedback into the day file. It's the enabler across all
-three pillars (foresight explanations, memory narration, alignment
-coaching) — but it carries the one real **credential-handling decision**
-in this whole roadmap (API key vs OneDrive-synced settings.json — see
-backlog #10). **Ask the owner before building it**; everything else here
-is keyless and can proceed first.
+serialises to text/JSON. **v0.5 DONE v8.5**: `_life_review_lines()` +
+`_review_bottom_line()` (View > Life review) compose all three pillars
+into one briefing with a rule-based synthesized bottom line that reconciles
+Foresight (slipping deadlines) and Alignment (starving domains) into a
+single action — the pillars finally speaking as one voice, keyless. The
+eventual v1 calls an LLM automatically and writes narrative feedback into
+the day file; it carries the one real **credential-handling decision** in
+this roadmap (API key vs OneDrive-synced settings.json — see backlog #10).
+**Ask the owner before building the LLM version**; the rule-based synthesis
+(v8.5) is the keyless proof it works, and the "Copy for AI second opinion"
+button bridges to a real LLM manually in the meantime.
 
 **How to use this section:** every backlog item below is a brick in one of
 these walls — when picking the next thing, prefer the one that most
@@ -288,6 +292,16 @@ purpose; the *walls* are the major thing, and they're now named.
 
 ## Version history (one line each)
 
+- **v8.5** (Life review — the connective tissue, AI-analyst v0.5 keyless).
+  `_life_review_lines()` composes week numbers + `_alignment_lines` +
+  `_outlook_lines` + `_trajectory_lines` + top `_insight_lines` into one
+  briefing; `_review_bottom_line()` is the new synthesis — reads Foresight
+  (deadlines late at real pace) and Alignment (widest say-do domain gap)
+  together and emits ONE action across 4 rule branches (behind+gap /
+  behind / gap / all-good). View > Life review window + "Copy for AI
+  second opinion". Pure view composing tested functions; the 4 bottom-line
+  branches + composition verified on Linux. The first surface where the
+  three pillars speak as one voice.
 - **v8.4** (Life domains — first brick of Pillar C / Alignment, the most
   on-vision leap: time tracker → life management). `domains()` +
   `_domain_minutes` + `_alignment_lines(weeks=8)` + `_alignment_win` +

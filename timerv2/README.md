@@ -4,6 +4,27 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Life review — the whole picture, synthesized (v8.5)
+
+The one that makes every other view speak with a single voice. **View →
+Life review** assembles this week's numbers, your **values alignment**,
+the **outlook** on what's coming, the months-scale **trajectory**, and the
+top **patterns** — then closes with a **bottom line** that reconciles them
+into one action instead of five things to read:
+
+```
+BOTTOM LINE
+  You're behind on Thesis (~22d late at real pace) AND under-investing in
+  Growth (-14 pts below your aim). Same fix, not two: the FIRST block of
+  each day goes to Growth/Thesis before the urgent small stuff eats the
+  morning.
+```
+
+It reads Foresight (are deadlines slipping) and Alignment (is a valued
+area starving) *together* — the thing no single view can see. **Copy for
+AI second opinion** puts the whole briefing on the clipboard. This is the
+"AI analyst," done rule-based and keyless — the co-pilot's weekly brief.
+
 ### Life alignment — time vs your values (v8.4)
 
 The reframe from *time* tracker to *life* management. **Tools → Life

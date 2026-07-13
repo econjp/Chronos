@@ -60,6 +60,19 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.5 (Life review — the pillars finally speak as ONE voice):
+  - View > "Life review — synthesized briefing…": one window that pulls
+    the week's numbers + VALUES (alignment, v8.4) + AHEAD (outlook, v8.3)
+    + TRAJECTORY (v8.2) + PATTERNS (insights) together, then closes with
+    a synthesized BOTTOM LINE that reconciles the pillars into ONE action
+    — e.g. "You're behind on Thesis (~22d late) AND under-investing in
+    Growth (-14 pts): same fix, not two — the first block of each day
+    goes there before the urgent small stuff eats the morning." The
+    connective tissue between the three pillars; the AI-analyst idea done
+    keyless (rule-based). "Copy for AI second opinion" ships the whole
+    briefing to the clipboard. Pure view, composes already-tested
+    functions; the bottom-line rules are tested on Linux (all 4 branches).
+
 New in v8.4 (Life domains — time tracker becomes life management):
   - Tools > "Life domains…": name a handful of life areas (Work, Body,
     Growth, People, Rest) with the task keywords that belong to each and
@@ -1304,6 +1317,8 @@ class App(tk.Tk):
         viewm.add_command(label="Outlook — weeks ahead…", command=self._outlook_win)
         viewm.add_command(label="Life alignment — time vs values…",
                           command=self._alignment_win)
+        viewm.add_command(label="Life review — synthesized briefing…",
+                          command=self._life_review_win)
         viewm.add_command(label="Health × focus (14 days)", command=self._health_view)
         viewm.add_command(label="Search all days…", command=self._search_diary)
         viewm.add_separator()
@@ -3581,6 +3596,124 @@ class App(tk.Tk):
             row=len(defaults) + 1, column=1, sticky="e", padx=6, pady=8)
 
     # ----- copy for AI review -----
+
+    # ----- life review (the co-pilot's synthesis of all three pillars) -----
+
+    def _review_bottom_line(self):
+        """The synthesis the scattered views can't give on their own: read
+        FORESIGHT (are deadlines slipping at real pace) and ALIGNMENT (is
+        a valued domain starving) together, and say the ONE thing to do.
+        Rule-based, blunt, no flattery — the connective tissue between the
+        pillars, the seed of the eventual AI-analyst layer done keyless."""
+        behind = []
+        for dl in self.deadlines():
+            try:
+                proj = self._dl_projection(dl)
+            except (ValueError, KeyError):
+                proj = None
+            if proj and proj["delta"] > 0:
+                behind.append((dl["name"], proj["delta"]))
+        lo = self.today - dt.timedelta(days=8 * 7 - 1)
+        idx = day_index()
+        total = 0
+        d = lo
+        while d <= self.today:
+            rec = idx.get(d.isoformat())
+            if rec:
+                total += rec["work"]
+            d += dt.timedelta(days=1)
+        worst = None
+        if total > 0:
+            for dom in self.domains():
+                try:
+                    tgt = float(dom.get("target_pct") or 0) or None
+                except ValueError:
+                    tgt = None
+                if not tgt:
+                    continue
+                gap = 100 * self._domain_minutes(dom, lo, self.today) / total - tgt
+                if worst is None or gap < worst[1]:
+                    worst = (dom["name"], gap)
+        top = max(behind, key=lambda x: x[1]) if behind else None
+        if top and worst and worst[1] <= -8:
+            return [f"You're behind on {top[0]} (~{top[1]}d late at real pace) "
+                    f"AND under-investing in {worst[0]} ({worst[1]:.0f} pts "
+                    "below your aim). Same fix, not two: the FIRST block of "
+                    f"each day goes to {worst[0]}/{top[0]} before the urgent "
+                    "small stuff eats the morning."]
+        if top:
+            return [f"Main risk: {top[0]} lands ~{top[1]}d late at your current "
+                    "pace. Add ~1h/day to it or move the date now — while "
+                    "moving it is still cheap, not the night before."]
+        if worst and worst[1] <= -10:
+            return [f"Deadlines are fine, but {worst[0]} is {abs(worst[1]):.0f} "
+                    "points below where you said it should be — the quiet "
+                    "erosion, not the loud crisis. One protected block this week."]
+        if behind or worst:
+            return ["Roughly on track. No fire — spend the slack deliberately "
+                    "before it spends itself."]
+        return ["On pace and living your stated priorities — the boring good "
+                "state. Protect the routine that got you here."]
+
+    def _life_review_lines(self):
+        """One briefing that makes the pillars speak as one voice: this
+        week's numbers, then VALUES (alignment), AHEAD (outlook),
+        TRAJECTORY (months), PATTERNS (insights), and a synthesized BOTTOM
+        LINE. Everything here is a tested view function composed together."""
+        monday = self.today - dt.timedelta(days=self.today.weekday())
+        idx = day_index()
+        work = sig = 0
+        sleeps = []
+        d = monday
+        while d <= self.today:
+            rec = idx.get(d.isoformat())
+            if rec:
+                work += rec["work"]
+                sig += self._day_signal(d)[0]
+            sl = self._sleep_h(d.isoformat())
+            if sl:
+                sleeps.append(sl)
+            d += dt.timedelta(days=1)
+        head = f"  {work / 60:.1f}h tracked"
+        if work:
+            head += f" · signal {round(100 * sig / work)}%"
+        if sleeps:
+            head += f" · sleep avg {fmt_sleep(sum(sleeps) / len(sleeps))}"
+        L = [f"LIFE REVIEW — week of {monday:%d.%m.%Y}", head]
+        for title, body in (("VALUES — are you living them?", self._alignment_lines()),
+                            ("AHEAD — what's coming, at your real pace", self._outlook_lines()),
+                            ("TRAJECTORY — the last two months", self._trajectory_lines())):
+            if body:
+                L += ["", title] + body
+        ins = self._insight_lines()
+        if ins:
+            L += ["", "PATTERNS"] + ["  · " + x for x in ins[:3]]
+        L += ["", "BOTTOM LINE"] + ["  " + x for x in self._review_bottom_line()]
+        return L
+
+    def _life_review_win(self):
+        self._save_diary()
+        win = tk.Toplevel(self)
+        win.title("Life review — the week, synthesized")
+        win.geometry("660x520")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10))
+        txt.pack(fill="both", expand=True, padx=8, pady=(8, 4))
+        body = "\n".join(self._life_review_lines())
+        txt.insert("1.0", body)
+        txt.config(state="disabled")
+        bar = ttk.Frame(win)
+        bar.pack(fill="x", padx=8, pady=(0, 8))
+
+        def copy():
+            self.clipboard_clear()
+            self.clipboard_append(body + "\n\nAsk: given all of the above, "
+                                  "what's the one change that matters most "
+                                  "next week?")
+            self.status.config(text="Life review copied — paste into Claude "
+                                    "for a second opinion on the bottom line.")
+
+        ttk.Button(bar, text="Copy for AI second opinion",
+                   command=copy).pack(side="left")
 
     def _copy_review(self, mode):
         self._save_diary()
