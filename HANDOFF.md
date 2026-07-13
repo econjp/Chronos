@@ -292,6 +292,14 @@ purpose; the *walls* are the major thing, and they're now named.
 
 ## Version history (one line each)
 
+- **v8.8** (energy-aware scheduling — backlog #17, the planner gets smart).
+  `_hour_quality(days=60)` (0–1 per-hour profile of where work lands) +
+  `_energy_place(items, slots, quality)` (each item claims its best-quality
+  free time, most-urgent first, contiguous blocks). `_day_schedule_lines`
+  now steers the hardest work into peak hours instead of the earliest gap;
+  no-history path is byte-identical to v8.0. First upgrade to the PLANNER
+  itself rather than a new view. Verified on Linux (peak-claim vs
+  earliest-first divergence, shortfall, hour-quality profile).
 - **v8.7** (right-now recommender — the day plan made real-time).
   `_deep_window(days=60)` learns your best 3h block from history;
   `_recommend_now(now=None)` reads current hour vs that window + the
@@ -893,17 +901,18 @@ purpose; the *walls* are the major thing, and they're now named.
     switch count live in the status bar as a gentle "7 switches so far"
     once past a threshold — stated, not blocking (guardrail).
 
-17. **Energy-aware scheduling (PLANNING).** The v8.0 scheduler places
-    deadlines into free slots purely by urgency + earliest-free-time.
-    Upgrade: weight by WHEN you actually work best. `_deep_window` (v8.7)
-    already learns your best 3h block; extend to a per-hour output/energy
-    profile (avg tracked minutes and, where logged, ENERGY by hour) and
-    have `_day_schedule_lines` prefer placing the hardest/most-behind
-    deadline into your peak hours and admin into the troughs, instead of
-    just the earliest gap. Turns "08:00–12:05 Thesis" into "Thesis goes in
-    your 09–12 peak; leave 15:00 email for the afternoon dip." Reuses
-    `_free_slots` + the hour profile; no new data. The single highest-
-    leverage upgrade to the existing planner.
+17. ~~**Energy-aware scheduling (PLANNING).**~~ — DONE v8.8.
+    `_hour_quality(days=60)` = a 0–1 per-hour profile of where your work
+    actually lands; `_energy_place(items, slots, quality)` gives each
+    item (most-urgent first) its best-quality free time, so the hardest/
+    most-behind deadline claims your peaks and admin drifts to the
+    troughs. `_day_schedule_lines` calls it; contiguous blocks preserved;
+    no-history falls back to the exact v8.0 earliest-first. Still open
+    (deferred on purpose): fold LOGGED per-hour ENERGY into the profile
+    (currently it's tracked-minutes only — a decent proxy, but a day you
+    forced work through a slump still reads as "peak"); and a light note
+    on WHY a block moved ("your 13–15 peak"). Both small follow-ups on
+    `_hour_quality`.
 
 18. **Commitment-reliability ledger (SELF-KNOWLEDGE).** A `COMMIT: thesis
     4h` line the user optionally types in the morning header (same in-file

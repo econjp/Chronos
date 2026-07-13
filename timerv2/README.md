@@ -4,6 +4,24 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Energy-aware scheduling (v8.8)
+
+The morning schedule got smart. Instead of dropping each deadline into the
+earliest free gap, it now places work by **when you're actually sharpest** —
+learned from 60 days of your own history. Your hardest, most-behind
+deadline claims your **peak hours**; admin and low-focus work drift to the
+troughs:
+
+```
+suggested schedule today (hardest work steered to your peak hours):
+  13:00-15:00 Thesis (2.0h) ⚠ behind pace     ← your peak, not the first gap
+  09:00-10:00 email/admin (1.0h)
+```
+
+Blocks stay contiguous (no scattered fragments), and with too little
+history it falls back to the old earliest-first placement unchanged. This
+is an upgrade to the planner itself, not another view to open.
+
 ### What should I do now? (v8.7)
 
 View → **What should I do now?** answers the moment-to-moment question the

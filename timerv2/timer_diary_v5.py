@@ -60,6 +60,18 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.8 (energy-aware scheduling — the morning plan gets smart):
+  - the v8.0 time-blocked schedule stops placing work in the earliest free
+    gap and starts placing it by the QUALITY of the hour. _hour_quality()
+    learns a 0–1 profile of when your work actually lands (60 days);
+    _energy_place() gives each item (most-urgent first) its best-quality
+    free time — so the hardest/most-behind deadline claims your peak hours
+    and admin drifts to the troughs — "13:00-15:00 Thesis (peak)" instead
+    of "09:00-11:00 Thesis" just because 9am was the first gap. Blocks
+    stay contiguous (no 15-min shards); with no history it falls back to
+    the exact v8.0 earliest-first placement. The single biggest upgrade to
+    the planner itself, not another view. Tested on Linux.
+
 New in v8.7 (right-now recommender — the plan, made real-time):
   - View > "What should I do now?": the dynamic companion to the morning
     schedule. Reads the current hour against your LEARNED deep-focus
@@ -3035,29 +3047,17 @@ class App(tk.Tk):
         slots = list(self._free_slots(self.today))
         if not slots:
             return self._focus_order_lines()
-        lines = ["suggested schedule today:"]
-        for name, left, need, behind in items:
-            remaining, placed, rest = need, [], []
-            for s, e in slots:
-                if remaining <= 1e-9:
-                    rest.append((s, e))
-                    continue
-                avail = _time_span_hours(s, e)
-                if avail <= remaining + 1e-9:
-                    placed.append((s, e))
-                    remaining -= avail
-                else:
-                    cut = _add_hours(s, remaining)
-                    placed.append((s, cut))
-                    rest.append((cut, e))
-                    remaining = 0.0
-            slots = rest
+        quality = self._hour_quality()
+        placements, slots = self._energy_place(items, slots, quality)
+        lines = ["suggested schedule today (hardest work steered to your "
+                 "peak hours):" if quality else "suggested schedule today:"]
+        for name, behind, placed, shortfall in placements:
             tag = " ⚠ behind pace" if behind else ""
             for s, e in placed:
                 lines.append(f"  {s:%H:%M}-{e:%H:%M} {name} "
                              f"({_time_span_hours(s, e):.1f}h){tag}")
-            if remaining > 0.05:
-                lines.append(f"  ({name}: {remaining:.1f}h doesn't fit "
+            if shortfall > 0.05:
+                lines.append(f"  ({name}: {shortfall:.1f}h doesn't fit "
                              "today's free time)")
         leftover = sum(_time_span_hours(s, e) for s, e in slots)
         if leftover >= 0.25:
@@ -4196,6 +4196,64 @@ class App(tk.Tk):
             return None
         _best, h0 = max((sum(by_hour[h:h + 3]), h) for h in range(22))
         return (h0, h0 + 3)
+
+    def _hour_quality(self, days=60):
+        """A 0–1 score per hour of the day = how much of your work has
+        historically landed in that hour, normalised. The scheduler uses
+        it to steer hard work toward your peaks. None until 20h tracked."""
+        by_hour, tot = [0] * 24, 0
+        cutoff = (self.today - dt.timedelta(days=days)).isoformat()
+        for r in read_rows():
+            if r[1] == "break" or r[0] < cutoff:
+                continue
+            try:
+                h = int(r[2].split(":")[0]) % 24
+                by_hour[h] += int(r[4])
+                tot += int(r[4])
+            except (ValueError, IndexError):
+                continue
+        if tot < 20 * 60:
+            return None
+        mx = max(by_hour) or 1
+        return [x / mx for x in by_hour]
+
+    def _energy_place(self, items, slots, quality):
+        """Assign free `slots` (time,time pairs) to `items` (most-urgent
+        first). WITH an hour-quality profile each item claims its best-
+        quality free time first — so the hardest/most-behind work lands in
+        your peak hours and admin drifts to the troughs; WITHOUT one it's
+        earliest-first (identical to the v8.0 behaviour). Blocks stay
+        contiguous (we only reorder which slot is considered first, and cut
+        from its front), so no fragmenting into scattered 15-min shards.
+        Returns (placements, leftover): placements is
+        [(name, behind, [(s,e)...], shortfall_h)]."""
+        def slot_q(se):
+            s, e = se
+            n = max(1, int(round(_time_span_hours(s, e))))
+            hrs = [(s.hour + i) % 24 for i in range(n)]
+            return sum(quality[h] for h in hrs) / len(hrs) if quality else 0.0
+
+        placements = []
+        for name, left, need, behind in items:
+            remaining, placed, leftover = need, [], []
+            order = (sorted(slots, key=lambda se: (-slot_q(se), se[0]))
+                     if quality else list(slots))
+            for s, e in order:
+                avail = _time_span_hours(s, e)
+                if remaining <= 1e-9:
+                    leftover.append((s, e))
+                elif avail <= remaining + 1e-9:
+                    placed.append((s, e))
+                    remaining -= avail
+                else:
+                    cut = _add_hours(s, remaining)
+                    placed.append((s, cut))
+                    leftover.append((cut, e))
+                    remaining = 0.0
+            placed.sort(key=lambda se: se[0])
+            placements.append((name, behind, placed, max(0.0, remaining)))
+            slots = sorted(leftover, key=lambda se: se[0])
+        return placements, slots
 
     def _recommend_now(self, now=None):
         """What to work on RIGHT NOW — the dynamic companion to the morning
