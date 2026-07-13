@@ -60,6 +60,18 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.15 (personal block-length decay curve, backlog #38):
+  - new insight: buckets work blocks by length and compares the break
+    that immediately follows each bucket — "blocks past ~60m are
+    followed by 4.0x longer breaks (20m vs 5m) — your natural cycle
+    looks like ~60m, box accordingly." Your own focus cycle, derived
+    from real history, not an imposed pomodoro number. n≥3 per bucket,
+    needs 2+ populated buckets to compare.
+  - starting a SIGNAL-matching task without an explicit [Xm] box now
+    quietly suggests one in the status bar: "try boxing ~60m (your
+    natural cycle)" — read from the same decay curve. Only appears
+    when you didn't already type a box, never overrides one.
+
 New in v8.14 (behind-pace root cause: capacity vs. choice, backlog #47):
   - the burn-down window's real-pace footer gains a second, sharper
     line for a behind-pace deadline: is it that this week genuinely
@@ -2270,6 +2282,11 @@ class App(tk.Tk):
                              None)
                     note += (f" · not today's signal, but counts toward: {g}"
                              if g else " · ⚠ not today's signal (no goal either)")
+                elif (kws and not self.task_box_secs
+                      and self._is_signal(self.active_task, kws)):
+                    box = self._suggested_time_box()
+                    if box:
+                        note += f" · try boxing ~{box}m (your natural cycle)"
                 ctx = self._last_context(self.active_task)
                 if ctx:
                     note += f' · last time ({ctx[0]:%d.%m}): "{ctx[1][:60]}"'
@@ -5699,6 +5716,82 @@ class App(tk.Tk):
                     "measured at block level"]
         return []
 
+    _DECAY_BUCKETS = [(0, 30), (30, 45), (45, 60), (60, 75), (75, 999)]
+
+    def _decay_cycle(self, days=90):
+        """Backlog #38 core: bucket work blocks (a run of consecutive
+        same-task work rows, same definition _procrastination_insight
+        uses) by length, and compare the average break that immediately
+        follows each bucket — where break length jumps sharply is the
+        personal focus cycle, not an imposed pomodoro number. Returns
+        (cycle_min, ratio, avg_after, baseline_avg) or None. n>=3 per
+        bucket, needs 2+ populated buckets to compare against."""
+        cutoff = (self.today - dt.timedelta(days=days)).isoformat()
+        by_day = {}
+        for r in read_rows():
+            if r[0] >= cutoff:
+                by_day.setdefault(r[0], []).append(r)
+        bucket_breaks = {b: [] for b in self._DECAY_BUCKETS}
+        for rows in by_day.values():
+            rows.sort(key=lambda r: r[2])
+            i = 0
+            while i < len(rows):
+                r = rows[i]
+                if r[1] == "break":
+                    i += 1
+                    continue
+                run, j = 0, i
+                while j < len(rows) and rows[j][1] != "break":
+                    try:
+                        run += int(rows[j][4])
+                    except ValueError:
+                        pass
+                    j += 1
+                if j < len(rows) and rows[j][1] == "break":
+                    try:
+                        bmin = int(rows[j][4])
+                    except ValueError:
+                        bmin = None
+                    if bmin is not None:
+                        for lo, hi in self._DECAY_BUCKETS:
+                            if lo <= run < hi:
+                                bucket_breaks[(lo, hi)].append(bmin)
+                                break
+                    i = j + 1
+                else:
+                    i = j
+        stats = [(b, sum(v) / len(v)) for b, v in bucket_breaks.items()
+                 if len(v) >= 3]
+        if len(stats) < 2:
+            return None
+        stats.sort(key=lambda x: x[0][0])
+        baseline = stats[0][1]
+        if baseline <= 0:
+            return None
+        for (lo, hi), avg in stats[1:]:
+            if avg >= baseline * 1.8:
+                return lo, avg / baseline, avg, baseline
+        return None
+
+    def _block_decay_lines(self, days=90):
+        """One line, or none: the #38 insight, formatted from
+        _decay_cycle. 'Blocks past ~55m are followed by 3x longer
+        breaks; your natural cycle looks like ~55m — box accordingly.'"""
+        cyc = self._decay_cycle(days)
+        if not cyc:
+            return []
+        cycle_min, ratio, avg, baseline = cyc
+        return [f"blocks past ~{cycle_min}m are followed by {ratio:.1f}x "
+                f"longer breaks ({avg:.0f}m vs {baseline:.0f}m) — your "
+                f"natural cycle looks like ~{cycle_min}m, box accordingly"]
+
+    def _suggested_time_box(self):
+        """Minutes for a suggested [Xm] time-box on a SIGNAL task, read
+        from the personal decay curve. None without enough history —
+        never guesses a pomodoro number out of thin air."""
+        cyc = self._decay_cycle()
+        return cyc[0] if cyc else None
+
     def _insight_lines(self, days=60):
         """Rule-based findings that each connect two data sources the app
         already collects. Every line is your own history — it only speaks
@@ -5885,6 +5978,7 @@ class App(tk.Tk):
 
         out += self._procrastination_insight()
         out += self._break_insight()
+        out += self._block_decay_lines()
         out += self._trajectory_lines()
         return out
 

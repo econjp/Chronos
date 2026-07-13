@@ -4,6 +4,19 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Your natural focus cycle (v8.15)
+
+A new Insight buckets your work blocks by length and compares the
+break that follows each bucket:
+
+*"blocks past ~60m are followed by 4.0x longer breaks (20m vs 5m) —
+your natural cycle looks like ~60m, box accordingly."*
+
+Your own personal pomodoro, from your own history — not a borrowed
+25-minute rule. Start a SIGNAL task without typing a `[Xm]` box and
+the status bar now quietly suggests one from the same curve; type
+your own box and the suggestion stays out of the way.
+
 ### Behind-pace root cause: capacity vs. choice (v8.14)
 
 The burn-down window's real-pace line says WHEN you'll land; now a

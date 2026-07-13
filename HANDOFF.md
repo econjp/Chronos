@@ -673,6 +673,18 @@ purpose; the *walls* are the major thing, and they're now named.
   (needs the week mostly through to be a fair sample). Tested against
   both branches plus both silence gates (not-behind, no-scope,
   too-early-in-week) with realistic synthetic deadlines.
+- **v8.15** (personal block-length decay curve — backlog #38, DONE).
+  `_decay_cycle` buckets work blocks by length and compares the break
+  immediately following each bucket, finding where break length jumps
+  sharply — the personal focus cycle, derived from real history
+  instead of an imposed pomodoro number. Feeds two surfaces: an
+  Insights line (`_block_decay_lines`) and a quiet status-bar
+  suggestion when starting a SIGNAL task with no explicit `[Xm]` box
+  (`_suggested_time_box`, wired alongside the existing "not today's
+  signal" flag in `_toggle`) — never overrides an explicit box, only
+  fills the silence when there wasn't one. n≥3 per bucket, needs 2+
+  populated buckets. Tested with seeded short-block/short-break vs.
+  long-block/long-break history producing a real detected jump.
 
 1. ~~Dashboard as home~~ — DONE v7.0, but as a HUB not a replacement:
    became a tabbed window (Today & Week / Deadlines & Goals / Insights)
@@ -1204,12 +1216,13 @@ purpose; the *walls* are the major thing, and they're now named.
     impossible day ends the whole system. One line to parse, existing
     conventions, planner already has the numbers.
 
-38. **Personal block length — the focus decay curve (ANALYSIS).** From
-    interval history: how does block length relate to what follows?
-    "Blocks past ~55m are followed by 3× longer breaks; your natural
-    cycle is ~50m — box accordingly." The personal pomodoro, derived
-    from your own data instead of imposed dogma; feeds a default
-    time-box suggestion when starting signal tasks.
+38. ~~**Personal block length — the focus decay curve (ANALYSIS).**~~ —
+    DONE v8.15 (`_decay_cycle`/`_block_decay_lines`/
+    `_suggested_time_box`). Fixed 15-min buckets rather than a
+    continuous curve — simpler, and the reported cycle is a bucket
+    boundary, not a precise-to-the-minute figure; revisit only if that
+    granularity ever feels wrong in practice. #49's shallow-work ratio
+    can now derive its own threshold from this instead of guessing.
 
 39. ~~**AVOID line — the inverse lens (FEEDBACK).**~~ — DONE v8.13.
     Shipped: the header line, carry-forward, and the week-over-week
