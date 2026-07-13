@@ -1239,6 +1239,74 @@ purpose; the *walls* are the major thing, and they're now named.
     it, or delete it." Never auto-deletes; one prompt, then silence for
     another month. Keeps #19/#27's library honest with ~20 lines of code.
 
+44. **Waiting-on / blocked tasks (PLANNING — external dependencies).**
+    Everything the planner knows about is under the owner's own control;
+    real work often isn't ("can't touch ch4 until the supervisor replies
+    on ch3"). Task-library items gain an optional `blocked_by: <task
+    name or free text>` field, set via the existing right-click menu
+    (same pattern as Set goal…/Set deadline…). A blocked item is
+    excluded from `_recommend_now`, `_focus_items`/the schedule, and the
+    "uncommitted hours → pick from Task library" line — the planner
+    stops suggesting things you structurally can't do yet. A small
+    "waiting on:" list surfaces separately (dashboard or day header,
+    TBD) so blocked items don't just vanish, they move to a visibly
+    different bucket. No due-date logic, no reminders to chase the
+    blocker — that's someone else's problem to solve, not the app's to
+    nag about. Cheap: one settings field, one filter applied at the two
+    existing read sites.
+
+45. **Goal lifetime ledger (SELF-KNOWLEDGE — the un-windowed view).**
+    Every current view is windowed — 8 weeks (alignment, trajectory),
+    a deadline's own scope (burn-down), a calendar year (#15). Nothing
+    answers "how much of my life has this actually taken, total, since
+    I started it" — a goal or long-running deadline's true lifetime
+    cost. One line per goal/deadline: "Thesis: 187h across 62 sessions
+    since 2026-06-29 (134 days — 1.4h/day lifetime average)." Reuses
+    `matched_minutes` from the goal/deadline's `start` (already stored
+    on deadlines; goals would need one, defaulting to first-ever-seen
+    in the csv if absent) through today — no new data source, just the
+    lens run over its full history instead of a trailing window. Sits
+    naturally in the Goals dialog or a new one-line addition to the
+    dashboard's Deadlines/Goals tab. Answers a different question than
+    #15's year-in-review (a goal's whole life vs. a calendar year) and
+    a different one than #28's post-mortem (ongoing running total vs.
+    a one-time verdict after the fact).
+
+46. **Deadline renegotiation tracker (SELF-KNOWLEDGE — scope-creep
+    honesty).** Deadlines can have their `date` or `total_h` edited at
+    any time, silently — nothing remembers the ORIGINAL numbers. Log
+    every edit to a deadline's date/scope as a small history list on
+    the deadline object itself (`[{"date": "...", "total_h": ..., "as_of":
+    "..."}]`, appended on save in the existing edit dialog, not a new
+    UI). Once 2+ revisions exist, the deadline views gain one honest
+    line: "this deadline has moved 3 times since 06-29 — due date is now
+    45 days later than first set, scope grew from 20h to 45h." Different
+    from #28's post-mortem (which only fires once, after the deadline
+    resolves): this is a live, ongoing pattern check, catching the
+    difference between genuinely re-scoping reality and repeatedly
+    deferring the same discomfort. No judgment beyond stating the
+    pattern — the honesty is entirely in the
+    number, not in a verdict.
+
+47. **Behind-pace root cause: capacity vs. choice (PLANNING —
+    sharper than the existing diagnosis).** `_dl_projection` (v8.1) says
+    WHEN you'll actually land; `_capacity_lines` says whether the week
+    is over-committed in aggregate. Neither says WHY a specific
+    behind-pace deadline is behind: is it that there genuinely isn't
+    enough free time this week (a capacity problem — the only fix is
+    cutting something else), or is there plenty of free time that's
+    just going elsewhere (a choice problem — the fix is reallocation,
+    not more hours)? One line, computed from numbers already sitting in
+    `_day_capacity`/`_free_slots` vs. what actually got logged against
+    the deadline's lens this week: "Thesis is behind pace — but you had
+    11h of free time this week and only put 2h into it. Not a capacity
+    problem." vs. "...and you only had 3h free all week — a capacity
+    problem, something else has to give." Turns a diagnosis into the
+    RIGHT lever instead of a generic one. Fits naturally as an addition
+    to `_projection_line` or the outlook window; needs the week to have
+    actually passed (or be mostly through) to be fair, same honesty
+    framing as everything else here.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
