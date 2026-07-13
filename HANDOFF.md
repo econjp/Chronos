@@ -655,8 +655,15 @@ purpose; the *walls* are the major thing, and they're now named.
   landed: `timerv2/selftest.py`, an ast-extraction test harness for
   the v8.x logic tier (12 suites, independently re-run and green
   before landing — see "How to verify" below).
-
-## BACKLOG (priority order — continue here)
+- **v8.13** (AVOID — backlog #39, DONE). The inverse of SIGNAL: a new
+  "AVOID: news, email" header line, same keyword-lens shape
+  (`matched_minutes`/`task_matches`) inverted, carrying forward day to
+  day (no goal-seeded fallback, unlike SIGNAL — a standing declaration,
+  not a daily pick). Avoid-share reported next to signal% on the
+  yesterday-summary line, with a quiet week-over-week arrow (this week
+  so far vs. all of last week, needs 2+ active days both sides, ≥3-pt
+  move). `_kws_from_text` generalized to take a `prefix` argument so
+  SIGNAL and AVOID share one parser instead of two near-identical ones.
 
 1. ~~Dashboard as home~~ — DONE v7.0, but as a HUB not a replacement:
    became a tabbed window (Today & Week / Deadlines & Goals / Insights)
@@ -1195,12 +1202,12 @@ purpose; the *walls* are the major thing, and they're now named.
     from your own data instead of imposed dogma; feeds a default
     time-box suggestion when starting signal tasks.
 
-39. **AVOID line — the inverse lens (FEEDBACK).** SIGNAL names what
-    matters; `AVOID: news, some, email` names what you're trying to shed.
-    Same lens primitive inverted: avoid-share reported next to signal%
-    ("avoid 6% ↓ this week"), a quiet week-over-week arrow, and the
-    trajectory/insights can cross it (avoid-share vs energy). Completes
-    the lens family symmetrically — three lines of parsing, big mirror.
+39. ~~**AVOID line — the inverse lens (FEEDBACK).**~~ — DONE v8.13.
+    Shipped: the header line, carry-forward, and the week-over-week
+    arrow next to signal%. Not yet done: crossing avoid-share against
+    energy/trajectory in the insights — left for later, needs real
+    AVOID history to accumulate before an insight over it would have
+    anything honest to say.
 
 40. **First-hour audit (FEEDBACK).** The first tracked hour predicts the
     day. Measure what your opening block actually is (signal vs admin vs

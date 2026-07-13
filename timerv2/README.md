@@ -4,6 +4,20 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### AVOID — the inverse lens (v8.13)
+
+SIGNAL names what matters today; a new `AVOID: news, email` line in the
+header names what you're trying to shed. Same keyword lens, inverted —
+and it carries forward day to day just like SIGNAL:
+
+```
+(yesterday: 4h30m work / 0h30m breaks, signal 67%, avoid 12% ↓)
+```
+
+The arrow is a quiet week-over-week read (this week so far vs. all of
+last week) — silent until there's enough real data on both sides to
+say something honest.
+
 ### Which task do you flee from? (v8.12)
 
 The Insights now spot **aversion's signature**: starts on a task that die

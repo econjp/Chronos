@@ -60,6 +60,21 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.13 (AVOID — the inverse lens, backlog #39):
+  - SIGNAL names what matters; a new "AVOID: news, email" header line
+    names what you're trying to shed — the exact same keyword-lens
+    shape (matched_minutes/task_matches), inverted. Carries forward
+    day to day like SIGNAL, but with no goal-seeded fallback: it's a
+    standing declaration, not a daily pick, so an empty line stays
+    empty rather than getting auto-filled.
+  - The yesterday-summary line now reports it right next to signal%:
+    "(yesterday: 4h30m work / 0h30m breaks, signal 67%, avoid 12% ↓)".
+    The arrow is a quiet week-over-week comparison (this week so far
+    vs all of last week), only shown with 2+ active days on both sides
+    and a real ≥3-point move — silent otherwise, same honesty gate as
+    everything else here. Three lines of parsing, symmetric with
+    SIGNAL, completes the lens family.
+
 New in v8.12 (procrastination pattern map — treat the cause):
   - new insight: which task do you flee FROM? A 'bounce' = a work run
     that dies within 10 minutes into a break — aversion's signature.
@@ -1284,12 +1299,16 @@ class App(tk.Tk):
     # ----- signal meter -----
 
     @staticmethod
-    def _kws_from_text(text):
-        """Comma-separated keywords from the first 'SIGNAL:' line, lowered."""
+    def _kws_from_text(text, prefix="signal:"):
+        """Comma-separated keywords from the first line starting with
+        `prefix` (case-insensitive), lowered. SIGNAL and AVOID are the
+        same lens shape read from two different header lines — one
+        parser, one prefix argument, not two near-identical functions."""
+        plen = len(prefix)
         for line in text.splitlines():
             s = line.strip()
-            if s.lower().startswith("signal:"):
-                return [k.strip().lower() for k in s[7:].split(",") if k.strip()]
+            if s.lower().startswith(prefix):
+                return [k.strip().lower() for k in s[plen:].split(",") if k.strip()]
         return []
 
     def _signal_kws(self, day=None):
@@ -1321,6 +1340,94 @@ class App(tk.Tk):
                 if self._is_signal(r[5], kws):
                     sig += m
         return sig, work
+
+    # ----- avoid meter (the inverse lens: what you're trying to shed) -----
+
+    def _avoid_kws(self, day=None):
+        if day is None or day == self.today:
+            return self._kws_from_text(self.diary.get("1.0", "end-1c"), "avoid:")
+        try:
+            with open(self.diary_path(day), encoding="utf-8") as f:
+                return self._kws_from_text(f.read(), "avoid:")
+        except OSError:
+            return []
+
+    def _day_avoid(self, day, kws=None, rows=None):
+        """(avoid_min, work_min) for one day given its AVOID keywords —
+        the exact mirror of _day_signal, same lens primitive."""
+        if kws is None:
+            kws = self._avoid_kws(day)
+        av = work = 0
+        if kws:
+            iso = day.isoformat()
+            for r in (rows if rows is not None else read_rows()):
+                if r[0] != iso or r[1] == "break":
+                    continue
+                try:
+                    m = int(r[4])
+                except ValueError:
+                    continue
+                work += m
+                if task_matches(r[5], kws):
+                    av += m
+        return av, work
+
+    def _carry_avoid(self):
+        """Yesterday's AVOID line text (original case), or '' — unlike
+        SIGNAL, no goal-seeded fallback: AVOID is a standing declaration,
+        not a daily pick, so it only carries what you actually wrote."""
+        try:
+            with open(self.diary_path(self.today - dt.timedelta(days=1)),
+                      encoding="utf-8") as f:
+                for line in f:
+                    s = line.strip()
+                    if s.lower().startswith("avoid:"):
+                        return s[6:].strip()
+        except OSError:
+            pass
+        return ""
+
+    def _avoid_trend_suffix(self, yday):
+        """', avoid Y%' (+ a quiet week-over-week arrow) appended to the
+        yesterday-summary line — AVOID reported right next to SIGNAL,
+        completing the lens family symmetrically. Arrow only appears with
+        2+ active days in both this week (Mon-yesterday) and all of last
+        week, and only when the move is >=3 points either way — silent
+        otherwise, same honesty gate as every other trend line here."""
+        kws = self._avoid_kws(yday)
+        if not kws:
+            return ""
+        aday, wday = self._day_avoid(yday, kws)
+        if wday <= 0:
+            return ""
+        pct = round(100 * aday / wday)
+        suffix = f", avoid {pct}%"
+        mon = yday - dt.timedelta(days=yday.weekday())
+        prev_mon = mon - dt.timedelta(days=7)
+        idx = day_index()
+
+        def share(lo, hi):
+            av = wk = 0
+            active = 0
+            d = lo
+            while d <= hi:
+                rec = idx.get(d.isoformat())
+                if rec and rec["work"] > 0:
+                    a, w = self._day_avoid(d, kws)
+                    av += a
+                    wk += w
+                    active += 1
+                d += dt.timedelta(days=1)
+            return (100 * av / wk, active) if wk > 0 else (None, active)
+
+        cur, cur_active = share(mon, yday)
+        prev, prev_active = share(prev_mon, mon - dt.timedelta(days=1))
+        if cur is not None and prev is not None and cur_active >= 2 and prev_active >= 2:
+            if cur <= prev - 3:
+                suffix += " ↓"
+            elif cur >= prev + 3:
+                suffix += " ↑"
+        return suffix
 
     # ----- energy meter (1-5 in the day header, like SIGNAL) -----
 
@@ -2030,7 +2137,7 @@ class App(tk.Tk):
         (re.compile(r"^(Start|Stop|Reset);"), "raw_event"),
         (re.compile(r"^=== (THEME|END THEME)"), "theme_block"),
         (re.compile(r"^==="), "day_header"),
-        (re.compile(r"^(SIGNAL:|ENERGY:|TODO|SOMEDAY:|WEEK REVIEW|"
+        (re.compile(r"^(SIGNAL:|AVOID:|ENERGY:|TODO|SOMEDAY:|WEEK REVIEW|"
                     r"plan today:|focus order today)"), "meta_header"),
         (re.compile(r"⚠|^!!!"), "warn_line"),
         (re.compile(r"^---"), "struct"),
@@ -3082,6 +3189,7 @@ class App(tk.Tk):
                     f" / {yb // 60}h{yb % 60:02}m breaks")
             if ywork:
                 line += f", signal {round(100 * ysig / ywork)}%"
+            line += self._avoid_trend_suffix(yday)
             parts.append(line + ")")
             v = self._verdict(yw, ysig, ywork)
             if v:
@@ -3102,6 +3210,7 @@ class App(tk.Tk):
         if self.today.weekday() == 0:
             parts += self._week_review_block()
         parts.append(f"SIGNAL: {self._carry_signal()}")
+        parts.append(f"AVOID: {self._carry_avoid()}")
         parts.append("ENERGY: ")   # type 1-5 when you know it — feeds the record
         todos = self._carry_todos(yday)
         if todos:
