@@ -1255,7 +1255,11 @@ The tkinter surfaces need a real run on the user's Windows machine
 Private repo `econjp/chrono`, all work happens directly on `master` —
 no other branch is active. (A mobile-session branch,
 `claude/life-management-platform-arch-*`, was cherry-picked into master
-and re-authored on 2026-07-12; see CLAUDE.md incident log. It may still
-exist on origin as a harmless leftover pointer — safe to delete, not
-urgent.) Commit style: short imperative title + honest body listing
-user-visible changes first. No AI co-author trailers, ever (CLAUDE.md).
+and re-authored on 2026-07-12 — see CLAUDE.md incident log — and its
+now-redundant remote pointer was deleted on 2026-07-13 during the
+v8.1–v8.12 landing audit below. A second mobile branch,
+`claude/finish-date-projection`, held the fourteen v8.1–v8.12 commits
+that landed the same day — kept on origin at the owner's choice even
+though its content is now redundant on master too.) Commit style:
+short imperative title + honest body listing user-visible changes
+first. No AI co-author trailers, ever (CLAUDE.md).
