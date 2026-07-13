@@ -1374,6 +1374,62 @@ purpose; the *walls* are the major thing, and they're now named.
     feeling like the app second-guessing every SIGNAL choice, cut it —
     that's the same failure mode the guardrail already names.
 
+52. **Cost of yes — a prospective preview before committing to a new
+    deadline (PLANNING — the capacity math run BEFORE, not after).**
+    Every capacity view (`_capacity_lines`, `_plan_line`, #47's root
+    cause) looks at deadlines already on the books. Nothing shows what
+    ADDING one would actually do before you commit. In the deadline
+    dialog, as soon as total_h + due date are both filled in, one live
+    line: "committing to this would push Wednesday's slack from +3h to
+    -2h — Thesis would need to give up 2h/day to make room." Pure
+    reuse of `_avail_hours`/`_capacity_lines`'s existing math, run
+    against a hypothetical extra deadline instead of a real one — no
+    new data, just running the same function one keystroke earlier
+    than it currently ever gets run. Turns the moment of over-
+    committing (which currently only shows up as a ⚠ days or weeks
+    later) into a visible choice at the only point it's still cheap to
+    say no.
+
+53. **Focus signature — hour-of-day × day-of-week, not either alone
+    (SELF-KNOWLEDGE — the shape of a real week).** The weekday-pattern
+    insight (v7.4) compares total HOURS per weekday; `_hour_quality`
+    (v8.8) compares total hours per hour-of-day, collapsed across every
+    weekday. Neither shows the actual two-dimensional shape: WHEN,
+    within which days, signal work reliably happens. A compact text
+    grid (7 rows × a handful of hour-buckets, weeks aggregated) —
+    "Tue/Wed 09-12 lights up consistently; Fri afternoons never do" —
+    read once in a while, not a daily view. Reuses `read_rows`/
+    `task_matches` over the SIGNAL lens; needs real volume (many weeks)
+    before a 2D grid has enough samples per cell to mean anything, so
+    this is a "check back once you have months of history" feature, not
+    an early one.
+
+54. **Deadline estimate reality-check at creation (PLANNING —
+    depends on #10's per-category estimate factor).** #10's recovered
+    idea (per-category `_estimate_factor`, not yet built — not enough
+    Done-line data existed at the time) would know that thesis-type
+    tasks historically run at some real multiple of their estimate. The
+    natural consumer of that number: apply it at the moment a NEW
+    deadline's total_h gets typed, before the commitment is made —
+    "your thesis-type estimates have run ×2.4 historically; this 20h
+    scope has previously meant more like 48h." Not a correction, not a
+    forced field — one line next to the input, same spirit as #52's
+    cost-of-yes but auditing the NUMBER itself rather than the
+    calendar. Explicitly sequenced after #10 — nothing to build here
+    until that data exists.
+
+55. **Task-library commitment density (SELF-KNOWLEDGE/HYGIENE —
+    volume, not age).** #43's graveyard sweep asks whether library
+    items are still real, by AGE. Nothing asks the orthogonal question:
+    how much is actually declared "signal priority" right now, in
+    aggregate? "14 signal-priority items in the library, ~45h estimated
+    total — more than two weeks of pure signal time, undated." Not a
+    verdict, just a volume check — the moment a backlog quietly becomes
+    aspirational fiction is usually invisible until it's named as a
+    number. Cheap: one sum over `self.settings.get("tasks", [])`
+    filtered by `priority == "signal"`, surfaced in the Tasks/Library
+    window's own header rather than a new view.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
