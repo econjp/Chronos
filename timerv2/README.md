@@ -4,6 +4,23 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### The co-pilot greets you (v8.6)
+
+The app stops waiting to be opened. Every new day file now opens with a
+**`co-pilot:`** line — the single most important thing right now, picked
+for you: an actionable risk when there is one (*"Main risk: Thesis lands
+~22d late — add ~1h/day or move the date now"*), otherwise the sharpest
+**anomaly vs your own baseline**:
+
+- *worst sleep week in 10 weeks — 5h30m/night vs your 7h30m norm*
+- *20 days since any Finnish — drifting from something you flagged as mattering*
+- *3 straight tracked days at ~0% signal — the work's happening, just not on what you named*
+
+It's measured against *your* history, not an ideal, and stays silent when
+there's genuinely nothing to flag. The full list lives under **UNUSUAL**
+in the Life review. This is the app becoming *attentive* — noticing, and
+speaking first.
+
 ### Life review — the whole picture, synthesized (v8.5)
 
 The one that makes every other view speak with a single voice. **View →

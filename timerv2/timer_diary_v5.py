@@ -60,6 +60,20 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.6 (the co-pilot speaks FIRST — proactive, attentive):
+  - ANOMALY WATCH (_anomaly_lines): flags what's unusual vs your OWN
+    baseline, not an ideal — "worst sleep week in 10 weeks (5h30m vs your
+    7h30m norm)", "20 days since any Finnish — drifting from something you
+    flagged", "3 straight tracked days at ~0% signal". Ranked, honesty-
+    gated (needs real history). Shows in the Life review under UNUSUAL.
+  - THE MORNING GREETING: the new-day header now opens with a "co-pilot:"
+    line — the single most important thing right now, chosen for you:
+    an actionable risk (a deadline slipping, a domain starving) when there
+    is one, else the sharpest anomaly. The app stops waiting to be opened
+    and greets you in the day file, per the sacred "day file is the app"
+    rule. Silent when there's genuinely nothing to flag (no filler).
+    Pure logic, tested on Linux (anomaly ranking + note prioritisation).
+
 New in v8.5 (Life review — the pillars finally speak as ONE voice):
   - View > "Life review — synthesized briefing…": one window that pulls
     the week's numbers + VALUES (alignment, v8.4) + AHEAD (outlook, v8.3)
@@ -2853,6 +2867,9 @@ class App(tk.Tk):
         otd = self._on_this_day_line()
         if otd:
             parts.append(otd)
+        note = self._copilot_note()      # the co-pilot speaks first
+        if note:
+            parts.append(note)
         plan = self._plan_line()
         if plan:
             parts.append(plan)
@@ -3655,6 +3672,90 @@ class App(tk.Tk):
         return ["On pace and living your stated priorities — the boring good "
                 "state. Protect the routine that got you here."]
 
+    def _anomaly_lines(self, weeks=10):
+        """What's UNUSUAL for you right now, measured against your OWN
+        baseline — the app noticing instead of waiting to be asked. Each
+        line compares the present to your recent history, not an abstract
+        ideal. Ranked by severity; speaks only with enough history to know
+        what 'normal' is. The proactive, attentive layer."""
+        out = []
+        idx = day_index()
+        today = self.today
+        # --- sleep-week extremity vs your last `weeks` weeks
+        this_mon = today - dt.timedelta(days=today.weekday())
+        wk_sleep = []
+        for k in range(weeks - 1, -1, -1):
+            mon = this_mon - dt.timedelta(weeks=k)
+            sls = []
+            for i in range(7):
+                dd = mon + dt.timedelta(days=i)
+                if dd > today:
+                    break
+                sl = self._sleep_h(dd.isoformat())
+                if sl:
+                    sls.append(sl)
+            wk_sleep.append(sum(sls) / len(sls) if sls else None)
+        prior = [s for s in wk_sleep[:-1] if s is not None]
+        cur = wk_sleep[-1]
+        if cur is not None and len(prior) >= 3:
+            base = sum(prior) / len(prior)
+            if cur <= min(prior) and base - cur >= 0.5:
+                out.append((3.0, f"worst sleep week in {len(prior) + 1} weeks "
+                            f"— {fmt_sleep(cur)}/night vs your {fmt_sleep(base)} "
+                            "norm; expect the work to feel harder"))
+            elif cur >= max(prior) and cur - base >= 0.5:
+                out.append((1.0, f"best sleep week in {len(prior) + 1} weeks "
+                            f"({fmt_sleep(cur)}/night) — keep whatever changed"))
+        # --- neglect: days since you last touched a declared domain/goal
+        watch = [(d["name"], d.get("match")) for d in self.domains()] or \
+                [(g["name"], g.get("match")) for g in self.goals()]
+        for name, spec in watch:
+            kws = self._match_kws(spec)
+            if not kws:
+                continue
+            last = None
+            for back in range(0, 91):
+                rec = idx.get((today - dt.timedelta(days=back)).isoformat())
+                if rec and any(task_matches(t, kws) for t in rec["tasks"]):
+                    last = today - dt.timedelta(days=back)
+                    break
+            if last is not None and (today - last).days >= 10:
+                gap = (today - last).days
+                out.append((2.0 + min(gap, 40) / 40,
+                            f"{gap} days since any {name} — drifting from "
+                            "something you flagged as mattering"))
+        # --- signal drought: trailing tracked days with 0% signal
+        drought = 0
+        for back in range(1, 15):
+            rec = idx.get((today - dt.timedelta(days=back)).isoformat())
+            if not rec or rec["work"] == 0:
+                break
+            s, w = self._day_signal(today - dt.timedelta(days=back))
+            if w > 0 and s == 0:
+                drought += 1
+            else:
+                break
+        if drought >= 3:
+            out.append((2.5, f"{drought} straight tracked days at ~0% signal "
+                        "— the work's happening, just not on what you named"))
+        out.sort(key=lambda x: -x[0])
+        return [t for _p, t in out][:4]
+
+    def _copilot_note(self):
+        """The single most important proactive line for the morning header
+        — the co-pilot greeting you rather than waiting to be opened.
+        Prefer an actionable risk (the bottom line) when there is one;
+        otherwise the sharpest anomaly. None when there's nothing real to
+        say (no filler 'good state' in the day file)."""
+        bl = self._review_bottom_line()
+        if bl and any(k in bl[0] for k in
+                      ("behind on", "Main risk", "below where you said")):
+            return "co-pilot: " + bl[0]
+        an = self._anomaly_lines()
+        if an:
+            return "co-pilot: " + an[0]
+        return None
+
     def _life_review_lines(self):
         """One briefing that makes the pillars speak as one voice: this
         week's numbers, then VALUES (alignment), AHEAD (outlook),
@@ -3680,7 +3781,8 @@ class App(tk.Tk):
         if sleeps:
             head += f" · sleep avg {fmt_sleep(sum(sleeps) / len(sleeps))}"
         L = [f"LIFE REVIEW — week of {monday:%d.%m.%Y}", head]
-        for title, body in (("VALUES — are you living them?", self._alignment_lines()),
+        for title, body in (("UNUSUAL — vs your own baseline", self._anomaly_lines()),
+                            ("VALUES — are you living them?", self._alignment_lines()),
                             ("AHEAD — what's coming, at your real pace", self._outlook_lines()),
                             ("TRAJECTORY — the last two months", self._trajectory_lines())):
             if body:

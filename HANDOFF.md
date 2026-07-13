@@ -292,6 +292,19 @@ purpose; the *walls* are the major thing, and they're now named.
 
 ## Version history (one line each)
 
+- **v8.6** (the co-pilot speaks first — proactive/attentive layer).
+  `_anomaly_lines(weeks=10)`: deviations from the user's OWN baseline —
+  worst/best sleep week vs the trailing weeks, days-since-last-touch for a
+  declared domain/goal (neglect), trailing 0%-signal drought. Ranked,
+  honesty-gated. `_copilot_note()` picks the single most important line
+  (actionable risk from `_review_bottom_line` first, else top anomaly) and
+  `_new_day_header` prepends it as "co-pilot: …" — the app greeting you in
+  the day file instead of waiting to be opened. Anomalies also show under
+  UNUSUAL in the Life review. Pure logic; anomaly ranking + note
+  prioritisation + drought path verified on Linux. NOTE: this is the app's
+  first PROACTIVE surface (writes into the morning header); it stays a
+  stated line the user reads and ignores or acts on — NOT a gate/nag, per
+  the standing anti-nagging guardrail. Keep it that way.
 - **v8.5** (Life review — the connective tissue, AI-analyst v0.5 keyless).
   `_life_review_lines()` composes week numbers + `_alignment_lines` +
   `_outlook_lines` + `_trajectory_lines` + top `_insight_lines` into one
