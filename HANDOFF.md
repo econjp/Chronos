@@ -292,6 +292,16 @@ purpose; the *walls* are the major thing, and they're now named.
 
 ## Version history (one line each)
 
+- **v8.7** (right-now recommender — the day plan made real-time).
+  `_deep_window(days=60)` learns your best 3h block from history;
+  `_recommend_now(now=None)` reads current hour vs that window + the
+  most-behind deadline (real pace) + today's energy + the 19–21 fatigue
+  window and states one pick; View > "What should I do now?" shows it in
+  the status bar (`_show_recommend_now`). Rule-based, `now` injectable,
+  every branch verified on Linux. Complements the v8.0 morning schedule
+  (static, whole-day) with a moment-to-moment call. Backlog gained 4 new
+  ideas (#16 task-thrash meter, #17 energy-aware scheduling, #18
+  commitment-reliability ledger, #19 frictionless quick-capture).
 - **v8.6** (the co-pilot speaks first — proactive/attentive layer).
   `_anomaly_lines(weeks=10)`: deviations from the user's OWN baseline —
   worst/best sleep week vs the trailing weeks, days-since-last-touch for a
@@ -869,6 +879,55 @@ purpose; the *walls* are the major thing, and they're now named.
     reuse `day_index()` + the same lens primitives as everything else;
     the only new part is the wider date range and a text layout suited
     to a once-a-year read rather than a daily glance.
+
+16. **Task-thrash / context-switch meter (FEEDBACK).** The csv already
+    records every task switch (Switch splits an interval; each row carries
+    its task). Count distinct task-switches per day and correlate with
+    output: "days with 6+ task switches average 31% less signal work than
+    your focused days." Distinct from the existing focus-block-length
+    insight (that measures interval *duration*; this measures *how many
+    times you jumped*). Pure view over `read_rows()` grouped by day,
+    counting task changes in start-time order; honesty-gated (n≥ some
+    focused and some thrashy days). Cheap, and names a productivity leak
+    the user can feel but not currently see. Could also surface today's
+    switch count live in the status bar as a gentle "7 switches so far"
+    once past a threshold — stated, not blocking (guardrail).
+
+17. **Energy-aware scheduling (PLANNING).** The v8.0 scheduler places
+    deadlines into free slots purely by urgency + earliest-free-time.
+    Upgrade: weight by WHEN you actually work best. `_deep_window` (v8.7)
+    already learns your best 3h block; extend to a per-hour output/energy
+    profile (avg tracked minutes and, where logged, ENERGY by hour) and
+    have `_day_schedule_lines` prefer placing the hardest/most-behind
+    deadline into your peak hours and admin into the troughs, instead of
+    just the earliest gap. Turns "08:00–12:05 Thesis" into "Thesis goes in
+    your 09–12 peak; leave 15:00 email for the afternoon dip." Reuses
+    `_free_slots` + the hour profile; no new data. The single highest-
+    leverage upgrade to the existing planner.
+
+18. **Commitment-reliability ledger (SELF-KNOWLEDGE).** A `COMMIT: thesis
+    4h` line the user optionally types in the morning header (same in-file
+    convention as SIGNAL/ENERGY). At rollover the app compares committed
+    vs delivered per that day's csv and accrues a personal stat over time:
+    "you hit your morning commitment 3 of the last 10 days; you reliably
+    deliver ~65% of what you promise yourself — so promise 65% and mean
+    it." Self-calibration feedback, not nagging (it's a stated number the
+    user reads, never a gate — re-check against the anti-nagging precedent
+    before adding any prompt). Reuses the day-file line-parse pattern
+    (`_energy_from_text` is the template) + `day_index`. Turns the plan
+    into honest self-knowledge about your own reliability.
+
+19. **Frictionless quick-capture (USABILITY).** The task library (v6.5)
+    captures TODO/SOMEDAY bullets from the diary, but only when you're in
+    the app. A global-hotkey quick-capture popup — a tiny always-on-top
+    entry box, same spirit as the break pill — lets you dump a thought or
+    task from anywhere in one keystroke, landing it straight in the task
+    library with source="quick" + timestamp, no context-switch into the
+    main window. Removes the friction that currently sends stray todos to
+    a WhatsApp-to-self thread (the exact thing the library was meant to
+    replace). Reuses the existing global-hotkey thread pattern + the task
+    library's add path; the popup is ~30 lines mirroring the break-pill
+    Toplevel. Pure usability, high daily value.
 
 ## How to verify changes without Windows
 

@@ -4,6 +4,22 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### What should I do now? (v8.7)
+
+View → **What should I do now?** answers the moment-to-moment question the
+morning schedule can't: it's 2pm, you've got 90 minutes — what's the best
+use of them? It reads the **current hour against your learned deep-focus
+window** (the 3-hour block your work actually lands in, from 60 days of
+history), which deadline is most behind at real pace, and today's energy:
+
+- *inside your deep-focus window (09–12) — spend it on Thesis (~22d behind), not admin*
+- *past your deep window (09–12) — good slot for admin/email; protect Thesis for tomorrow's peak*
+- *19–21 fatigue window — move or rest, don't grind*
+- *…Energy's 2/5 today — a lighter or shorter task beats forcing the hard one*
+
+It protects your best hours for your hardest work and steers the rest
+where it belongs.
+
 ### The co-pilot greets you (v8.6)
 
 The app stops waiting to be opened. Every new day file now opens with a

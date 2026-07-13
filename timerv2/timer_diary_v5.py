@@ -60,6 +60,18 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.7 (right-now recommender — the plan, made real-time):
+  - View > "What should I do now?": the dynamic companion to the morning
+    schedule. Reads the current hour against your LEARNED deep-focus
+    window (_deep_window — your best 3h block from 60 days of history),
+    which deadline is most behind at real pace, today's energy, and the
+    documented 19–21 fatigue window, then states one clear pick in the
+    status bar: "inside your deep-focus window (09–12) — spend it on
+    Thesis (~22d behind), not admin" / "past your deep window — good slot
+    for admin; protect Thesis for tomorrow's peak" / "fatigue window —
+    move or rest". Energy ≤2 adds "a lighter task beats forcing the hard
+    one." Rule-based, tested on Linux across every branch.
+
 New in v8.6 (the co-pilot speaks FIRST — proactive, attentive):
   - ANOMALY WATCH (_anomaly_lines): flags what's unusual vs your OWN
     baseline, not an ideal — "worst sleep week in 10 weeks (5h30m vs your
@@ -1333,6 +1345,8 @@ class App(tk.Tk):
                           command=self._alignment_win)
         viewm.add_command(label="Life review — synthesized briefing…",
                           command=self._life_review_win)
+        viewm.add_command(label="What should I do now?",
+                          command=self._show_recommend_now)
         viewm.add_command(label="Health × focus (14 days)", command=self._health_view)
         viewm.add_command(label="Search all days…", command=self._search_diary)
         viewm.add_separator()
@@ -4161,6 +4175,81 @@ class App(tk.Tk):
         s, e = max(slots, key=lambda se: _time_span_hours(*se))
         return (f"biggest free block today: {s:%H:%M}-{e:%H:%M} "
                 f"({_time_span_hours(s, e):.1f}h)")
+
+    # ----- right-now recommender (real-time companion to the day plan) -----
+
+    def _deep_window(self, days=60):
+        """Your best 3-hour block of the day, learned from history — the
+        hours your work actually lands in. None until 20h are tracked."""
+        by_hour, tot = [0] * 24, 0
+        cutoff = (self.today - dt.timedelta(days=days)).isoformat()
+        for r in read_rows():
+            if r[1] == "break" or r[0] < cutoff:
+                continue
+            try:
+                h = int(r[2].split(":")[0]) % 24
+                tot += int(r[4])
+                by_hour[h] += int(r[4])
+            except (ValueError, IndexError):
+                continue
+        if tot < 20 * 60:
+            return None
+        _best, h0 = max((sum(by_hour[h:h + 3]), h) for h in range(22))
+        return (h0, h0 + 3)
+
+    def _recommend_now(self, now=None):
+        """What to work on RIGHT NOW — the dynamic companion to the morning
+        schedule. Reads the current hour against your learned deep-focus
+        window, which deadline is most behind at real pace, today's energy,
+        and the documented fatigue window, and states one clear pick.
+        Rule-based, `now` injectable for testing."""
+        now = now or dt.datetime.now()
+        hour = now.hour
+        behind = needy = None
+        for dl in self.deadlines():
+            try:
+                p = self._dl_progress(dl)
+            except (ValueError, KeyError):
+                continue
+            if not p.get("total_h") or p["left"] < 0 or p["remaining_h"] <= 0:
+                continue
+            proj = self._dl_projection(dl)
+            if proj and proj["delta"] > 0 and (behind is None
+                                               or proj["delta"] > behind[1]):
+                behind = (dl["name"], proj["delta"])
+            if needy is None or p["needed_per_day"] > needy[1]:
+                needy = (dl["name"], p["needed_per_day"])
+        if behind:
+            target = f"{behind[0]} (~{behind[1]}d behind at real pace)"
+        elif needy:
+            target = f"{needy[0]} ({needy[1]:.1f}h/day needed)"
+        else:
+            sig = self._signal_kws()
+            target = ("your signal (" + ", ".join(sig) + ")") if sig else None
+        en = self._day_energy()
+        note = (f" Energy's {en}/5 today — a lighter or shorter task beats "
+                "forcing the hard one." if en and en <= 2 else "")
+        if hour >= 22 or hour < 5:
+            return ("It's late — sleep is the highest-leverage move now, not "
+                    "more hours.")
+        if 19 <= hour < 21:
+            return ("You're in your 19–21 fatigue window — move or rest, don't "
+                    "grind. Anything you force here you pay for tomorrow.")
+        if not target:
+            return ("Nothing scoped is behind — pick whatever moves a goal, "
+                    "you're not firefighting." + note)
+        dw = self._deep_window()
+        if dw and dw[0] <= hour < dw[1]:
+            return (f"You're inside your deep-focus window ({dw[0]:02d}–"
+                    f"{dw[1]:02d}) — spend it on {target}, not admin." + note)
+        if dw:
+            return (f"Past your deep-focus window ({dw[0]:02d}–{dw[1]:02d}) — a "
+                    f"good slot for admin/email; protect {target} for "
+                    "tomorrow's peak." + note)
+        return f"Best use of now: {target}." + note
+
+    def _show_recommend_now(self):
+        self.status.config(text="Now → " + self._recommend_now())
 
     def _set_ics(self):
         p = filedialog.askopenfilename(
