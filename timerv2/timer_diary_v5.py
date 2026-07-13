@@ -60,6 +60,16 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.11 (re-entry ramp — the pull-back's click made cheap):
+  - resuming work after a 30min+ break, the status line now hands you the
+    smallest concrete opener: "· start small: 'thesis: fix table 3'
+    (0.2h)". _reentry_opener prefers a task-library item related to the
+    active task (smallest estimate first), then the smallest signal-
+    priority item, then any smallest item, else today's first TODO
+    bullet. Activation energy is the real enemy after a long break — the
+    pull-back (v8.10) gets you to click, the ramp makes the click land on
+    a ten-minute piece instead of the mountain. selftest suite 11.
+
 New in v8.10 (breaks get teeth — and a measured tax):
   - BREAK PULL-BACK: when a break interrupts a SIGNAL task and runs past
     the threshold (Tools > Break pull-back, default 20 min, 0 = off), the
@@ -2083,6 +2093,7 @@ class App(tk.Tk):
             self._log_task_if_new()
             self.state = "working"
             self.work_start = now
+            self._last_break_secs = 0
             self.reset_btn.config(state="normal")
             self.switch_btn.config(state="normal")
             self.btn.config(text="Stop")
@@ -2102,6 +2113,7 @@ class App(tk.Tk):
             self.btn.config(text="Start")
         else:  # break -> back to work
             bsecs = int((now - self.break_start).total_seconds())
+            self._last_break_secs = bsecs   # the re-entry ramp reads this
             self._append_text(f"--- Break duration: {hms_unpadded(bsecs)} ",
                               cursor_to_line_end=True)
             self._append_text(event_line("Start", now, self.cum_secs))
@@ -2133,6 +2145,10 @@ class App(tk.Tk):
                 ctx = self._last_context(self.active_task)
                 if ctx:
                     note += f' · last time ({ctx[0]:%d.%m}): "{ctx[1][:60]}"'
+            if getattr(self, "_last_break_secs", 0) >= self.RAMP_BREAK_SECS:
+                op = self._reentry_opener(self.active_task)
+                if op:
+                    note += f" · start small: {op}"
             self.status.config(text=f"Working — {self.active_task or '(no task)'}{note}")
         elif self.settings.get("float_break", True):
             self.status.config(text="On break — the floating clock counts it; "
@@ -2474,6 +2490,39 @@ class App(tk.Tk):
         if v is not None:
             self.settings["pull_min"] = v
             save_settings(self.settings)
+
+    RAMP_BREAK_SECS = 30 * 60   # after this long away, offer an opener
+
+    def _reentry_opener(self, task):
+        """The smallest concrete opener for restarting after a long break
+        — activation energy is the real enemy, so hand over a 10-minute
+        piece instead of the mountain. Preference order: task-library item
+        related to the active task (smallest estimate first), then the
+        smallest signal-priority item, then any smallest-estimate item,
+        else today's first TODO bullet. Returns a short string or None."""
+        t = (task or "").lower()
+        cands = []
+        for item in self.settings.get("tasks", []):
+            try:
+                est = float(item.get("est_h") or 0)
+            except (TypeError, ValueError):
+                est = 0
+            if not est:
+                continue
+            name = item["name"]
+            rel = (0 if t and (t in name.lower() or name.lower() in t)
+                   else 1 if item.get("priority") == "signal" else 2)
+            cands.append((rel, est, name))
+        if cands:
+            _rel, est, name = min(cands)
+            return f"'{name}' ({est:g}h)"
+        for ln in self.diary.get("1.0", "end-1c").splitlines():
+            s = ln.strip()
+            if s.startswith(("- ", "* ", "[ ] ")):
+                body = s.lstrip("-*[] ").strip()
+                if len(body) >= 3:
+                    return f"'{body[:60]}'"
+        return None
     FATIGUE_WARN_SECS = 5 * 60     # 19-21: the user's own doomscroll window
 
     def _update_pill(self, bsecs, now_h=None):

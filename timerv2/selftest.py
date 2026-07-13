@@ -34,7 +34,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
         "_life_review_lines", "_anomaly_lines", "_copilot_note",
         "_recommend_now", "_deep_window", "_hour_quality", "_energy_place",
-        "_last_context", "_break_insight", "_pull_level"}
+        "_last_context", "_break_insight", "_pull_level", "_reentry_opener"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL"}
 
@@ -368,13 +368,40 @@ def suite_break_pull():
     assert D._break_insight(d) == []
 
 
+def suite_reentry():
+    D, ns = fresh()
+
+    class FakeDiary:
+        def __init__(self, text):
+            self._t = text
+
+        def get(self, _a, _b):
+            return self._t
+
+    d = _mk(D, diary=FakeDiary("TODO:\n- call landlord\n--- Task: x\n"))
+    d.settings = {"tasks": [
+        {"name": "thesis: fix table 3", "est_h": 0.2, "priority": "signal"},
+        {"name": "thesis: rewrite ch5", "est_h": 3},
+        {"name": "email sweep", "est_h": 0.1}]}
+    # related to the active task wins, smallest estimate first
+    assert D._reentry_opener(d, "thesis: ch4") == "'thesis: fix table 3' (0.2h)"
+    # unrelated active task: signal-priority item beats a smaller other
+    assert D._reentry_opener(d, "banana") == "'thesis: fix table 3' (0.2h)"
+    # no estimated items -> today's first TODO bullet (machine lines skipped)
+    d.settings = {"tasks": []}
+    assert D._reentry_opener(d, "x") == "'call landlord'"
+    d.diary = FakeDiary("no bullets at all\n--- Break duration: 0:31:0\n")
+    assert D._reentry_opener(d, "x") is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
           ("recommend-now", suite_recommend_now),
           ("energy-place", suite_energy_place),
           ("last-context", suite_last_context),
-          ("break-pull", suite_break_pull)]
+          ("break-pull", suite_break_pull),
+          ("reentry", suite_reentry)]
 
 
 def main():

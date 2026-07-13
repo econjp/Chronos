@@ -292,6 +292,13 @@ purpose; the *walls* are the major thing, and they're now named.
 
 ## Version history (one line each)
 
+- **v8.11** (re-entry ramp — backlog #34, completes the anti-
+  procrastination arc with v8.10). `_reentry_opener(task)` picks the
+  smallest concrete opener (related > signal > any, by estimate; TODO-
+  bullet fallback skips machine lines); `_toggle` records
+  `_last_break_secs` (reset on fresh starts); Working-status appends
+  "start small: …" after 30m+ breaks. Known gap noted at #34: idle-logged
+  breaks don't set `_last_break_secs` yet. selftest suite 11; 11/11.
 - **v8.10** (breaks get teeth — backlog #30 + the owner's pull-back ask).
   `_pull_level(bsecs, pull_min, from_signal)` (pure, staticmethod) +
   pill escalation in `_update_pill` (two stages, beep once per stage,
@@ -1103,13 +1110,13 @@ purpose; the *walls* are the major thing, and they're now named.
     per-event nagging fails, and it's just arithmetic over day_index +
     break rows by hour. Guardrail-clean: a number, never a block.
 
-34. **Re-entry ramp (USABILITY — the other half of the pull-back).** The
-    pull-back gets you to click; the ramp makes the click cheap: when
-    work resumes after a 30m+ break, the status line offers the smallest
-    concrete opener — the last TODO bullet for the active task, or the
-    task-library item with the smallest estimate: "start with: 'fix table
-    3 caption' (10m)". Activation energy is the real enemy after a long
-    break; reuses _last_context + task library data.
+34. ~~**Re-entry ramp.**~~ — DONE v8.11 (`_reentry_opener` + hook in the
+    Working-status line when `_last_break_secs >= RAMP_BREAK_SECS`).
+    Preference: related library item smallest-est first → smallest signal
+    item → any smallest → today's first TODO bullet. Still open (small):
+    also fire after idle-detected breaks (currently only explicit
+    break→work toggles set `_last_break_secs`), and let a click on the
+    status bar put the opener straight into the task box.
 
 35. **Weekly "one less" — subtraction advisor (FEEDBACK).** Every insight
     adds awareness; this one subtracts a thing. Each Monday review picks
@@ -1119,6 +1126,37 @@ purpose; the *walls* are the major thing, and they're now named.
     week, try one less: X." Rotates candidates, never repeats an ignored
     one twice in a row. Improvement by removal — the most underrated
     productivity move and almost never what software suggests.
+
+36. **Milestones inside a deadline (PLANNING — content, not just hours).**
+    `total_h` measures effort, not progress: 30h logged on a 60h scope
+    can be 70% done or 20% done. Optional milestone list per deadline
+    ("ch4 [15h], ch5 [20h], revisions [10h]" — same [Nh] convention),
+    each checked off like a Done-line; burn-down and projection then
+    speak in content ("ch4 done, ch5 at 60% of its hours") and the
+    estimate factor applies per milestone. The honest fix for "hours
+    accrue but is the thing actually getting done?"
+
+37. **Declared short day (PLANNING — compassionate realism).** A `TODAY:
+    4h` line in the header (travel, sick, flat) caps the day: the
+    schedule compresses to essentials-only, the verdict judges against
+    the declared cap not your norm, streaks don't break on a day you
+    honestly declared. Kills the all-or-nothing spiral where one
+    impossible day ends the whole system. One line to parse, existing
+    conventions, planner already has the numbers.
+
+38. **Personal block length — the focus decay curve (ANALYSIS).** From
+    interval history: how does block length relate to what follows?
+    "Blocks past ~55m are followed by 3× longer breaks; your natural
+    cycle is ~50m — box accordingly." The personal pomodoro, derived
+    from your own data instead of imposed dogma; feeds a default
+    time-box suggestion when starting signal tasks.
+
+39. **AVOID line — the inverse lens (FEEDBACK).** SIGNAL names what
+    matters; `AVOID: news, some, email` names what you're trying to shed.
+    Same lens primitive inverted: avoid-share reported next to signal%
+    ("avoid 6% ↓ this week"), a quiet week-over-week arrow, and the
+    trajectory/insights can cross it (avoid-share vs energy). Completes
+    the lens family symmetrically — three lines of parsing, big mirror.
 
 31. **Morning brief beyond the desktop (USABILITY/PLATFORM).** On day
     rollover, also write a tiny `brief_today.txt` (plan line, co-pilot

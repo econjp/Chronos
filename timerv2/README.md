@@ -4,6 +4,20 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Re-entry ramp (v8.11)
+
+Coming back after a 30-minute-plus break, the status line offers the
+smallest concrete way back in:
+
+```
+Working — thesis: ch4 · start small: 'thesis: fix table 3' (0.2h)
+```
+
+It picks the tiniest estimated task related to what you're resuming (then
+the smallest signal-priority item, then today's first TODO bullet). The
+pull-back gets you to click; the ramp makes the first minute cost almost
+nothing — which is the whole battle.
+
 ### Breaks get teeth (v8.10)
 
 Two answers to "I might just be procrastinating":
