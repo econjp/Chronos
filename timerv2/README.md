@@ -4,6 +4,28 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Life alignment — time vs your values (v8.4)
+
+The reframe from *time* tracker to *life* management. **Tools → Life
+domains** lets you name a few life areas — Work, Body, Growth, People,
+Rest — each with the task keywords that belong to it and an optional
+target share of your time. **View → Life alignment** then shows where your
+hours *actually* went over 8 weeks against what you *said* should matter:
+
+```
+LIFE ALIGNMENT — last 8 weeks, 43h of tracked time by domain:
+  Work    40.0h  93%   aim 60%  (+33 pts)
+  Body     2.0h   5%   aim 15%  (-10 pts)
+  Growth   1.0h   2%   aim 20%  (-18 pts)
+→ widest say-do gap: Growth — getting 18 points less of your time than
+  you said it should
+```
+
+Domains sit one level above goals (a goal is *why this project*; a domain
+is *why the projects at all*) and use the same keyword matching under the
+hood. This is the platform's core question in one view: **is your time
+flowing where you say it should?**
+
 ### Outlook — the weeks ahead (v8.3)
 
 View → **Outlook — weeks ahead** is the first view that looks *forward*

@@ -60,6 +60,20 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.4 (Life domains — time tracker becomes life management):
+  - Tools > "Life domains…": name a handful of life areas (Work, Body,
+    Growth, People, Rest) with the task keywords that belong to each and
+    an optional target share. Domains are the VALUES layer above goals —
+    same keyword-lens shape (matched_minutes), one level up: the top of
+    the source -> lens -> view stack.
+  - View > "Life alignment…": where your tracked time ACTUALLY went by
+    domain over 8 weeks vs the share you said each should get — "Work
+    40.0h 93% aim 60% (+33) · Growth 1.0h 2% aim 20% (-18)" — and it
+    names the widest say-do gap: "Growth — getting 18 points less of your
+    time than you said it should." The platform's core question, in one
+    place: is your time flowing where you say it should? First brick of
+    the ALIGNMENT pillar (HANDOFF North Star). Pure view, tested on Linux.
+
 New in v8.3 (Outlook — the app starts looking FORWARD, not just back):
   - View > "Outlook — weeks ahead…": a forward simulation across ALL
     scoped deadlines at once, at your REAL recent pace (not the abstract
@@ -1288,6 +1302,8 @@ class App(tk.Tk):
         viewm.add_command(label="Month heatmap", command=self._heatmap)
         viewm.add_command(label="Deadline burn-down", command=self._burndown)
         viewm.add_command(label="Outlook — weeks ahead…", command=self._outlook_win)
+        viewm.add_command(label="Life alignment — time vs values…",
+                          command=self._alignment_win)
         viewm.add_command(label="Health × focus (14 days)", command=self._health_view)
         viewm.add_command(label="Search all days…", command=self._search_diary)
         viewm.add_separator()
@@ -1326,6 +1342,8 @@ class App(tk.Tk):
         toolsm.add_command(label="Global hotkey…", command=self._set_hotkey)
         toolsm.add_command(label="Deadline countdown…", command=self._set_deadline)
         toolsm.add_command(label="Goals — the why layer…", command=self._set_goals)
+        toolsm.add_command(label="Life domains — the values layer…",
+                           command=self._set_domains)
         toolsm.add_command(label="Idle detection…", command=self._set_idle)
         toolsm.add_command(label="Day rollover hour…", command=self._set_rollover)
         toolsm.add_command(label="Daily target…", command=self._set_target)
@@ -1488,6 +1506,146 @@ class App(tk.Tk):
 
         ttk.Button(win, text="Save", command=save).grid(
             row=6, column=3, sticky="e", padx=4, pady=8)
+
+    # ----- life domains (the values layer ABOVE goals) -----
+    #
+    # A goal answers "why this project"; a DOMAIN answers "why the projects
+    # at all" — the handful of life areas your time is supposed to serve
+    # (Work, Body, Growth, People, Rest...). Same keyword-lens shape as
+    # goals/deadlines (matched_minutes), one level up: the top of the
+    # source -> lens -> view stack. The alignment view is the platform's
+    # real question in one place — is your time actually flowing where you
+    # say it should? — turning a time tracker into life management.
+
+    def domains(self):
+        return self.settings.get("domains") or []
+
+    def _domain_minutes(self, dom, lo, hi):
+        return matched_minutes(self._match_kws(dom.get("match")), lo, hi)
+
+    def _alignment_lines(self, weeks=8):
+        """Where your tracked time actually went, by life domain, over the
+        last `weeks` weeks — vs the share you SAID each should get. Names
+        the widest say-do gap. Pure view over the lens primitive."""
+        doms = self.domains()
+        if not doms:
+            return []
+        lo = self.today - dt.timedelta(days=weeks * 7 - 1)
+        idx = day_index()
+        total = 0
+        d = lo
+        while d <= self.today:
+            rec = idx.get(d.isoformat())
+            if rec:
+                total += rec["work"]
+            d += dt.timedelta(days=1)
+        if total <= 0:
+            return [f"No tracked work in the last {weeks} weeks to map yet."]
+        rows, attributed = [], 0
+        for dom in doms:
+            m = self._domain_minutes(dom, lo, self.today)
+            attributed += m
+            try:
+                tgt = float(dom.get("target_pct") or 0) or None
+            except ValueError:
+                tgt = None
+            rows.append([dom["name"], m, 100 * m / total, tgt])
+        lines = [f"LIFE ALIGNMENT — last {weeks} weeks, {total / 60:.0f}h of "
+                 "tracked time by domain:"]
+        for name, m, pct, tgt in sorted(rows, key=lambda x: -x[1]):
+            seg = f"  {name[:14]:<14} {m / 60:5.1f}h  {pct:3.0f}%"
+            if tgt:
+                seg += f"   aim {tgt:.0f}%  ({pct - tgt:+.0f} pts)"
+            lines.append(seg)
+        # unmapped time — only trustworthy when keywords don't overlap and
+        # inflate `attributed` past the real total
+        if attributed <= total:
+            upct = 100 * (total - attributed) / total
+            if upct >= 5:
+                lines.append(f"  {'(unmapped)':<14} "
+                             f"{(total - attributed) / 60:5.1f}h  {upct:3.0f}%"
+                             "   — not in any domain")
+        # the sharpest misalignment, named
+        gaps = [(name, pct - tgt) for name, m, pct, tgt in rows if tgt]
+        if gaps:
+            worst = min(gaps, key=lambda x: x[1])
+            over = max(gaps, key=lambda x: x[1])
+            if worst[1] <= -8:
+                lines += ["", f"→ widest say-do gap: {worst[0]} — you aim for "
+                          f"it but it's getting {abs(worst[1]):.0f} points "
+                          "less of your time than you said it should"]
+            elif over[1] >= 12:
+                lines += ["", f"→ {over[0]} is taking {over[1]:.0f} points more "
+                          "than you aimed — fine if that's the season, "
+                          "crowding out the rest if it isn't"]
+        return lines
+
+    def _alignment_win(self):
+        win = tk.Toplevel(self)
+        win.title("Life alignment — time vs stated values")
+        win.geometry("560x300")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10))
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        body = self._alignment_lines()
+        if not body:
+            body = ["No life domains set yet.", "",
+                    "Tools > Life domains… — name a handful of life areas",
+                    "(Work, Body, Growth, People, Rest) with the task",
+                    "keywords that belong to each, and an optional target",
+                    "share of your time. This view then shows where your",
+                    "hours actually go vs where you said they should."]
+        txt.insert("1.0", "\n".join(body))
+        txt.config(state="disabled")
+
+    def _set_domains(self):
+        """Config the life domains: name + task keywords + optional target
+        share (%). Mirrors the Goals dialog one level up."""
+        win = tk.Toplevel(self)
+        win.title("Life domains — the values layer")
+        win.resizable(False, False)
+        win.grab_set()
+        cols = ("Domain (empty = off)", "Tasks containing (comma-sep)",
+                "Target % (opt)")
+        keys = ("name", "match", "target_pct")
+        for c, lbl in enumerate(cols):
+            ttk.Label(win, text=lbl).grid(row=0, column=c, padx=4, pady=(8, 2))
+        cur = self.domains()
+        grid = []
+        for i in range(6):
+            dom = cur[i] if i < len(cur) else {}
+            row = []
+            for c, key in enumerate(keys):
+                e = ttk.Entry(win, width=(8 if key == "target_pct" else 24))
+                v = dom.get(key, "")
+                e.insert(0, str(v) if v else "")
+                e.grid(row=i + 1, column=c, padx=4, pady=2)
+                row.append(e)
+            grid.append(row)
+
+        def save():
+            out = []
+            for row in grid:
+                vals = {k: row[c].get().strip() for c, k in enumerate(keys)}
+                if not vals["name"]:
+                    continue
+                try:
+                    vals["target_pct"] = float(vals["target_pct"] or 0)
+                except ValueError:
+                    messagebox.showerror(
+                        APP_NAME, f"Target % must be a number on "
+                                  f"'{vals['name']}'.", parent=win)
+                    return
+                out.append(vals)
+            self.settings["domains"] = out
+            save_settings(self.settings)
+            win.destroy()
+
+        ttk.Label(win, text="Tip: keep domains roughly non-overlapping so "
+                            "the percentages add up honestly.",
+                  foreground="#777777").grid(row=7, column=0, columnspan=3,
+                                             sticky="w", padx=4, pady=(4, 0))
+        ttk.Button(win, text="Save", command=save).grid(
+            row=8, column=2, sticky="e", padx=4, pady=8)
 
     def _dl_progress(self, dl):
         """Progress numbers for one deadline: matched hours done since its

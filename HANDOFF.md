@@ -248,14 +248,20 @@ ask and that can tell you its own story. Concrete, staged, all stdlib:
 **Pillar C — ALIGNMENT (life management, not time management).**
 The deepest gap and the most on-vision. The app tracks *time*; a *life*
 platform manages *commitments, decisions and values*. Two moves:
-  1. **A values/domains layer above goals.** A handful of life domains
-     (e.g. Work, Body, Growth, People, Rest) that goals map up to; every
-     tracked hour rolls up; a longitudinal "is your life actually flowing
-     where you say it should" read — the missing top of the
-     source→lens→view stack. Goals answer *why a project*; this answers
-     *why the projects at all, and are you living it*. The waking-hours
-     "LIFE BALANCE" block already gestures at this — make domains explicit
-     and longitudinal.
+  1. **A values/domains layer above goals. — BRICK 1 DONE v8.4.**
+     `domains()` (settings["domains"]: name/match/target_pct),
+     `_domain_minutes` (reuses `matched_minutes`), `_alignment_lines`
+     (8-week actual share per domain vs target, names the widest say-do
+     gap), `_alignment_win` + `_set_domains` dialogs. The missing top of
+     the source→lens→view stack now exists. Next bricks: (a) make it
+     LONGITUDINAL — alignment this 4 weeks vs the prior 4 (is the gap
+     closing or widening?), reusing the v8.2 trajectory split; (b) roll
+     Body/Rest in from health (workout+sleep) and the waking-hours
+     unaccounted block so it spans the whole life, not only tracked work;
+     (c) surface the single widest-gap line on the dashboard. Watch the
+     keyword-overlap caveat (percentages only add up if domains are
+     roughly disjoint — the dialog warns, `_alignment_lines` guards the
+     unmapped calc).
   2. **The decision ledger** (career-chat idea, backlog #9, currently held
      behind the anti-nagging guardrail — revisit deliberately, not as a
      second gate). A life platform remembers the big NO/SKIP decisions and
@@ -282,6 +288,16 @@ purpose; the *walls* are the major thing, and they're now named.
 
 ## Version history (one line each)
 
+- **v8.4** (Life domains — first brick of Pillar C / Alignment, the most
+  on-vision leap: time tracker → life management). `domains()` +
+  `_domain_minutes` + `_alignment_lines(weeks=8)` + `_alignment_win` +
+  `_set_domains` (Tools > Life domains, View > Life alignment). Domains
+  are a keyword lens one level above goals; the view shows actual share
+  per domain over 8 weeks vs a stated target and names the widest say-do
+  gap. Pure view, reuses the lens primitive, no new source. Verified on
+  Linux (share math, target gap, widest-gap headline, no-domains and
+  no-work cases). Keyword-overlap caveat noted (disjoint domains only for
+  honest percentages).
 - **v8.3** (Outlook — first brick of Pillar A / Foresight). New
   `_outlook_lines()` + `_outlook_win()` (View > Outlook — weeks ahead) and
   a menu entry. Forward simulation across ALL scoped deadlines at real
