@@ -60,6 +60,40 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.16-v8.21 (a bigger batch: six backlog items in one push):
+  - v8.16 DECLARED SHORT DAY (#37): type "TODAY: 4h" (or "TODAY: sick",
+    no number needed) into today's own file and the NEXT morning's
+    verdict judges against that declared cap instead of the usual
+    bar — "short day as declared — 2.0h tracked, plan honored," never
+    the harsh "what stole it?" for a day you already flagged honestly
+    in advance. The streak also bridges through a declared day
+    (checked within a 21-day lookback, so it doesn't cost a file-open
+    per day across the full 112-day best-streak scan).
+  - v8.17 FIRST-HOUR AUDIT (#40): new insight comparing days that open
+    with signal work vs days that open with something else — "days you
+    open with signal work end 3.0h heavier... the first hour is a
+    lever, not a warm-up." n≥5 each side.
+  - v8.18 TASK-THRASH METER (#16): new insight comparing signal% on
+    high-switch-count days vs low-switch-count days — distinct from
+    the block-decay curve (#38, duration) since this counts how many
+    times you jumped, not how long you stayed. Also surfaces live in
+    the status bar once a day crosses 4 switches.
+  - v8.19 SHALLOW-WORK RATIO (#49): a same-day depth check — "62% of
+    today's signal hours came in blocks under 20m — that reads as
+    busy, not deep." Threshold derives from the #38 decay curve when
+    available, a flat 20min guess otherwise.
+  - v8.20 LIBRARY GRAVEYARD SWEEP (#43): once a month (first Monday),
+    names Task-library items sitting untouched 60+ days in the week
+    review block. Never auto-deletes.
+  - v8.21 TASK-LIBRARY COMMITMENT DENSITY (#55): the Tasks/Library
+    window header now shows total signal-priority volume undated —
+    "3 signal-priority item(s), ~9.0h estimated total, undated."
+  - All six: pure views/math over data already collected, no new
+    settings dialogs beyond what already existed, tested individually
+    and in combination (full header generation with declared-short-day
+    + graveyard-sweep firing together), full regression + selftest.py
+    (12/12) still green throughout.
+
 New in v8.15 (personal block-length decay curve, backlog #38):
   - new insight: buckets work blocks by length and compares the break
     that immediately follows each bucket — "blocks past ~60m are
@@ -1411,6 +1445,25 @@ class App(tk.Tk):
             pass
         return ""
 
+    def _declared_cap_h(self, day):
+        """Backlog #37: an honest 'TODAY: 4h' (or 'TODAY: sick', no
+        number) typed into `day`'s own file — compassionate realism for
+        a travel/sick/short day, declared in advance rather than judged
+        after the fact. Returns the declared hour cap if a number was
+        given, 0.0 if declared with no number (any tracked time at all
+        counts), or None if no TODAY: line exists. Read-only."""
+        try:
+            with open(self.diary_path(day), encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            return None
+        for line in text.splitlines():
+            s = line.strip()
+            if s.lower().startswith("today:"):
+                m = re.search(r"(\d+(?:\.\d+)?)\s*h", s[6:], re.I)
+                return float(m.group(1)) if m else 0.0
+        return None
+
     def _avoid_trend_suffix(self, yday):
         """', avoid Y%' (+ a quiet week-over-week arrow) appended to the
         yesterday-summary line — AVOID reported right next to SIGNAL,
@@ -2290,6 +2343,9 @@ class App(tk.Tk):
                 ctx = self._last_context(self.active_task)
                 if ctx:
                     note += f' · last time ({ctx[0]:%d.%m}): "{ctx[1][:60]}"'
+                switches = self._day_switches(self.today)
+                if switches >= 4:
+                    note += f" · {switches} switches today"
             if getattr(self, "_last_break_secs", 0) >= self.RAMP_BREAK_SECS:
                 op = self._reentry_opener(self.active_task)
                 if op:
@@ -3256,7 +3312,7 @@ class App(tk.Tk):
                 line += f", signal {round(100 * ysig / ywork)}%"
             line += self._avoid_trend_suffix(yday)
             parts.append(line + ")")
-            v = self._verdict(yw, ysig, ywork)
+            v = self._verdict(yw, ysig, ywork, self._declared_cap_h(yday))
             if v:
                 parts.append(v)
         otd = self._on_this_day_line()
@@ -3274,6 +3330,7 @@ class App(tk.Tk):
         parts += self._day_schedule_lines()
         if self.today.weekday() == 0:
             parts += self._week_review_block()
+            parts += self._graveyard_lines()
         parts.append(f"SIGNAL: {self._carry_signal()}")
         parts.append(f"AVOID: {self._carry_avoid()}")
         parts.append("ENERGY: ")   # type 1-5 when you know it — feeds the record
@@ -3483,9 +3540,19 @@ class App(tk.Tk):
         return parts
 
     @staticmethod
-    def _verdict(work_min, sig_min, sig_work):
-        """One honest line about yesterday. Rule-based, no flattery."""
+    def _verdict(work_min, sig_min, sig_work, declared_cap_h=None):
+        """One honest line about yesterday. Rule-based, no flattery. A
+        declared short day (backlog #37's 'TODAY: 4h' line) replaces the
+        usual judgment entirely — compassionate realism, not a second
+        bar to clear: honored the declared cap or didn't, no "what stole
+        it" either way, since the day was already flagged honestly in
+        advance."""
         h = work_min / 60
+        if declared_cap_h is not None:
+            if declared_cap_h == 0 or h + 0.05 >= declared_cap_h:
+                return (f"verdict: short day as declared — {h:.1f}h "
+                        "tracked, plan honored.")
+            return None
         if sig_work:
             pct = 100 * sig_min / sig_work
             if h >= 5 and pct >= 60:
@@ -4923,6 +4990,8 @@ class App(tk.Tk):
         win = tk.Toplevel(self)
         win.title("Tasks / Library")
         win.geometry("780x420")
+        density_lbl = ttk.Label(win, foreground="#777777", font=("Segoe UI", 9))
+        density_lbl.pack(fill="x", padx=8, pady=(8, 0))
         cols = ("pri", "task", "est", "actual", "goal", "deadline", "source")
         heads = {"pri": "!", "task": "task", "est": "est", "actual": "actual",
                  "goal": "goal", "deadline": "deadline", "source": "from"}
@@ -4950,6 +5019,17 @@ class App(tk.Tk):
         def refresh(keep_selection=None):
             sel = keep_selection if keep_selection is not None else tree.selection()
             tree.delete(*tree.get_children())
+            # backlog #55: commitment density -- how much is declared
+            # signal-priority right now, in aggregate, undated
+            sig_items = [t for t in self.settings.get("tasks", [])
+                        if t.get("priority") == "signal"]
+            if sig_items:
+                est_sum = sum(float(t.get("est_h") or 0) for t in sig_items)
+                density_lbl.config(
+                    text=f"{len(sig_items)} signal-priority item(s), "
+                        f"~{est_sum:.1f}h estimated total, undated")
+            else:
+                density_lbl.config(text="")
             for i, t in enumerate(self.settings.get("tasks", [])):
                 pri = t.get("priority", "normal")
                 est = t.get("est_h")
@@ -5792,6 +5872,143 @@ class App(tk.Tk):
         cyc = self._decay_cycle()
         return cyc[0] if cyc else None
 
+    def _first_hour_audit(self, days=90):
+        """Backlog #40: classify each day's FIRST work interval as
+        signal or not (via that day's own SIGNAL line), then compare
+        the day's total hours between signal-first and other-first
+        days. Pure csv + per-day SIGNAL text, n>=5 each side."""
+        cutoff = (self.today - dt.timedelta(days=days)).isoformat()
+        by_day = {}
+        for r in read_rows():
+            if r[0] >= cutoff and r[1] == "work":
+                by_day.setdefault(r[0], []).append(r)
+        sig_first, other_first = [], []
+        for iso, rows in by_day.items():
+            rows.sort(key=lambda r: r[2])
+            day = dt.date.fromisoformat(iso)
+            kws = self._signal_kws(day)
+            if not kws:
+                continue
+            total = sum(int(r[4]) for r in rows if r[4].isdigit())
+            (sig_first if task_matches(rows[0][5], kws)
+             else other_first).append(total)
+        if len(sig_first) >= 5 and len(other_first) >= 5:
+            sa = sum(sig_first) / len(sig_first) / 60
+            oa = sum(other_first) / len(other_first) / 60
+            diff = sa - oa
+            if abs(diff) >= 0.3:
+                verb = "heavier" if diff > 0 else "lighter"
+                return [f"days you open with signal work end {abs(diff):.1f}h "
+                        f"{verb} than days you open with something else "
+                        f"(n={len(sig_first)} vs {len(other_first)}) — the "
+                        "first hour is a lever, not a warm-up."]
+        return []
+
+    def _day_switches(self, day):
+        """Distinct task-switches on `day`: how many times a work
+        interval's task differs from the one immediately before it, in
+        start-time order. Not interval count (breaks don't count as
+        switches) and not duration (#38 covers that already)."""
+        rows = sorted((r for r in read_rows() if r[0] == day.isoformat()
+                       and r[1] == "work"), key=lambda r: r[2])
+        return sum(1 for a, b in zip(rows, rows[1:])
+                  if a[5].strip().lower() != b[5].strip().lower())
+
+    def _thrash_insight(self, days=60):
+        """Backlog #16: days with many task-switches vs days with few,
+        compared on signal share. Distinct from #38 (block DURATION):
+        this measures how many times you jumped, not how long you
+        stayed. n>=3 thrashy and n>=3 focused days to speak."""
+        cutoff = (self.today - dt.timedelta(days=days)).isoformat()
+        by_day = {}
+        for r in read_rows():
+            if r[0] >= cutoff and r[1] == "work":
+                by_day.setdefault(r[0], []).append(r)
+        thrashy, focused = [], []
+        for iso in by_day:
+            day = dt.date.fromisoformat(iso)
+            kws = self._signal_kws(day)
+            if not kws:
+                continue
+            sig, work = self._day_signal(day, kws)
+            if work <= 0:
+                continue
+            pct = 100 * sig / work
+            switches = self._day_switches(day)
+            if switches >= 6:
+                thrashy.append(pct)
+            elif switches <= 2:
+                focused.append(pct)
+        if len(thrashy) >= 3 and len(focused) >= 3:
+            ta = sum(thrashy) / len(thrashy)
+            fa = sum(focused) / len(focused)
+            if fa - ta >= 10 and fa > 0:
+                drop = round(100 * (fa - ta) / fa)
+                return [f"days with 6+ task switches average {drop}% less "
+                        f"signal work than your focused days (≤2 switches) "
+                        f"— {ta:.0f}% vs {fa:.0f}% signal "
+                        f"(n={len(thrashy)} vs {len(focused)})"]
+        return []
+
+    def _shallow_work_lines(self):
+        """Backlog #49: same-day depth, not switch-counting (#16) or
+        what follows a block (#38). What fraction of TODAY's signal
+        hours came in blocks under threshold — threshold derives from
+        #38's own decay cycle when available, else a flat 20min guess.
+        Needs 1h+ of signal work today to be a fair sample."""
+        kws = self._signal_kws()
+        if not kws:
+            return []
+        rows = sorted((r for r in read_rows()
+                       if r[0] == self.today.isoformat() and r[1] == "work"),
+                      key=lambda r: r[2])
+        if not rows:
+            return []
+        cyc = self._decay_cycle()
+        threshold = max(10, int(cyc[0] * 0.4)) if cyc else 20
+        blocks = []
+        i = 0
+        while i < len(rows):
+            t = rows[i][5].strip().lower()
+            run, j = 0, i
+            while j < len(rows) and rows[j][5].strip().lower() == t:
+                try:
+                    run += int(rows[j][4])
+                except ValueError:
+                    pass
+                j += 1
+            if task_matches(rows[i][5], kws):
+                blocks.append(run)
+            i = j
+        total = sum(blocks)
+        if total < 60:
+            return []
+        shallow = sum(b for b in blocks if b < threshold)
+        pct = round(100 * shallow / total)
+        if pct >= 50:
+            return [f"{pct}% of today's signal hours came in blocks under "
+                    f"{threshold}m — that reads as busy, not deep."]
+        return []
+
+    def _graveyard_lines(self):
+        """Backlog #43: once a month (first Monday), name Task-library
+        items sitting untouched 60+ days. 'Untouched' is approximated
+        by ADDED date — there's no separate last-touched tracking, an
+        honest simplification rather than the ideal signal. Never
+        auto-deletes; one prompt, then silence for another month."""
+        if self.today.weekday() != 0 or self.today.day > 7:
+            return []
+        cutoff = (self.today - dt.timedelta(days=60)).isoformat()
+        old = [t for t in self.settings.get("tasks", [])
+               if t.get("added", "9999") <= cutoff]
+        if not old:
+            return []
+        names = ", ".join(t["name"][:40] for t in old[:5])
+        more = f" (+{len(old) - 5} more)" if len(old) > 5 else ""
+        return [f"library graveyard: {len(old)} item(s) older than 60 days "
+                f"— still real? start one, re-date it, or delete it: "
+                f"{names}{more}"]
+
     def _insight_lines(self, days=60):
         """Rule-based findings that each connect two data sources the app
         already collects. Every line is your own history — it only speaks
@@ -5892,9 +6109,16 @@ class App(tk.Tk):
             out.append(f"estimates: actuals run ×{ef[0]:.1f} across "
                        f"{ef[1]} finished tasks — read every [2h] as "
                        f"{2 * ef[0]:.1f}h when planning")
-        # streaks
+        # streaks — an honestly-declared short day (#37's TODAY: line)
+        # never breaks it; only checked within a recent lookback so an
+        # old declared day doesn't force a file-open per day across the
+        # full 112-day best-streak scan
         def active(d):
-            return (idx.get(d.isoformat()) or {"work": 0})["work"] >= 30
+            if (idx.get(d.isoformat()) or {"work": 0})["work"] >= 30:
+                return True
+            if (self.today - d).days <= 21:
+                return self._declared_cap_h(d) is not None
+            return False
         d = self.today if active(self.today) else self.today - dt.timedelta(days=1)
         run = 0
         while active(d):
@@ -5979,6 +6203,9 @@ class App(tk.Tk):
         out += self._procrastination_insight()
         out += self._break_insight()
         out += self._block_decay_lines()
+        out += self._first_hour_audit()
+        out += self._thrash_insight()
+        out += self._shallow_work_lines()
         out += self._trajectory_lines()
         return out
 

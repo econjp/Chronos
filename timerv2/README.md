@@ -4,6 +4,27 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Six in one push (v8.16-v8.21)
+
+- **Declared short day** — type `TODAY: 4h` (or `TODAY: sick`, no
+  number) into today's own file and tomorrow's verdict judges against
+  that declared cap instead of the usual bar: *"short day as declared
+  — 2.0h tracked, plan honored"* — never "what stole it?" for a day
+  you already flagged honestly. Streaks bridge through it too.
+- **First-hour audit** (Insights) — *"days you open with signal work
+  end 3.0h heavier than days you open with something else — the first
+  hour is a lever, not a warm-up."*
+- **Task-thrash meter** (Insights + status bar) — high-switch days vs
+  low-switch days compared on signal share; the status bar also
+  quietly counts today's switches once you pass 4.
+- **Shallow-work ratio** (Insights) — *"62% of today's signal hours
+  came in blocks under 20m — that reads as busy, not deep."*
+- **Library graveyard sweep** — once a month, names Task-library items
+  sitting untouched 60+ days in the week-review block. Never
+  auto-deletes.
+- **Task-library commitment density** — the Tasks/Library window now
+  shows total signal-priority volume undated at a glance.
+
 ### Your natural focus cycle (v8.15)
 
 A new Insight buckets your work blocks by length and compares the

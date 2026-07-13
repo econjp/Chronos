@@ -685,6 +685,30 @@ purpose; the *walls* are the major thing, and they're now named.
   fills the silence when there wasn't one. n≥3 per bucket, needs 2+
   populated buckets. Tested with seeded short-block/short-break vs.
   long-block/long-break history producing a real detected jump.
+- **v8.16–v8.21** (a bigger batch — six backlog items landed in one
+  push, DONE). **v8.16 declared short day (#37)**: "TODAY: 4h" (or
+  "TODAY: sick", no number) in the day's own file replaces the next
+  morning's usual verdict judgment with "short day as declared — plan
+  honored," and bridges the streak through a declared day (21-day
+  lookback, so it doesn't cost a file-open per day across the full
+  112-day best-streak scan). **v8.17 first-hour audit (#40)**: signal-
+  first vs other-first days compared on total hours, n≥5 each side.
+  **v8.18 task-thrash meter (#16)**: signal% on high-switch days vs
+  low-switch days, distinct from #38's duration-based decay curve;
+  also a live status-bar switch count past 4. **v8.19 shallow-work
+  ratio (#49)**: same-day block-length depth check, threshold derived
+  from #38's decay cycle when available. **v8.20 library graveyard
+  sweep (#43)**: first-Monday-of-month naming of Task-library items
+  60+ days untouched (approximated by ADDED date — no separate
+  last-touched tracking exists, an honest simplification). **v8.21
+  task-library commitment density (#55)**: the Tasks/Library window
+  header shows total signal-priority volume undated. All six: pure
+  views/math over data already collected, tested individually and in
+  combination (a single header generation exercising declared-short-
+  day + graveyard-sweep together), full regression + selftest.py
+  (12/12) green throughout.
+
+## BACKLOG (priority order — continue here)
 
 1. ~~Dashboard as home~~ — DONE v7.0, but as a HUB not a replacement:
    became a tabbed window (Today & Week / Deadlines & Goals / Insights)
@@ -993,18 +1017,9 @@ purpose; the *walls* are the major thing, and they're now named.
     the only new part is the wider date range and a text layout suited
     to a once-a-year read rather than a daily glance.
 
-16. **Task-thrash / context-switch meter (FEEDBACK).** The csv already
-    records every task switch (Switch splits an interval; each row carries
-    its task). Count distinct task-switches per day and correlate with
-    output: "days with 6+ task switches average 31% less signal work than
-    your focused days." Distinct from the existing focus-block-length
-    insight (that measures interval *duration*; this measures *how many
-    times you jumped*). Pure view over `read_rows()` grouped by day,
-    counting task changes in start-time order; honesty-gated (n≥ some
-    focused and some thrashy days). Cheap, and names a productivity leak
-    the user can feel but not currently see. Could also surface today's
-    switch count live in the status bar as a gentle "7 switches so far"
-    once past a threshold — stated, not blocking (guardrail).
+16. ~~**Task-thrash / context-switch meter (FEEDBACK).**~~ — DONE v8.18
+    (`_day_switches`/`_thrash_insight`, plus a live status-bar count
+    past 4 switches).
 
 17. ~~**Energy-aware scheduling (PLANNING).**~~ — DONE v8.8.
     `_hour_quality(days=60)` = a 0–1 per-hour profile of where your work
@@ -1208,13 +1223,14 @@ purpose; the *walls* are the major thing, and they're now named.
     estimate factor applies per milestone. The honest fix for "hours
     accrue but is the thing actually getting done?"
 
-37. **Declared short day (PLANNING — compassionate realism).** A `TODAY:
-    4h` line in the header (travel, sick, flat) caps the day: the
-    schedule compresses to essentials-only, the verdict judges against
-    the declared cap not your norm, streaks don't break on a day you
-    honestly declared. Kills the all-or-nothing spiral where one
-    impossible day ends the whole system. One line to parse, existing
-    conventions, planner already has the numbers.
+37. ~~**Declared short day (PLANNING).**~~ — DONE v8.16
+    (`_declared_cap_h`, wired into `_verdict` and the streak's `active`
+    closure). Not done: compressing the actual schedule to essentials-
+    only for a declared-short TODAY — the schedule is generated once at
+    rollover, before a same-day TODAY: line could exist, so this piece
+    would need a way to regenerate/refresh it later in the day rather
+    than only at creation time. Left open; the verdict/streak
+    protection was the higher-value, cleanly-scoped half.
 
 38. ~~**Personal block length — the focus decay curve (ANALYSIS).**~~ —
     DONE v8.15 (`_decay_cycle`/`_block_decay_lines`/
@@ -1231,12 +1247,8 @@ purpose; the *walls* are the major thing, and they're now named.
     AVOID history to accumulate before an insight over it would have
     anything honest to say.
 
-40. **First-hour audit (FEEDBACK).** The first tracked hour predicts the
-    day. Measure what your opening block actually is (signal vs admin vs
-    email) and its knock-on: "days you open with signal work end 1.8h
-    heavier than days you open with email (n=22 vs 14) — the first hour
-    is a lever, not a warm-up." Pure csv (first work run per day
-    classified by the lens), n-gated, one line.
+40. ~~**First-hour audit (FEEDBACK).**~~ — DONE v8.17
+    (`_first_hour_audit`).
 
 41. **Rescue block — the day is not lost (FEEDBACK/PLANNING).** When a
     day is clearly going sideways by mid-afternoon (tracked << plan and
@@ -1254,12 +1266,9 @@ purpose; the *walls* are the major thing, and they're now named.
     to Tue/Wed." Composes _free_slots + _outlook_lines + _sleep_h over
     the next 7 days; the weekly twin of the daily co-pilot line.
 
-43. **Library graveyard sweep (USABILITY/HYGIENE).** Task-library items
-    age silently; a backlog full of corpses stops being trusted. Once a
-    month (first Monday), the review block lists items untouched 60+
-    days: "6 items older than 60 days — still real? Start one, re-date
-    it, or delete it." Never auto-deletes; one prompt, then silence for
-    another month. Keeps #19/#27's library honest with ~20 lines of code.
+43. ~~**Library graveyard sweep (USABILITY/HYGIENE).**~~ — DONE v8.20
+    (`_graveyard_lines`). "Untouched" approximated by ADDED date, not a
+    true last-touched signal — see the version-history note.
 
 44. **Waiting-on / blocked tasks (PLANNING — external dependencies).**
     Everything the planner knows about is under the owner's own control;
@@ -1332,18 +1341,10 @@ purpose; the *walls* are the major thing, and they're now named.
     keyword lists + a day_index scan), high trust payoff since it
     protects every % the app has ever printed.
 
-49. **Shallow-work ratio (ANALYSIS — same-day depth, not switch-
-    counting).** #16 counts context-switches; #38 asks what happens
-    AFTER a block ends. Neither characterizes the day itself: were
-    today's hours real depth or fragments? One line at day-close or in
-    Insights: "62% of today's signal hours came in blocks under 20
-    min — that reads as busy, not deep." Pure csv: bucket today's work
-    intervals by length, report the under-threshold share against the
-    day's own history (n-gated, needs enough logged days to know what
-    "normal" fragmentation looks like for THIS person before calling
-    a day shallow). Threshold-in-minutes should probably derive from
-    #38's own decay-curve output once that exists, rather than a
-    hardcoded guess — worth sequencing after #38 if both get built.
+49. ~~**Shallow-work ratio (ANALYSIS).**~~ — DONE v8.19
+    (`_shallow_work_lines`, threshold from #38's `_decay_cycle` when
+    available). Gated on 1h+ of signal work today, ≥50% shallow to
+    speak.
 
 50. **Protected time windows (PLANNING — the scheduler's missing
     exclusion zone).** `_work_window` (v7.9) sets one daily envelope the
@@ -1418,17 +1419,9 @@ purpose; the *walls* are the major thing, and they're now named.
     calendar. Explicitly sequenced after #10 — nothing to build here
     until that data exists.
 
-55. **Task-library commitment density (SELF-KNOWLEDGE/HYGIENE —
-    volume, not age).** #43's graveyard sweep asks whether library
-    items are still real, by AGE. Nothing asks the orthogonal question:
-    how much is actually declared "signal priority" right now, in
-    aggregate? "14 signal-priority items in the library, ~45h estimated
-    total — more than two weeks of pure signal time, undated." Not a
-    verdict, just a volume check — the moment a backlog quietly becomes
-    aspirational fiction is usually invisible until it's named as a
-    number. Cheap: one sum over `self.settings.get("tasks", [])`
-    filtered by `priority == "signal"`, surfaced in the Tasks/Library
-    window's own header rather than a new view.
+55. ~~**Task-library commitment density (SELF-KNOWLEDGE/HYGIENE).**~~ —
+    DONE v8.21. Header label in the Tasks/Library window, updates on
+    every `refresh()`.
 
 ## How to verify changes without Windows
 
