@@ -4,6 +4,24 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Breaks get teeth (v8.10)
+
+Two answers to "I might just be procrastinating":
+
+**Break pull-back** — if a break interrupts a **signal** task and runs
+past your threshold (Tools → Break pull-back, default 20 min), the gentle
+coffee pill transforms: `⚑ 23 min off 'thesis: ch4' — click: the first
+minute is the whole battle`, with a beep and a jump to the front; at
+double the threshold it hardens further. Breaks off admin keep the old
+quiet pill. It's deliberately the strongest thing short of a lock — a
+lock you'd alt-tab past anyway; this makes ignoring it a conscious
+decision, which is the part that actually works.
+
+**The doomscroll tax, measured** — the break notes you've been typing for
+years now pay out: *"after a moving break your next work block averages
+41m; after a scroll break 19m."* Walk vs scroll, settled by your own
+data, in the Insights.
+
 ### Where you left off (v8.9)
 
 Start (or switch to) any task you've worked before and the status bar

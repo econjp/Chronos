@@ -34,19 +34,25 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
         "_life_review_lines", "_anomaly_lines", "_copilot_note",
         "_recommend_now", "_deep_window", "_hour_quality", "_energy_place",
-        "_last_context"}
-STATIC = {"_match_kws"}   # ast extraction drops @staticmethod — restore it
+        "_last_context", "_break_insight", "_pull_level"}
+STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
+CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
 _top_nodes = [n for n in _tree.body
               if isinstance(n, ast.FunctionDef) and n.name in TOP]
 _meth_src = {}
+_attr_src = {}
 for _node in _tree.body:
     if isinstance(_node, ast.ClassDef) and _node.name == "App":
         for _s in _node.body:
             if isinstance(_s, ast.FunctionDef) and _s.name in METH:
                 _meth_src[_s.name] = ast.get_source_segment(_text, _s)
+            elif (isinstance(_s, ast.Assign) and len(_s.targets) == 1
+                    and isinstance(_s.targets[0], ast.Name)
+                    and _s.targets[0].id in CLASS_ATTRS):
+                _attr_src[_s.targets[0].id] = ast.get_source_segment(_text, _s)
 
 _missing = (TOP - {n.name for n in _top_nodes}) | (METH - set(_meth_src))
 if _missing:
@@ -74,6 +80,10 @@ def fresh():
                      SRC, "exec"), ns)
         fn = ns["_T"].__dict__[name]
         setattr(D, name, staticmethod(fn) if name in STATIC else fn)
+    for name, src in _attr_src.items():
+        loc = {}
+        exec(src, ns, loc)
+        setattr(D, name, loc[name])
     return D, ns
 
 
@@ -332,12 +342,39 @@ def suite_last_context():
     assert D._last_context(d, "thesis: ch4") is None
 
 
+def suite_break_pull():
+    D, ns = fresh()
+    pl = D._pull_level
+    assert pl(19 * 60, 20, True) == 0          # under threshold
+    assert pl(20 * 60, 20, True) == 1          # pull-back
+    assert pl(40 * 60, 20, True) == 2          # hard pull-back
+    assert pl(90 * 60, 20, False) == 0         # not a signal task
+    assert pl(90 * 60, 0, True) == 0           # feature off
+    rows = []
+    for i in range(6):
+        d0 = (dt.date(2026, 7, 1) + dt.timedelta(days=i)).isoformat()
+        rows += [
+            [d0, "work", "09:00", "10:00", "60", "thesis", ""],
+            [d0, "break", "10:00", "10:15", "15", "", "walk outside"],
+            [d0, "work", "10:15", "10:55", "40", "thesis", ""],
+            [d0, "break", "11:30", "11:45", "15", "", "scroll puhelin"],
+            [d0, "work", "11:45", "12:05", "20", "thesis", ""]]
+    seed(ns, rows)
+    d = _mk(D)
+    out = D._break_insight(d)
+    assert out and "40m (6 samples)" in out[0], out
+    assert "20m (6)" in out[0] and "doomscroll tax" in out[0], out
+    seed(ns, rows[:10])                        # 2 days -> n<5 -> silent
+    assert D._break_insight(d) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
           ("recommend-now", suite_recommend_now),
           ("energy-place", suite_energy_place),
-          ("last-context", suite_last_context)]
+          ("last-context", suite_last_context),
+          ("break-pull", suite_break_pull)]
 
 
 def main():

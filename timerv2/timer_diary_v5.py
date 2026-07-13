@@ -60,6 +60,21 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.10 (breaks get teeth — and a measured tax):
+  - BREAK PULL-BACK: when a break interrupts a SIGNAL task and runs past
+    the threshold (Tools > Break pull-back, default 20 min, 0 = off), the
+    gentle coffee pill becomes a pull-back: '⚑ 23 min off "thesis: ch4" —
+    click: the first minute is the whole battle', one beep, jumps to
+    front; at 2× it hardens ('⚑⚑ … is bleeding out — one click.').
+    Breaks off admin keep the old gentle pill. Deliberately a LOUD nudge,
+    never a lock — the twice-held anti-gating precedent stands; a lock
+    you can alt-tab past is noise, this makes ignoring it a decision.
+  - BREAK QUALITY (the doomscroll tax, measured): the break notes you've
+    typed for years ("walk", "scroll puhelin"…) now feed an insight —
+    "after a moving break your next work block averages 41m (9 samples);
+    after a scroll break 19m (7)". Nothing new to log; n≥5 per bucket.
+    Both tested (selftest suite 10).
+
 New in v8.9 (where you left off — the diary pays you back at task start):
   - starting or switching to a task with history now hands you back the
     LAST line you wrote about it, right in the status bar: 'Working —
@@ -1411,6 +1426,8 @@ class App(tk.Tk):
         toolsm.add_command(label="Life domains — the values layer…",
                            command=self._set_domains)
         toolsm.add_command(label="Idle detection…", command=self._set_idle)
+        toolsm.add_command(label="Break pull-back (signal tasks)…",
+                           command=self._set_pull)
         toolsm.add_command(label="Day rollover hour…", command=self._set_rollover)
         toolsm.add_command(label="Daily target…", command=self._set_target)
         toolsm.add_command(label="Work-day window (free-slot finder)…",
@@ -2073,6 +2090,14 @@ class App(tk.Tk):
             self._log_work_until(now)
             self.state = "break"
             self.break_start = now
+            # remember what this break interrupted — the pull-back only
+            # escalates when it was a SIGNAL task (procrastination risk),
+            # a coffee off admin keeps the gentle pill
+            self.break_from = self.active_task
+            self.break_from_signal = bool(
+                self.active_task
+                and self._is_signal(self.active_task, self._signal_kws()))
+            self._pull_seen = 0
             self.switch_btn.config(state="disabled")
             self.btn.config(text="Start")
         else:  # break -> back to work
@@ -2423,6 +2448,32 @@ class App(tk.Tk):
     # ----- floating break pill -----
 
     BREAK_WARN_SECS = 15 * 60      # pill turns red after this
+
+    @staticmethod
+    def _pull_level(bsecs, pull_min, from_signal):
+        """0 = normal pill rules · 1 = pull-back · 2 = hard pull-back (2×
+        the threshold). Escalates ONLY when the break interrupted a signal
+        task and the feature is on (pull_min > 0). Deliberately a loud
+        stated nudge, never a lock — the twice-held anti-gating precedent
+        stands (see HANDOFF); a lock you can alt-tab past is just noise."""
+        if not from_signal or not pull_min:
+            return 0
+        if bsecs >= 2 * pull_min * 60:
+            return 2
+        if bsecs >= pull_min * 60:
+            return 1
+        return 0
+
+    def _set_pull(self):
+        cur = int(self.settings.get("pull_min", 20))
+        v = simpledialog.askinteger(
+            APP_NAME, "On a break from a SIGNAL task, the pill turns into\n"
+                      "a pull-back after this many minutes (0 = off).\n"
+                      "Loud and impossible to miss — never a lock.",
+            initialvalue=cur, minvalue=0, maxvalue=240, parent=self)
+        if v is not None:
+            self.settings["pull_min"] = v
+            save_settings(self.settings)
     FATIGUE_WARN_SECS = 5 * 60     # 19-21: the user's own doomscroll window
 
     def _update_pill(self, bsecs, now_h=None):
@@ -2473,6 +2524,27 @@ class App(tk.Tk):
                 y = self.winfo_screenheight() - p.winfo_reqheight() - 90
                 p.geometry(f"+{x}+{y}")
             self.pill = p
+        level = self._pull_level(bsecs, int(self.settings.get("pull_min", 20)),
+                                 getattr(self, "break_from_signal", False))
+        if level:
+            task = getattr(self, "break_from", "") or "the signal task"
+            mins = bsecs // 60
+            if level == 2:
+                t = f"⚑⚑ {mins} min. '{task}' is bleeding out — one click."
+            else:
+                t = (f"⚑ {mins} min off '{task}' — click: the first minute "
+                     "is the whole battle")
+            self.pill_lbl.config(text=t,
+                                 bg="#5c0f0f" if level == 2 else "#b02020")
+            if level > getattr(self, "_pull_seen", 0):
+                self._pull_seen = level
+                self.pill.lift()
+                try:
+                    import winsound
+                    winsound.Beep(660, 220)
+                except Exception:
+                    pass
+            return
         fatigue = 19 <= (now_h if now_h is not None
                          else dt.datetime.now().hour) < 21
         over = bsecs > (self.FATIGUE_WARN_SECS if fatigue
@@ -5312,6 +5384,52 @@ class App(tk.Tk):
                          "estimate and streak history builds up)")
         return lines
 
+    _BREAK_MOVE = ("walk", "käv", "gym", "sali", "run", "juoks", "ulos",
+                   "ulko", "outside", "stretch", "move")
+    _BREAK_SCROLL = ("scroll", "phone", "puhelin", "insta", "some", "somet",
+                     "youtube", "yt", "reddit", "tiktok", "twitter", "news",
+                     "uutis")
+
+    def _break_insight(self, days=60):
+        """Break TYPE vs what follows it: pair each labelled break (the
+        note you type after '--- Break duration:') with the next work
+        block that day and compare — the doomscroll tax measured at block
+        level, from labels the diary has been collecting for years.
+        Speaks with 5+ samples per bucket."""
+        cutoff = (self.today - dt.timedelta(days=days)).isoformat()
+        by_day = {}
+        for r in read_rows():
+            if r[0] >= cutoff:
+                by_day.setdefault(r[0], []).append(r)
+        move, scroll = [], []
+        for rows in by_day.values():
+            rows.sort(key=lambda r: r[2])
+            for i, r in enumerate(rows):
+                if r[1] != "break":
+                    continue
+                note = (r[6] or "").lower()
+                if any(k in note for k in self._BREAK_MOVE):
+                    bucket = move
+                elif any(k in note for k in self._BREAK_SCROLL):
+                    bucket = scroll
+                else:
+                    continue
+                for nxt in rows[i + 1:]:
+                    if nxt[1] != "break":
+                        try:
+                            bucket.append(int(nxt[4]))
+                        except ValueError:
+                            pass
+                        break
+        if len(move) >= 5 and len(scroll) >= 5:
+            ma = sum(move) / len(move)
+            sa = sum(scroll) / len(scroll)
+            return [f"after a moving break your next work block averages "
+                    f"{ma:.0f}m ({len(move)} samples); after a scroll break "
+                    f"{sa:.0f}m ({len(scroll)}) — the doomscroll tax, "
+                    "measured at block level"]
+        return []
+
     def _insight_lines(self, days=60):
         """Rule-based findings that each connect two data sources the app
         already collects. Every line is your own history — it only speaks
@@ -5496,6 +5614,7 @@ class App(tk.Tk):
                            f"time this week vs {round(100 * prev_ratio)}% the "
                            "3 weeks before — drifting, worth a look")
 
+        out += self._break_insight()
         out += self._trajectory_lines()
         return out
 

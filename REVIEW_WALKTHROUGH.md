@@ -24,7 +24,8 @@ scaffolding, not documentation.** HANDOFF.md stays the permanent brain.
 | 8 | 2f74cad | 8.8 | scheduler places hardest work into your learned peak hours | behavior change | med |
 | 9 | a3bf364 | — | `timerv2/selftest.py` (8 logic suites) + review kit + backlog | tooling/docs | none |
 | 10 | e3ab8b0 | — | this walkthrough + backlog #24–27 | docs | none |
-| 11 | (tip) | 8.9 | "where you left off": task start shows your last note about it | view (status bar) | low |
+| 11 | 5d4fbe8 | 8.9 | "where you left off": task start shows your last note about it | view (status bar) | low |
+| 12 | (tip) | 8.10 | break pull-back (signal tasks, loud nudge not a lock) + doomscroll-tax insight | pill behavior + view | med |
 
 **Dependencies (corrected — the HANDOFF kit's first version understated
 these):** 8.1, 8.2, 8.4, 8.8 and 8.9 are standalone. 8.3 and 8.7 need 8.1.

@@ -292,6 +292,17 @@ purpose; the *walls* are the major thing, and they're now named.
 
 ## Version history (one line each)
 
+- **v8.10** (breaks get teeth — backlog #30 + the owner's pull-back ask).
+  `_pull_level(bsecs, pull_min, from_signal)` (pure, staticmethod) +
+  pill escalation in `_update_pill` (two stages, beep once per stage,
+  lift; only for breaks that interrupted a signal task — recorded at Stop
+  in `_toggle`); Tools > "Break pull-back (signal tasks)…" sets `pull_min`
+  (default 20, 0=off). NOT a lock — see the precedent note at backlog #30.
+  `_break_insight(days=60)`: break-note keywords (move vs scroll buckets)
+  paired with the next work block's minutes; one insight line, n≥5 per
+  bucket; hooked into `_insight_lines` (textually adjacent to v8.2's
+  trajectory hook — trivial conflict if 8.2 skipped in cherry-pick).
+  selftest suite 10 covers both; loader now also lifts class attrs.
 - **v8.9** (where you left off — backlog #27). `_last_context(task)`:
   most recent tracked day for the task via `day_index`, then the last
   human line after that day's final `--- Task:` marker (machine lines
@@ -1063,13 +1074,51 @@ purpose; the *walls* are the major thing, and they're now named.
     your body's data suggests you'll ACTUALLY have. Same honesty gates;
     feeds the #25 realism direction.
 
-30. **Break quality ledger (ANALYSIS — novel, data already exists).**
-    Break notes are typed right after "--- Break duration:" lines (walk,
-    food, scroll, jt viestei…). Classify by keyword, then correlate break
-    TYPE with the length/signal of the following work block: "after
-    walk-breaks your next block averages 41m; after scroll-breaks 19m —
-    the doomscroll tax, measured at block level." Nothing new to log;
-    the diary has been collecting the labels for years.
+30. ~~**Break quality ledger.**~~ — DONE v8.10 (`_break_insight`, insight
+    line, n≥5/bucket; keyword lists `_BREAK_MOVE`/`_BREAK_SCROLL` — extend
+    those tuples as real note vocabulary shows up). Shipped alongside the
+    **break pull-back** (same commit): `_pull_level` + pill escalation for
+    signal-task breaks past `pull_min` (Tools dialog, default 20, 0=off).
+    IMPORTANT precedent note: the owner asked for "force me back to work";
+    shipped as the strongest STATED nudge (loud, named, beep, two stages)
+    and deliberately NOT a lock/gate, consistent with the twice-held
+    anti-gating decision. If the owner later reports the pull-back gets
+    ignored routinely, the measured escalation path is #30's own data
+    (break lengths after pull-back fired) — evaluate before ever
+    considering a hard gate.
+
+32. **Procrastination pattern map (FEEDBACK — pairs with the pull-back).**
+    Which tasks do you flee FROM? For each task, the fraction of its
+    starts that die within 10 minutes into a break: "you bounce off
+    'thesis: intro' in under 10 min on 70% of starts (n=10) — that's not
+    laziness, the task is too big; cut it into [30m] pieces." Detects the
+    avoidance shape the pull-back only treats the symptom of. Pure csv
+    analysis (start→next-break gap per task), n-gated, one insight line
+    plus optionally a per-task flag in the Tasks window.
+
+33. **Break budget (FEEDBACK — reframe, not police).** Instead of judging
+    each break, a daily allowance learned from your own good days: "breaks
+    so far 74m · your typical by this hour 55m · full-day norm ~90m". One
+    status-bar/totals-line segment. Budgets change behaviour where
+    per-event nagging fails, and it's just arithmetic over day_index +
+    break rows by hour. Guardrail-clean: a number, never a block.
+
+34. **Re-entry ramp (USABILITY — the other half of the pull-back).** The
+    pull-back gets you to click; the ramp makes the click cheap: when
+    work resumes after a 30m+ break, the status line offers the smallest
+    concrete opener — the last TODO bullet for the active task, or the
+    task-library item with the smallest estimate: "start with: 'fix table
+    3 caption' (10m)". Activation energy is the real enemy after a long
+    break; reuses _last_context + task library data.
+
+35. **Weekly "one less" — subtraction advisor (FEEDBACK).** Every insight
+    adds awareness; this one subtracts a thing. Each Monday review picks
+    ONE concrete removal candidate from the data: the recurring meeting
+    that splits your best block (#21's math), the 11:00 email check that
+    fragments mornings, the after-22:00 work that taxes tomorrow. "This
+    week, try one less: X." Rotates candidates, never repeats an ignored
+    one twice in a row. Improvement by removal — the most underrated
+    productivity move and almost never what software suggests.
 
 31. **Morning brief beyond the desktop (USABILITY/PLATFORM).** On day
     rollover, also write a tiny `brief_today.txt` (plan line, co-pilot
