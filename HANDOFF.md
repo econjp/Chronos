@@ -292,6 +292,13 @@ purpose; the *walls* are the major thing, and they're now named.
 
 ## Version history (one line each)
 
+- **(docs, no version bump)** `REVIEW_WALKTHROUGH.md` at repo root: the
+  full landing guide for the main machine (pre-flight + policy-compliance
+  commands, per-commit think-through with revert costs, Path A/B landing,
+  smoke list, cleanup steps). Corrected the review kit's dependency map
+  (8.5 needs 8.1–8.4, not just 8.1). Backlog gained #24–27 (running-hot
+  index, planner realism factor, year rhythm map, where-you-left-off).
+  Walkthrough file is scaffolding — deleted after landing.
 - **(tooling, no version bump)** `timerv2/selftest.py`: committed,
   stdlib-only, cross-platform test harness — lifts pure logic out of the
   app via ast (no GUI import, sandboxed temp csv) and runs 8 suites over
@@ -993,6 +1000,48 @@ purpose; the *walls* are the major thing, and they're now named.
     else. Could piggyback on `_health_data`'s existing mtime cache + the
     settings keys for ics/health paths.
 
+24. **Running-hot index / recovery-debt early warning (FEEDBACK).** The
+    trajectory line spots a sleep-for-work trade AFTER four weeks; this
+    is the early-warning version: a rolling debt score from days of
+    sleep-below-your-norm, workout-frequency drop vs baseline, tracked
+    minutes past 21:00, and break-ratio compression — surfaced as one
+    co-pilot-eligible line only when several move together: "9 days
+    running hot (sleep −0.8h/night vs norm, workouts halved, 3 late
+    nights) — schedule one flat day before your body schedules it."
+    All from existing day-record keys; n-gated; anti-nagging guardrail
+    applies (stated once, never repeated daily unless the score worsens).
+
+25. **Planner realism factor — the schedule audits itself (PLANNING).**
+    v8.0/v8.8 write a suggested schedule every morning; nothing ever
+    checks what became of it. Reconcile each past day's written schedule
+    block (parse it back out of the day file — same in-file convention
+    trick as `_estimate_factor`) against the csv's actual placed hours,
+    and learn a personal plan-survival rate: "your average planned day
+    survives 62% — the planner now plans at 62% density instead of
+    pretending." Self-calibrating planning WITHOUT compliance tracking of
+    the user (the guardrail): it grades the PLANNER's realism, not the
+    person, and only changes how much the planner dares to schedule.
+
+26. **Year rhythm map (VISUAL MEMORY).** The heatmap shows how MUCH per
+    day; nothing shows WHEN at year scale. One canvas: 52 columns (weeks)
+    × 24 rows (hour of day), each cell shaded by tracked minutes in that
+    hour that week — your year's shape at a glance: bedtime drift eras,
+    morning-discipline phases, the exam-sprint block, the dead summer.
+    Pure view over the csv start-times (same parse `_hour_quality` uses,
+    widened); ~80 lines mirroring `_heatmap`'s canvas code. The single
+    most striking "life memory" visual available for the data already
+    collected.
+
+27. **"Where you left off" — context restore on task start (USABILITY).**
+    The biggest hidden cost of task-switching is re-finding the thread.
+    On Start/Switch of a task with history: fish the last day file that
+    task appears in, grab the diary lines written around its last
+    interval, and show one line in the status bar — "last time (Tue):
+    'stuck on the regression table, try clustered SEs next'" — your own
+    note handed back exactly when it's useful. Read-only, reuses
+    `diary_path` + csv task rows; pairs naturally with #19 quick-capture.
+    Probably the highest daily-felt value per line of code in this list.
+
 ## BRANCH REVIEW KIT — claude/finish-date-projection (for the hand-audit)
 
 Nine commits off clean v8.0 master, sequential, each cherry-pickable;
@@ -1021,12 +1070,17 @@ real data folder, per CLAUDE.md caution):
 9. (this commit) selftest.py + this kit + backlog #20–23 — docs/tooling
    only, no app-code change.
 
-Merge order is commit order; stopping after any prefix leaves a coherent
-app. If one commit fails audit, skip it and continue — none of the later
-ones import symbols only that commit defines EXCEPT: v8.3 outlook and
-v8.5+ (co-pilot/review) call `_dl_projection` from v8.1, and v8.7's
-`_deep_window` is used by v8.8's wording only via `_hour_quality`
-(independent). So: v8.1 is load-bearing for v8.3/v8.5/v8.6; take it first.
+**Start with `REVIEW_WALKTHROUGH.md` at the repo root** — the full
+landing guide for the main machine (pre-flight commands, per-commit
+think-through, Path A/B landing, smoke list, cleanup). Delete that file
+after landing; this kit stays as the compact record.
+
+Dependencies (CORRECTED — an earlier version of this kit understated
+them): 8.1, 8.2, 8.4 and 8.8 are standalone; 8.3 and 8.7 need 8.1;
+**8.5 needs 8.1+8.2+8.3+8.4** (it composes them); 8.6 needs 8.5. So:
+take the whole set, or if anything in 8.1–8.4 fails audit, drop 8.5 and
+8.6 with it. `selftest.py` expects the full set — on a partial landing,
+FAILs for the missing suites are expected, not defects.
 
 ## How to verify changes without Windows
 
