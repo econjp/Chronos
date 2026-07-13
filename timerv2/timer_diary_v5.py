@@ -60,6 +60,19 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.1 (deadline finish-date projection — backlog #13):
+  - the burn-down window gains one honest footer line: instead of only
+    "needs Xh/day" (which assumes perfect future compliance), it says
+    where you ACTUALLY land at the pace you've kept — "at your real pace
+    (2.0h on active days, active 19% of days) you land ~13.08 — 21d late
+    (due 23.07). +1h/day from now → 23d sooner." Purely a VIEW: reads
+    _dl_progress + a new keyword-lens velocity (_dl_velocity), writes
+    nothing to the day file. Speaks only with 5+ real intervals on the
+    deadline in the trailing 21 days (the usual honesty gate); silent for
+    deadlines with no total-hours scope. The +1h/day line turns the
+    diagnosis into a lever for free — same projection re-solved at a
+    higher rate.
+
 New in v8.0 (the actual scheduler — planning-engine tier c):
   - the morning header's "focus order today" list is now an actual
     time-blocked schedule: each competing deadline (most urgent first,
@@ -435,6 +448,7 @@ import csv
 import ctypes
 import ctypes.wintypes
 import json
+import math
 import os
 import queue
 import re
@@ -1927,6 +1941,85 @@ class App(tk.Tk):
         if not per_day:
             return None
         return sum(per_day.values()) / len(per_day), len(per_day)
+
+    # ----- deadline finish-date projection (real-pace forecast) -----
+
+    def _dl_velocity(self, dl, days=21):
+        """Real recent pace on a deadline's keyword lens over the trailing
+        `days` calendar days: average hours on the days it was actually
+        touched, and how often it was touched. Recent behaviour predicts
+        the near term better than the whole stale history, so this is a
+        trailing window, not all-time. None until 5+ tracked intervals
+        exist — the same honesty gate the insights use."""
+        kws = self._match_kws(dl.get("match", ""))
+        cutoff = self.today - dt.timedelta(days=days - 1)
+        per_day, intervals = {}, 0
+        for r in read_rows():
+            if r[1] == "break":
+                continue
+            if kws and not task_matches(r[5], kws):   # empty kws = all work,
+                continue                              # same as _dl_progress
+            try:
+                d = dt.date.fromisoformat(r[0])
+                m = int(r[4])
+            except ValueError:
+                continue
+            if cutoff <= d <= self.today:
+                per_day[d] = per_day.get(d, 0) + m
+                intervals += 1
+        if intervals < 5 or not per_day:
+            return None
+        active = len(per_day)
+        window = (self.today - cutoff).days + 1
+        return {"avg_active_h": sum(per_day.values()) / active / 60,
+                "active_frac": active / window,
+                "active_days": active, "window": window}
+
+    def _dl_projection(self, dl, days=21):
+        """When you ACTUALLY land vs the due date, extrapolated from real
+        recent pace — not the 'needed h/day' figure, which silently
+        assumes perfect future compliance. Combined rate = avg hours per
+        active day × how often it's active ('2h/active-day, active 40% of
+        the time' is 0.8h/calendar-day, not 2). Only for scoped deadlines
+        with hours still remaining; None otherwise."""
+        try:
+            p = self._dl_progress(dl)
+        except (ValueError, KeyError):
+            return None
+        if not p.get("total_h") or p["remaining_h"] <= 0:
+            return None
+        v = self._dl_velocity(dl, days)
+        if not v:
+            return None
+        rate = v["avg_active_h"] * v["active_frac"]      # h per calendar day
+        if rate <= 0:
+            return None
+        rem = p["remaining_h"]
+        d1 = math.ceil(rem / rate)
+        d2 = math.ceil(rem / (rate + 1.0))               # if +1h/day from now
+        land = dt.date.today() + dt.timedelta(days=d1)
+        return {"land": land, "delta": (land - p["due"]).days, "rate": rate,
+                "avg_active_h": v["avg_active_h"],
+                "active_frac": v["active_frac"], "due": p["due"],
+                "sooner": max(0, d1 - d2)}
+
+    def _projection_line(self, dl):
+        """One honest sentence, or None. The blunt-math counterpart to
+        'needs Xh/day': at the pace you've actually kept, here's the date
+        you hit — and what one extra hour a day would buy."""
+        pr = self._dl_projection(dl)
+        if not pr:
+            return None
+        when = ("on time" if pr["delta"] == 0 else
+                f"{pr['delta']}d late" if pr["delta"] > 0 else
+                f"{-pr['delta']}d early")
+        line = (f"at your real pace ({pr['avg_active_h']:.1f}h on active "
+                f"days, active {round(100 * pr['active_frac'])}% of days) "
+                f"you land ~{pr['land']:%d.%m} — {when} "
+                f"(due {pr['due']:%d.%m})")
+        if pr["delta"] > 0 and pr["sooner"] > 0:
+            line += f".  +1h/day from now → {pr['sooner']}d sooner"
+        return line
 
     def _log_work_until(self, end):
         """Close the current work interval at `end` (Stop line + csv)."""
@@ -4123,7 +4216,10 @@ class App(tk.Tk):
             title += f" — {why}"
         win = tk.Toplevel(self)
         win.title(title)
-        W, H, PAD = 560, 320, 40
+        # a taller canvas when there's a real-pace projection to footer
+        proj = self._projection_line(dl)
+        pr = self._dl_projection(dl) if proj else None
+        W, H, PAD = 560, 320 + (28 if proj else 0), 40
         cv = tk.Canvas(win, width=W, height=H, background="white",
                        highlightthickness=0)
         cv.pack(padx=8, pady=8)
@@ -4163,6 +4259,11 @@ class App(tk.Tk):
         cv.create_text(W - PAD, PAD, anchor="e", font=("Segoe UI", 8),
                        fill="#777777",
                        text="grey = target pace · blue = actual")
+        if proj:
+            colour = ("#c03030" if pr["delta"] > 0 else
+                      "#2e8b2e" if pr["delta"] < 0 else "#555555")
+            cv.create_text(PAD, H - 14, anchor="w", width=W - 2 * PAD,
+                           font=("Segoe UI", 9), fill=colour, text=proj)
 
     # ----- month heatmap -----
 

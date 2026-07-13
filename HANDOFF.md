@@ -196,6 +196,20 @@ the three-bucket model is already correct and more honest than a blend.
 
 ## Version history (one line each)
 
+- **v8.1** (deadline finish-date projection — backlog #13, DONE). The
+  burn-down window footer now extrapolates the ACTUAL landing date from
+  real recent pace instead of only stating "needs Xh/day":
+  `_dl_velocity(dl, days=21)` measures avg hours per active day × active
+  fraction on the deadline's keyword lens (via `task_matches`, same
+  empty-keyword=all-work rule as `_dl_progress`); `_dl_projection`
+  solves remaining_h ÷ (that combined rate) for the land date and a
+  "+1h/day → N days sooner" sensitivity (the same solve at rate+1);
+  `_projection_line` is the one honest sentence, coloured red/green in
+  `_draw_burndown`. Pure VIEW, no day-file write, no new source. Honesty
+  gate: 5+ real intervals in the window, scoped deadlines only. Verified
+  on Linux via ast-extracted logic (velocity, projection, gate,
+  no-scope) since tkinter can't run here.
+
 - v5.0–5.4: timer+diary merged, csv log, idle detection, break pill,
   hotkey, timeline, health import, signal meter, sleep band.
 - v5.5–5.7: morning verdict, TODO carry-over, time-boxes, multiple
@@ -638,7 +652,15 @@ the three-bucket model is already correct and more honest than a blend.
     than at the current week — worth naming as its own category because
     the next three ideas extend it.
 
-13. **Deadline finish-date projection (velocity-based forecast).**
+13. ~~**Deadline finish-date projection (velocity-based forecast).**~~ —
+    DONE v8.1, in the burn-down window footer (a VIEW, not `_plan_line` —
+    kept out of the day file to avoid touching the format and to stay
+    purely visual). `_dl_velocity`/`_dl_projection`/`_projection_line`;
+    the "+1h/day → N sooner" sensitivity shipped too. Possible follow-ups
+    if wanted: also surface the line in the dashboard's DEADLINES section,
+    and/or a per-deadline "land date" column — deliberately left for the
+    maintainer to decide, since more surfaces = more day-file/UI risk.
+    Original design note kept below for reference.
     Currently `_dl_progress`/`_capacity_lines`/burn-down all answer "what
     pace do you NEED" — none answer "at your ACTUAL recent pace, when do
     you actually land." `_task_velocity` (v6/v7.0) already computes real

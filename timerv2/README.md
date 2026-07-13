@@ -1,8 +1,20 @@
-# TimerDiary v7
+# TimerDiary v8
 
 The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
+
+### Finish-date projection (v8.1)
+
+The burn-down window (View → Burn-down) now ends with one blunt line: not
+just *how many hours a day you need*, but **where you actually land at the
+pace you've kept**. "at your real pace (2.0h on active days, active 19% of
+days) you land ~13.08 — 21d late (due 23.07). +1h/day from now → 23d
+sooner." It reads your real trailing pace — average hours on the days you
+actually touched it, times how often you touch it — so "2h/active-day,
+active 40% of the time" honestly becomes 0.8h/day, not 2. Shows only once
+there's enough real history (5+ sessions in the last three weeks) and only
+for deadlines with an hours scope. Red when late, green when early.
 
 ### Data sovereignty (v7.0)
 
