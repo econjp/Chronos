@@ -60,6 +60,38 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.22-v8.26 (five more, same push, second wave):
+  - v8.22 RESCUE BLOCK (#41): "What should I do now?" gains a mid-
+    afternoon-going-sideways branch — if it's 15:00-21:00, a real
+    deadline needs it, and today's tracked so far is under 25% of what
+    the day was supposed to carry, one salvage line instead of the
+    normal recommendation: "salvage plan: one 45m block on Thesis
+    before the day ends still makes it count." Silent the moment real
+    progress exists.
+  - v8.23 MOOD ≠ ENERGY (#4): the ENERGY line now accepts an optional
+    word ("ENERGY: 3 anxious") — a different axis than the 1-5 number
+    (how it felt vs how much fuel there was). New insight: groups days
+    by mood word, names the one with the biggest signal-share
+    departure from baseline. n≥3 per mood, n≥10 days for a baseline.
+  - v8.24 APP USAGE-PATTERN METER (#56): every View-menu command now
+    bumps a counter (Tools > "Feature usage…" to see it) — the tool
+    auditing its own use, not the owner's life. Which of 55+ built
+    features actually get opened vs sit unused.
+  - v8.25 BEST-WEEKS RETROSPECTIVE (#58): a positive-framed insight —
+    the top-3 historical weeks by signal-hours×share, and what was
+    distinctive (which weekday carried most of the signal work). The
+    complement to a mostly diagnostic-of-problems insight set.
+  - v8.26 REALLOCATION SCENARIO (#59): the sequel to #47 (done) in
+    `_capacity_lines` — when the most-urgent deadline has a genuine
+    TODAY capacity problem and a less-urgent one has real slack, one
+    concrete trade: "cutting TUTA to 0.0h/day (from 0.5h) for now
+    would free 0.5h/day for Thesis — one way to close the gap, not the
+    only one."
+  - All five: pure views/math over existing data (plus one small
+    counter for #56), tested individually and via a real menu-command
+    invocation (not just the wrapper function) for #56's wiring. Full
+    regression + selftest.py (12/12) still green.
+
 New in v8.16-v8.21 (a bigger batch: six backlog items in one push):
   - v8.16 DECLARED SHORT DAY (#37): type "TODAY: 4h" (or "TODAY: sick",
     no number needed) into today's own file and the NEXT morning's
@@ -1547,6 +1579,32 @@ class App(tk.Tk):
 
     # ----- menu -----
 
+    def _tracked(self, key, fn):
+        """Backlog #56: wraps a menu command to bump a usage counter
+        before calling it, unchanged otherwise — the tool auditing its
+        OWN use, not the owner's life. Visibility into which of the
+        built features actually get opened; no judgment, no auto-
+        pruning, informs future graveyard-sweep-style decisions by
+        hand (see Tools > Feature usage)."""
+        def wrapped(*a, **kw):
+            counts = self.settings.setdefault("usage_counts", {})
+            counts[key] = counts.get(key, 0) + 1
+            save_settings(self.settings)
+            return fn(*a, **kw)
+        return wrapped
+
+    def _usage_win(self):
+        win = tk.Toplevel(self)
+        win.title("Feature usage")
+        txt = self._scrolled_text(win)
+        counts = self.settings.get("usage_counts", {})
+        if not counts:
+            txt.insert("end", "Nothing tracked yet — open a few views first.")
+        else:
+            for key, n in sorted(counts.items(), key=lambda x: -x[1]):
+                txt.insert("end", f"{key:<28} {n}\n")
+        txt.config(state="disabled")
+
     def _build_menu(self):
         m = tk.Menu(self)
         filem = tk.Menu(m, tearoff=0)
@@ -1568,33 +1626,46 @@ class App(tk.Tk):
 
         viewm = tk.Menu(m, tearoff=0)
         viewm.add_command(label="Life dashboard", accelerator="Ctrl+D",
-                          command=self._dashboard)
+                          command=self._tracked("Dashboard", self._dashboard))
         viewm.add_command(label="Themed writing…", accelerator="Ctrl+T",
-                          command=self._themed_writing)
-        viewm.add_command(label="Browse themes…", command=self._browse_themes)
+                          command=self._tracked("Themed writing", self._themed_writing))
+        viewm.add_command(label="Browse themes…",
+                          command=self._tracked("Browse themes", self._browse_themes))
         viewm.add_separator()
-        viewm.add_command(label="Weekly summary", command=lambda: self._summary("week"))
-        viewm.add_command(label="Monthly summary", command=lambda: self._summary("month"))
-        viewm.add_command(label="Tasks / backlog…", command=self._tasks_win)
-        viewm.add_command(label="Week plan / capacity…", command=self._capacity_win)
+        viewm.add_command(label="Weekly summary",
+                          command=self._tracked("Weekly summary", lambda: self._summary("week")))
+        viewm.add_command(label="Monthly summary",
+                          command=self._tracked("Monthly summary", lambda: self._summary("month")))
+        viewm.add_command(label="Tasks / backlog…",
+                          command=self._tracked("Tasks/backlog", self._tasks_win))
+        viewm.add_command(label="Week plan / capacity…",
+                          command=self._tracked("Capacity planner", self._capacity_win))
         viewm.add_separator()
-        viewm.add_command(label="Trend (8 weeks)", command=self._trend)
-        viewm.add_command(label="Month heatmap", command=self._heatmap)
-        viewm.add_command(label="Deadline burn-down", command=self._burndown)
-        viewm.add_command(label="Outlook — weeks ahead…", command=self._outlook_win)
+        viewm.add_command(label="Trend (8 weeks)",
+                          command=self._tracked("Trend", self._trend))
+        viewm.add_command(label="Month heatmap",
+                          command=self._tracked("Heatmap", self._heatmap))
+        viewm.add_command(label="Deadline burn-down",
+                          command=self._tracked("Burn-down", self._burndown))
+        viewm.add_command(label="Outlook — weeks ahead…",
+                          command=self._tracked("Outlook", self._outlook_win))
         viewm.add_command(label="Life alignment — time vs values…",
-                          command=self._alignment_win)
+                          command=self._tracked("Life alignment", self._alignment_win))
         viewm.add_command(label="Life review — synthesized briefing…",
-                          command=self._life_review_win)
+                          command=self._tracked("Life review", self._life_review_win))
         viewm.add_command(label="What should I do now?",
-                          command=self._show_recommend_now)
-        viewm.add_command(label="Health × focus (14 days)", command=self._health_view)
-        viewm.add_command(label="Search all days…", command=self._search_diary)
+                          command=self._tracked("Recommend now", self._show_recommend_now))
+        viewm.add_command(label="Health × focus (14 days)",
+                          command=self._tracked("Health x focus", self._health_view))
+        viewm.add_command(label="Search all days…",
+                          command=self._tracked("Search", self._search_diary))
         viewm.add_separator()
         viewm.add_command(label="Copy week for AI review",
-                          command=lambda: self._copy_review("week"))
+                          command=self._tracked("Copy week AI",
+                                                lambda: self._copy_review("week")))
         viewm.add_command(label="Copy today for AI review",
-                          command=lambda: self._copy_review("day"))
+                          command=self._tracked("Copy day AI",
+                                                lambda: self._copy_review("day")))
         viewm.add_separator()
         viewm.add_command(label="Toggle compact mode", command=self._toggle_compact)
         m.add_cascade(label="View", menu=viewm)
@@ -1617,6 +1688,7 @@ class App(tk.Tk):
                                command=self._toggle_raw_lines)
         toolsm.add_command(label="Meeting mode (idle off 90 min)",
                            command=self._meeting_mode)
+        toolsm.add_command(label="Feature usage…", command=self._usage_win)
         toolsm.add_separator()
         toolsm.add_command(label="Data doctor — check & clean history…",
                            command=self._data_doctor)
@@ -3333,7 +3405,7 @@ class App(tk.Tk):
             parts += self._graveyard_lines()
         parts.append(f"SIGNAL: {self._carry_signal()}")
         parts.append(f"AVOID: {self._carry_avoid()}")
-        parts.append("ENERGY: ")   # type 1-5 when you know it — feeds the record
+        parts.append("ENERGY: ")   # 1-5, optionally + a mood word ("3 anxious")
         todos = self._carry_todos(yday)
         if todos:
             parts += ["", "TODO (carried from yesterday):"] + todos
@@ -4730,6 +4802,19 @@ class App(tk.Tk):
         if 19 <= hour < 21:
             return ("You're in your 19–21 fatigue window — move or rest, don't "
                     "grind. Anything you force here you pay for tomorrow.")
+        if 15 <= hour < 21 and (behind or needy):
+            needed_today = sum(
+                p["needed_per_day"] for dl in self.deadlines()
+                for p in [self._dl_progress(dl)]
+                if p.get("total_h") and p["left"] >= 0 and p["remaining_h"] > 0)
+            tracked_today = (day_index().get(self.today.isoformat(),
+                             {"work": 0})["work"]) / 60
+            if needed_today > 0 and tracked_today < needed_today * 0.25:
+                box = self._suggested_time_box() or 45
+                name = behind[0] if behind else needy[0]
+                return (f"salvage plan: one {box}m block on {name} before "
+                        f"the day ends still makes it count — {tracked_today:.1f}h "
+                        "so far doesn't have to stay there.")
         if not target:
             return ("Nothing scoped is behind — pick whatever moves a goal, "
                     "you're not firefighting." + note)
@@ -4847,7 +4932,39 @@ class App(tk.Tk):
                     else:
                         lines.append(f"   ✗ {name} ({left}d left) — 0h fits; "
                                      f"the full {req:.1f}h is the cut")
+        real = self._reallocation_line()
+        if real:
+            lines.append("")
+            lines.append(f" {real}")
         return lines
+
+    def _reallocation_line(self):
+        """Backlog #59: the natural sequel to #47 (done) — not just WHY
+        a deadline is behind (capacity vs choice) but WHAT SPECIFICALLY
+        would fix a genuine TODAY capacity problem, when 2+ deadlines
+        compete. One arithmetic scenario, not a directive: redistributes
+        today's shortfall from the most-urgent item onto the least-
+        urgent one and states the trade plainly. Reuses _focus_items'
+        own ranking and _day_capacity — no new data."""
+        items = self._focus_items()
+        if len(items) < 2:
+            return None
+        name_m, left_m, need_m, behind_m = items[0]
+        name_l, left_l, need_l, behind_l = items[-1]
+        if not behind_m or name_m == name_l:
+            return None
+        avail = self._day_capacity(self.today)
+        total_need = sum(x[2] for x in items)
+        if avail >= total_need - 0.05 or need_l <= 0.05:
+            return None
+        shortfall = total_need - avail
+        cut = min(need_l, shortfall)
+        if cut < 0.2:
+            return None
+        return (f"reallocation: cutting {name_l} to "
+                f"{max(0.0, need_l - cut):.1f}h/day (from {need_l:.1f}h) "
+                f"for now would free {cut:.1f}h/day for {name_m} — one way "
+                "to close the gap, not the only one.")
 
     def _outlook_lines(self):
         """Forward simulation across ALL scoped deadlines at REAL pace —
@@ -6009,6 +6126,111 @@ class App(tk.Tk):
                 f"— still real? start one, re-date it, or delete it: "
                 f"{names}{more}"]
 
+    def _best_weeks_lines(self, weeks=16, top_n=3):
+        """Backlog #58: the owner's own best historical weeks (by
+        signal hours x signal share, a quality-weighted score) and what
+        was distinctive about them — a positive-framed complement to a
+        mostly diagnostic-of-problems insight set. n>=8 real weeks
+        needed to rank meaningfully; silent otherwise."""
+        idx = day_index()
+        this_mon = self.today - dt.timedelta(days=self.today.weekday())
+        names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+                 "Saturday", "Sunday"]
+        weeks_data = []
+        for k in range(1, weeks + 1):
+            mon = this_mon - dt.timedelta(weeks=k)
+            sig_h = work_h = 0.0
+            wd_sig = [0.0] * 7
+            for i in range(7):
+                d = mon + dt.timedelta(days=i)
+                rec = idx.get(d.isoformat())
+                if not rec or rec["work"] <= 0:
+                    continue
+                kws = self._signal_kws(d)
+                s = self._day_signal(d, kws)[0] if kws else 0
+                sig_h += s / 60
+                work_h += rec["work"] / 60
+                wd_sig[i] = s / 60
+            if work_h > 0:
+                pct = sig_h / work_h
+                weeks_data.append((mon, sig_h * pct, sig_h, pct, wd_sig))
+        if len(weeks_data) < 8:
+            return []
+        weeks_data.sort(key=lambda x: -x[1])
+        top = weeks_data[:top_n]
+        wd_totals = [0.0] * 7
+        for _, _, _, _, wd_sig in top:
+            for i in range(7):
+                wd_totals[i] += wd_sig[i]
+        best_day = names[wd_totals.index(max(wd_totals))]
+        avg_h = sum(t[2] for t in top) / len(top)
+        avg_pct = sum(t[3] for t in top) / len(top) * 100
+        return [f"your {len(top)} best weeks in the last {weeks} averaged "
+                f"{avg_h:.1f}h signal at {avg_pct:.0f}% share, most of it "
+                f"landing on {best_day}s — worth protecting that pattern"]
+
+    @staticmethod
+    def _mood_from_text(text):
+        """The optional word after the 1-5 number on the ENERGY line —
+        'ENERGY: 3 anxious' -> 'anxious'. Mood (how it felt) is a
+        different axis than energy (how much fuel there was) — backlog
+        #4. None if no word was given."""
+        for line in text.splitlines():
+            s = line.strip()
+            if s.lower().startswith("energy:"):
+                m = re.search(r"[1-5]\s*([a-zA-Z]+)", s[7:])
+                return m.group(1).lower() if m else None
+        return None
+
+    def _day_mood(self, day):
+        try:
+            with open(self.diary_path(day), encoding="utf-8") as f:
+                return self._mood_from_text(f.read())
+        except OSError:
+            return None
+
+    def _mood_insight(self, days=90):
+        """Backlog #4: groups days by their logged mood WORD and
+        compares average signal share against the overall baseline —
+        naming the mood with the biggest departure. Mood and energy
+        aren't the same axis; this is the mood half. n>=3 days per
+        mood word, n>=10 total days to have a real baseline."""
+        cutoff = self.today - dt.timedelta(days=days)
+        idx = day_index()
+        by_mood, all_pcts = {}, []
+        d = cutoff
+        while d <= self.today:
+            rec = idx.get(d.isoformat())
+            if rec and rec["work"] > 0:
+                kws = self._signal_kws(d)
+                if kws:
+                    sig, work = self._day_signal(d, kws)
+                    if work > 0:
+                        pct = 100 * sig / work
+                        all_pcts.append(pct)
+                        mood = self._day_mood(d)
+                        if mood:
+                            by_mood.setdefault(mood, []).append(pct)
+            d += dt.timedelta(days=1)
+        if len(all_pcts) < 10:
+            return []
+        baseline = sum(all_pcts) / len(all_pcts)
+        best_mood = best_diff = best_avg = best_n = None
+        for mood, pcts in by_mood.items():
+            if len(pcts) < 3:
+                continue
+            avg = sum(pcts) / len(pcts)
+            diff = avg - baseline
+            if best_mood is None or abs(diff) > abs(best_diff):
+                best_mood, best_diff, best_avg, best_n = mood, diff, avg, len(pcts)
+        if best_mood and abs(best_diff) >= 10:
+            verb = "higher" if best_diff > 0 else "lower"
+            return [f"days logged '{best_mood}' average {best_avg:.0f}% "
+                    f"signal, {abs(best_diff):.0f} points {verb} than your "
+                    f"{baseline:.0f}% overall (n={best_n}) — mood and energy "
+                    "aren't the same axis"]
+        return []
+
     def _insight_lines(self, days=60):
         """Rule-based findings that each connect two data sources the app
         already collects. Every line is your own history — it only speaks
@@ -6206,6 +6428,8 @@ class App(tk.Tk):
         out += self._first_hour_audit()
         out += self._thrash_insight()
         out += self._shallow_work_lines()
+        out += self._mood_insight()
+        out += self._best_weeks_lines()
         out += self._trajectory_lines()
         return out
 

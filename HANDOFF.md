@@ -707,6 +707,24 @@ purpose; the *walls* are the major thing, and they're now named.
   combination (a single header generation exercising declared-short-
   day + graveyard-sweep together), full regression + selftest.py
   (12/12) green throughout.
+- **v8.22–v8.26** (same push, second wave — five more, DONE).
+  **v8.22 rescue block (#41)**: "What should I do now?" gets a
+  15:00–21:00 going-sideways branch — real deadline need + under 25%
+  of the day's expected hours tracked → one salvage line instead of
+  the normal pick, silent once real progress exists. **v8.23 mood ≠
+  energy (#4)**: ENERGY accepts an optional word ("3 anxious"); new
+  insight names the mood with the biggest signal-share departure from
+  baseline (n≥3/mood, n≥10 days). **v8.24 app usage-pattern meter
+  (#56)**: every View-menu command bumps a counter (`_tracked`
+  wrapper), Tools > "Feature usage…" to see it — the tool auditing its
+  own use. **v8.25 best-weeks retrospective (#58)**: top-3 historical
+  weeks by signal-hours×share, naming which weekday carried most of
+  it — the positive-framed complement to a mostly diagnostic insight
+  set. **v8.26 reallocation scenario (#59)**: `_capacity_lines` gains
+  one concrete trade when the most-urgent deadline has a real TODAY
+  capacity problem and a less-urgent one has slack. Verified #56's
+  wiring via an actual menu invocation, not just the wrapper function
+  in isolation. Full regression + selftest.py green throughout.
 
 ## BACKLOG (priority order — continue here)
 
@@ -759,8 +777,8 @@ purpose; the *walls* are the major thing, and they're now named.
 3b. **Screen-time / doomscroll source**: the 19–21 window is documented;
    import phone screen-time (csv drop like health) → new day-record key →
    insight "scroll vs next-day energy".
-4. **Mood ≠ energy**: optional second header line or extend ENERGY with a
-   word ("ENERGY: 3 anxious") — parse the word, correlate.
+4. ~~**Mood ≠ energy**~~ — DONE v8.23 (`_mood_from_text`/`_day_mood`/
+   `_mood_insight`).
 5. **Money source**: monthly csv drop (bank export) → spend per day key;
    balance section gains a cost line. (User hinted "total life".)
 6. ~~JSON import/restore~~ — DONE v7.0, honestly scoped: File > Import
@@ -1250,13 +1268,9 @@ purpose; the *walls* are the major thing, and they're now named.
 40. ~~**First-hour audit (FEEDBACK).**~~ — DONE v8.17
     (`_first_hour_audit`).
 
-41. **Rescue block — the day is not lost (FEEDBACK/PLANNING).** When a
-    day is clearly going sideways by mid-afternoon (tracked << plan and
-    the deadline needs it), one stated salvage line via the co-pilot
-    surface: "salvage plan: one 45m block on Thesis before dinner makes
-    today count — 0.7h is 100% more than 0h." Attacks the all-or-nothing
-    write-off spiral. Reuses _recommend_now's inputs; strictly a stated
-    line (anti-nagging precedent), at most once per day.
+41. ~~**Rescue block (FEEDBACK/PLANNING).**~~ — DONE v8.22, folded into
+    `_recommend_now` (on-demand, not auto-injected — no "once per day"
+    tracking needed since the user chooses when to check).
 
 42. **Monday week-ahead risk brief (FORESIGHT).** The Monday review looks
     back; nothing yet looks at the WEEK ahead as a whole. One block:
@@ -1423,20 +1437,12 @@ purpose; the *walls* are the major thing, and they're now named.
     DONE v8.21. Header label in the Tasks/Library window, updates on
     every `refresh()`.
 
-56. **App usage-pattern meter (META — the tool auditing its own use,
-    not the owner's life).** Every other insight here studies the
-    owner's time; nothing studies whether the FEATURES built for them
-    actually get opened. A lightweight counter (one dict bump per menu
-    command, persisted in settings, no new UI beyond a Tools entry to
-    view it) surfacing "Dashboard: 40 opens this month · Outlook: 2 ·
-    Life review: 0" — not a judgment, just visibility into which of
-    the 50+ backlog items that got built are actually earning their
-    keep vs quietly unused. Directly useful for THIS backlog's own
-    prioritization: a feature nobody opens in 60 days is a better
-    graveyard-sweep candidate (extend #43's pattern to menu commands,
-    not just task-library items) than a wholly new idea competing for
-    build time. Cheap, single dict, no behavior change to anything it
-    counts.
+56. ~~**App usage-pattern meter (META).**~~ — DONE v8.24 (`_tracked`
+    wrapper on View-menu commands, `_usage_win` under Tools > "Feature
+    usage…"). Counts total opens, not recency — the "unused in 60
+    days" framing from the original idea would need a timestamp per
+    command, not just a count; left as a possible refinement, not
+    built.
 
 57. **Conversation-ready status export (USABILITY — a different
     audience than #14/Copy-for-AI-review).** Copy-for-AI-review is
@@ -1451,31 +1457,99 @@ purpose; the *walls* are the major thing, and they're now named.
     sound different on purpose (external-facing), not a precedent for
     softening anything else.
 
-58. **Best-weeks retrospective (SELF-KNOWLEDGE — replicate the good,
-    not just flag the bad).** Nearly every insight in this file is
-    diagnostic-of-problems (anomalies, drift, shortfalls, thrash). None
-    asks the positive-framed question: what made your OWN best weeks
-    different? Identify the top-N historical weeks by a composite
-    (signal hours × signal%) and name what was distinctive — day-of-
-    week distribution, avoid-share, meeting load, sleep — "your 3 best
-    weeks all had under 10% avoid-share and most signal hours landed
-    Tuesday." A study-your-own-peak-performance complement to the
-    mostly-diagnostic insight set; reuses `_alignment_lines`/
-    `_avoid_trend_suffix`/`_hour_quality`'s existing per-week
-    computations, just ranks weeks instead of comparing to a baseline.
+58. ~~**Best-weeks retrospective (SELF-KNOWLEDGE).**~~ — DONE v8.25
+    (`_best_weeks_lines`). Shipped the day-of-week signature; avoid-
+    share/meeting-load/sleep cross-referencing from the original idea
+    left for later — day-of-week alone was already a real signal.
 
-59. **Reallocation scenario — the natural sequel to #47 (PLANNING).**
-    #47 (done) says WHY a deadline is behind: capacity problem or
-    choice problem. For a genuine capacity problem with 2+ competing
-    deadlines, the natural next question is WHAT SPECIFICALLY would
-    fix it: "cutting TUTA to 0.5h/week for 3 weeks would clear Thesis's
-    shortfall." One arithmetic scenario (not a directive, not applied
-    automatically) — redistribute the shared shortfall from the most-
-    urgent deadline onto the least-urgent one(s) and state the trade
-    explicitly, same honesty-not-negotiation framing as everything else
-    in the planning engine. Reuses `_focus_items`/`_capacity_lines`'s
-    existing numbers; the only new part is solving "how much would
-    have to move" instead of just naming that something does.
+59. ~~**Reallocation scenario (PLANNING).**~~ — DONE v8.26
+    (`_reallocation_line`, in `_capacity_lines`). Scoped to TODAY's
+    capacity specifically (matching #47's own timeframe), not the
+    "0.5h/week for 3 weeks" multi-week framing in the original sketch —
+    a simpler, more honest version of the same idea.
+
+60. **Embedded Python console — DELIBERATELY NOT NOW, needs real
+    design first (2026-07-13, owner's own ask).** The owner floated
+    "more commands or code that could run inside itself" specifically
+    to practice terminal/Python casually and passively — not a power-
+    user feature request, a learning one. Explicitly told not to ship
+    this without more thought first; written up here so the thinking
+    isn't lost, not as a green light.
+    - **The actual hook, if built**: not a generic Python REPL (that's
+      just IDLE with extra steps) — a console pre-loaded with the
+      owner's OWN data as ready variables (`rows`, `goals()`,
+      `day_index()`, `matched_minutes`, the lens primitives already in
+      this file). Practicing Python by querying your own real life
+      data ("how many hours did I spend on thesis in June") is a
+      fundamentally more motivating exercise than abstract tutorial
+      problems — the same instinct behind the whole platform (use
+      real data, not toy examples).
+    - **The real risk, stated plainly**: `exec()` inside an app that
+      also holds the only copy of years of personal history is a
+      different class of surface than anything else built so far —
+      one typo (`del rows[:]`, a stray `save_settings`) could damage
+      real data in a way nothing else in this app can. If built, the
+      console should almost certainly be READ-ONLY by construction:
+      pre-loaded copies/pure functions, no bound reference to
+      `self.settings` or a live write path, maybe even a fully
+      separate temp-copy sandbox rather than trusting scoping
+      discipline alone.
+    - **Architecturally**: this doesn't fit the source→lens→view
+      concept model at all — it's a genuinely new CATEGORY (a
+      developer/meta surface, not a life-tracking one), the same kind
+      of "first of its kind" moment domains (v8.4) was for values.
+      Worth being honest that it changes what kind of app this is, at
+      least a little, before committing to it.
+    - **Smallest safe version to prototype with, if this gets picked
+      up later**: a single Tools menu entry, a Text widget for input +
+      output, `eval()` (not `exec()`, expression-only, no statements)
+      against a read-only namespace built fresh each time from copies
+      of `read_rows()` and the lens functions — no path back to the
+      real settings.json or sessions.csv at all in v1.
+
+61. **Time capsule — the forward counterpart to on-this-day (MEMORY).**
+    #12 (done) looks backward one year automatically. Nothing lets the
+    owner deliberately seal a message for a FUTURE date — write
+    yourself something today that only surfaces on a milestone day
+    (defense, deadline, birthday). A `CAPSULE: 2026-08-15 | message`
+    line in today's file; on the target date, the header surfaces it:
+    "a note from 45 days ago: message." Pure text convention + a scan
+    across day files for capsule lines whose date matches today — no
+    new data source, same shape as TODO carry-over. Emotionally simple
+    and, unlike most of this backlog, not diagnostic of anything.
+
+62. **Decision log lite — searchable, NOT the rejected #9 mechanics
+    (SELF-KNOWLEDGE).** #9's Reopening Guard (reopen counters, typed
+    justification to unlock) was explicitly held back as too close to
+    a gating pattern — that verdict stands, this is a different,
+    smaller idea: a plain `DECIDED: <topic> — <verdict>` line, purely
+    archival, searchable via #14's ask-your-diary once that exists (or
+    the existing Search all days meanwhile). No counter, no reopening
+    friction, no unlock mechanic — just makes "wait, didn't I already
+    think this through" answerable by search instead of memory. If
+    this starts growing enforcement logic, it has become #9 again —
+    stop.
+
+63. **Backup integrity check (TRUST — the safety net auditing
+    itself).** #23 (sensor health meter) covers external INPUT sources
+    going stale (health export, calendar); nothing checks the OUTPUT
+    safety net — the weekly `backups/` csv copies — is actually
+    current and restorable. One line, checked opportunistically (e.g.
+    on Data doctor run): "last backup: 9 days ago (expected weekly) —
+    the automation may have stopped." Directly on-brand given the
+    2026-07-11 dual-instance data-loss incident (CLAUDE.md) — the kind
+    of check that's cheap until the day it isn't.
+
+64. **Annual theme (PLANNING/VALUES — the year-scale sibling of
+    SIGNAL/AVOID).** SIGNAL declares today's focus; AVOID (v8.13) is a
+    standing declaration; nothing declares at the YEAR scale. A
+    `YEAR: <theme>` line, set once and carried (same carry-forward
+    shape as AVOID), referenced by #15's year-in-review once that
+    exists and by the on-this-day line ("a year ago, your theme was
+    X — still true?"). Not a new mechanism, the same lens-declaration
+    pattern one size up — the question is whether a single yearly
+    theme is honest at this app's current maturity or premature until
+    more multi-year data actually exists to make it mean something.
 
 ## How to verify changes without Windows
 

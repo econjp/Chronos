@@ -4,6 +4,23 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Five more, same push (v8.22-v8.26)
+
+- **Rescue block** — "What should I do now?" gets a mid-afternoon
+  save: if it's 15:00-21:00 and today's gone sideways, *"salvage plan:
+  one 45m block on Thesis before the day ends still makes it
+  count."* Silent the moment real progress exists.
+- **Mood ≠ energy** — `ENERGY: 3 anxious` now parses the word too.
+  New insight names the mood with the biggest signal-share swing from
+  your baseline.
+- **App usage-pattern meter** — Tools > "Feature usage…" shows which
+  of the View menu's 15+ windows you actually open.
+- **Best-weeks retrospective** — the positive-framed insight: your top
+  3 weeks, and which weekday carried most of the signal work.
+- **Reallocation scenario** — when one deadline's genuinely capacity-
+  starved and another has slack, one concrete trade: *"cutting TUTA to
+  0.0h/day would free 0.5h/day for Thesis."*
+
 ### Six in one push (v8.16-v8.21)
 
 - **Declared short day** — type `TODAY: 4h` (or `TODAY: sick`, no
