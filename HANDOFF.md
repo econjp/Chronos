@@ -1302,6 +1302,65 @@ purpose; the *walls* are the major thing, and they're now named.
     footer alongside the projection line). Uses `_dl_progress`'s own
     `behind` flag directly rather than re-deriving it.
 
+48. **Lens overlap check (TRUST/HYGIENE — the honesty layer auditing
+    itself).** Nothing currently checks whether two goals/domains/
+    deadlines share keywords. If "run" matches both the Body domain and
+    a "GMAT prep" goal by a copy-paste accident, that hour silently
+    double-counts toward two different percentages — every honesty-gated
+    number in the app (alignment shares, signal%, goal minutes) assumes
+    the lenses are disjoint, and nothing verifies that assumption. A
+    Data-doctor-style scan (or its own Tools entry): for every pair of
+    declared lenses (goals × goals, goals × domains, domains ×
+    deadlines), check keyword-list overlap and — more usefully — check
+    whether they actually matched the SAME real task names in history,
+    not just whether the keyword strings collide. One line per real
+    collision: "'run' matches both Body and GMAT prep — 4.5h counted
+    toward both this month." Cheap (nested loop over already-small
+    keyword lists + a day_index scan), high trust payoff since it
+    protects every % the app has ever printed.
+
+49. **Shallow-work ratio (ANALYSIS — same-day depth, not switch-
+    counting).** #16 counts context-switches; #38 asks what happens
+    AFTER a block ends. Neither characterizes the day itself: were
+    today's hours real depth or fragments? One line at day-close or in
+    Insights: "62% of today's signal hours came in blocks under 20
+    min — that reads as busy, not deep." Pure csv: bucket today's work
+    intervals by length, report the under-threshold share against the
+    day's own history (n-gated, needs enough logged days to know what
+    "normal" fragmentation looks like for THIS person before calling
+    a day shallow). Threshold-in-minutes should probably derive from
+    #38's own decay-curve output once that exists, rather than a
+    hardcoded guess — worth sequencing after #38 if both get built.
+
+50. **Protected time windows (PLANNING — the scheduler's missing
+    exclusion zone).** `_work_window` (v7.9) sets one daily envelope the
+    scheduler is allowed to fill; nothing stops it suggesting a block
+    over lunch, a wind-down hour, or any other time that's technically
+    "free" but shouldn't be claimed. Tools > add named protected
+    windows ("lunch 12:00-13:00", "wind-down 21:00-22:00") — a small
+    settings list of (label, start, end) subtracted from `_free_slots`
+    exactly like calendar busy-time already is. Small, direct extension
+    of existing v7.9/v8.0/v8.8 scheduler infrastructure — one more
+    source of "busy" intervals merged into the same primitive, not a
+    new concept.
+
+51. **Second opinion on SIGNAL — rare and purely observational
+    (SELF-KNOWLEDGE, guardrail-sensitive).** SIGNAL is a daily
+    declaration; nothing currently checks whether the declaration
+    matches where the hours actually went. After several consecutive
+    days where a DIFFERENT task consistently outpaces the declared
+    SIGNAL, one careful, rare line: "you've called Thesis signal 5 days
+    running, but TUTA got more hours each time — worth asking whether
+    TUTA is the real signal right now." **Must be built carefully, not
+    casually**: this is the closest any idea here comes to the
+    twice-held anti-gating precedent (#9's Reopening Guard,
+    the pull-back's own precedent note at #30) — it must stay a single
+    quiet observation, not a repeating nag, not a thing that tracks
+    whether you "listened," and probably should fire at most once every
+    couple of weeks even if the pattern persists daily. If it starts
+    feeling like the app second-guessing every SIGNAL choice, cut it —
+    that's the same failure mode the guardrail already names.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
