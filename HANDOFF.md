@@ -664,6 +664,15 @@ purpose; the *walls* are the major thing, and they're now named.
   so far vs. all of last week, needs 2+ active days both sides, ≥3-pt
   move). `_kws_from_text` generalized to take a `prefix` argument so
   SIGNAL and AVOID share one parser instead of two near-identical ones.
+- **v8.14** (behind-pace root cause — backlog #47, DONE). The burn-down
+  window's real-pace footer gains a second, honesty-gated line:
+  capacity problem (genuinely not enough free time this week) vs.
+  choice problem (plenty of free time, just went elsewhere). Pure math
+  over `_dl_progress`'s own `behind` flag + `_day_capacity` +
+  `matched_minutes` — no new data source. Only speaks Wednesday onward
+  (needs the week mostly through to be a fair sample). Tested against
+  both branches plus both silence gates (not-behind, no-scope,
+  too-early-in-week) with realistic synthetic deadlines.
 
 1. ~~Dashboard as home~~ — DONE v7.0, but as a HUB not a replacement:
    became a tabbed window (Today & Week / Deadlines & Goals / Insights)
@@ -1288,24 +1297,10 @@ purpose; the *walls* are the major thing, and they're now named.
     pattern — the honesty is entirely in the
     number, not in a verdict.
 
-47. **Behind-pace root cause: capacity vs. choice (PLANNING —
-    sharper than the existing diagnosis).** `_dl_projection` (v8.1) says
-    WHEN you'll actually land; `_capacity_lines` says whether the week
-    is over-committed in aggregate. Neither says WHY a specific
-    behind-pace deadline is behind: is it that there genuinely isn't
-    enough free time this week (a capacity problem — the only fix is
-    cutting something else), or is there plenty of free time that's
-    just going elsewhere (a choice problem — the fix is reallocation,
-    not more hours)? One line, computed from numbers already sitting in
-    `_day_capacity`/`_free_slots` vs. what actually got logged against
-    the deadline's lens this week: "Thesis is behind pace — but you had
-    11h of free time this week and only put 2h into it. Not a capacity
-    problem." vs. "...and you only had 3h free all week — a capacity
-    problem, something else has to give." Turns a diagnosis into the
-    RIGHT lever instead of a generic one. Fits naturally as an addition
-    to `_projection_line` or the outlook window; needs the week to have
-    actually passed (or be mostly through) to be fair, same honesty
-    framing as everything else here.
+47. ~~**Behind-pace root cause: capacity vs. choice (PLANNING).**~~ —
+    DONE v8.14 (`_root_cause_line`, wired into the burn-down window's
+    footer alongside the projection line). Uses `_dl_progress`'s own
+    `behind` flag directly rather than re-deriving it.
 
 ## How to verify changes without Windows
 

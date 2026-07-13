@@ -4,6 +4,23 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Behind-pace root cause: capacity vs. choice (v8.14)
+
+The burn-down window's real-pace line says WHEN you'll land; now a
+second line, when you're behind, says WHY — so you fix the right thing:
+
+*"Thesis is behind pace — but you had 18h free this week and only put
+1h into it. Not a capacity problem."*
+
+vs.
+
+*"Thesis is behind pace — and you only had 1.5h free this week. A
+capacity problem: something else has to give."*
+
+Capacity problems need something cut; choice problems need
+reallocating, not more hours. Only speaks from Wednesday on, once the
+week's a fair sample.
+
 ### AVOID — the inverse lens (v8.13)
 
 SIGNAL names what matters today; a new `AVOID: news, email` line in the

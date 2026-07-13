@@ -60,6 +60,18 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.14 (behind-pace root cause: capacity vs. choice, backlog #47):
+  - the burn-down window's real-pace footer gains a second, sharper
+    line for a behind-pace deadline: is it that this week genuinely
+    didn't have enough free time (a capacity problem — something else
+    has to give), or did plenty of free time exist and just go
+    elsewhere (a choice problem — reallocate, don't add hours)? "Thesis
+    is behind pace — but you had 18h free this week and only put 1h
+    into it. Not a capacity problem." Reuses _dl_progress's own
+    "behind" flag + _day_capacity + matched_minutes, no new data. Only
+    speaks Wed onward (needs the week mostly through to be a fair
+    sample) and only when actually behind pace with a real scope set.
+
 New in v8.13 (AVOID — the inverse lens, backlog #39):
   - SIGNAL names what matters; a new "AVOID: news, email" header line
     names what you're trying to shed — the exact same keyword-lens
@@ -2478,6 +2490,42 @@ class App(tk.Tk):
         if pr["delta"] > 0 and pr["sooner"] > 0:
             line += f".  +1h/day from now → {pr['sooner']}d sooner"
         return line
+
+    def _root_cause_line(self, dl):
+        """Backlog #47: when a scoped deadline is behind the straight-
+        line pace, split WHY into the right lever. Capacity problem —
+        genuinely not enough free time this week even if every free
+        hour had gone to it — vs. choice problem — plenty of free time
+        existed, it just went elsewhere. Needs the week mostly through
+        (Wed+) to be a fair sample of "this week"; silent otherwise,
+        same honesty framing as the rest of the planning engine. Pure
+        view over _dl_progress + _day_capacity + matched_minutes, no
+        new data source."""
+        if self.today.weekday() < 2:      # Mon/Tue: too early to judge
+            return None
+        try:
+            p = self._dl_progress(dl)
+        except (ValueError, KeyError):
+            return None
+        if not p.get("behind") or not p.get("total_h"):
+            return None
+        mon = self.today - dt.timedelta(days=self.today.weekday())
+        elapsed = (self.today - mon).days + 1
+        avail = sum(self._day_capacity(mon + dt.timedelta(days=i))
+                    for i in range(elapsed))
+        kws = self._match_kws(dl.get("match", ""))
+        logged = (matched_minutes(kws, mon, self.today) / 60) if kws else 0.0
+        needed_so_far = p["needed_per_day"] * elapsed
+        name = dl["name"]
+        if avail < needed_so_far - 0.3:
+            return (f"{name} is behind pace — and you only had {avail:.1f}h "
+                    "free this week. A capacity problem: something else "
+                    "has to give.")
+        if avail - logged >= 2.0:
+            return (f"{name} is behind pace — but you had {avail:.1f}h "
+                    f"free this week and only put {logged:.1f}h into it. "
+                    "Not a capacity problem.")
+        return None
 
     def _log_work_until(self, end):
         """Close the current work interval at `end` (Stop line + csv)."""
@@ -5156,10 +5204,18 @@ class App(tk.Tk):
             title += f" — {why}"
         win = tk.Toplevel(self)
         win.title(title)
-        # a taller canvas when there's a real-pace projection to footer
+        # a taller canvas per footer line actually present (projection,
+        # root-cause split) — both optional, both honesty-gated
         proj = self._projection_line(dl)
         pr = self._dl_projection(dl) if proj else None
-        W, H, PAD = 560, 320 + (28 if proj else 0), 40
+        cause = self._root_cause_line(dl)
+        footers = []
+        if proj:
+            footers.append((proj, "#c03030" if pr["delta"] > 0 else
+                            "#2e8b2e" if pr["delta"] < 0 else "#555555"))
+        if cause:
+            footers.append((cause, "#a05a00"))
+        W, H, PAD = 560, 320 + 28 * len(footers), 40
         cv = tk.Canvas(win, width=W, height=H, background="white",
                        highlightthickness=0)
         cv.pack(padx=8, pady=8)
@@ -5199,11 +5255,10 @@ class App(tk.Tk):
         cv.create_text(W - PAD, PAD, anchor="e", font=("Segoe UI", 8),
                        fill="#777777",
                        text="grey = target pace · blue = actual")
-        if proj:
-            colour = ("#c03030" if pr["delta"] > 0 else
-                      "#2e8b2e" if pr["delta"] < 0 else "#555555")
-            cv.create_text(PAD, H - 14, anchor="w", width=W - 2 * PAD,
-                           font=("Segoe UI", 9), fill=colour, text=proj)
+        for i, (text, colour) in enumerate(footers):
+            y = H - 14 - 18 * (len(footers) - 1 - i)
+            cv.create_text(PAD, y, anchor="w", width=W - 2 * PAD,
+                           font=("Segoe UI", 9), fill=colour, text=text)
 
     # ----- month heatmap -----
 
