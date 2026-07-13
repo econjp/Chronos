@@ -624,6 +624,37 @@ purpose; the *walls* are the major thing, and they're now named.
   purely a VIEW — the planning-engine guardrail (no accept/reject UI,
   no compliance tracking) holds; see the design notes under backlog
   item 11c below, now marked done.
+- **v8.1–v8.12** (landed as one set from a mobile Claude Code session,
+  hand-audited on the main machine before touching master — see the
+  Git section below for the landing process). Fourteen commits,
+  reviewed individually plus one integration smoke test combining all
+  of them, all correctly authored `econjp`, zero AI trailers, zero
+  personal data: **v8.1** deadline finish-date projection in the
+  burn-down window (backlog #13, real-pace forecast + a "+1h/day"
+  lever); **v8.2** 8-week cross-domain trajectory in Insights; **v8.3**
+  Outlook — all deadlines forward-simulated at real pace; **v8.4**
+  Life domains, the values layer above goals (same keyword-lens
+  primitive, one level up — inert until configured); **v8.5** Life
+  review, one briefing synthesizing v8.1–v8.4; **v8.6** the co-pilot
+  header line — a "co-pilot:" line opens new day headers only when
+  something genuinely crosses an anomaly-vs-your-own-baseline gate,
+  silent otherwise; **v8.7** "What should I do now?" — a real-time
+  companion reading the current hour against a learned deep-focus
+  window; **v8.8** energy-aware scheduling — the v8.0 planner now
+  steers the hardest/most-behind work into learned peak hours instead
+  of earliest-free-gap, falling back to exact v8.0 behavior under 20h
+  of history; **v8.9** "where you left off" — starting a task with
+  history hands back the last line you wrote about it; **v8.10** break
+  pull-back (a loud, never-locking escalation on breaks off a SIGNAL
+  task past a configurable threshold — verified by hand: only
+  triggers for signal tasks, two stages, no persisted compliance
+  tracking) plus the doomscroll tax measured from years of break
+  notes; **v8.11** re-entry ramp, the smallest concrete opener offered
+  after a 30+ minute break; **v8.12** procrastination pattern map,
+  naming the specific task you bounce off within 10 minutes. Also
+  landed: `timerv2/selftest.py`, an ast-extraction test harness for
+  the v8.x logic tier (12 suites, independently re-run and green
+  before landing — see "How to verify" below).
 
 ## BACKLOG (priority order — continue here)
 
@@ -1100,6 +1131,15 @@ purpose; the *walls* are the major thing, and they're now named.
     (break lengths after pull-back fired) — evaluate before ever
     considering a hard gate.
 
+31. **Morning brief beyond the desktop (USABILITY/PLATFORM).** On day
+    rollover, also write a tiny `brief_today.txt` (plan line, co-pilot
+    line, schedule, top anomaly) into the OneDrive-synced diary folder —
+    so the phone shows the morning brief before the PC is even on. The
+    platform escaping the desktop with zero new infrastructure: one extra
+    file write into a folder that already syncs. (Check CLAUDE.md
+    sensitivity: the brief must contain nothing beyond what the day file
+    itself already holds.)
+
 32. ~~**Procrastination pattern map.**~~ — DONE v8.12
     (`_procrastination_insight`, run-length analysis per task, n≥6 starts
     and ≥50% bounce before naming; worst offender only). Still open
@@ -1192,63 +1232,15 @@ purpose; the *walls* are the major thing, and they're now named.
     it, or delete it." Never auto-deletes; one prompt, then silence for
     another month. Keeps #19/#27's library honest with ~20 lines of code.
 
-31. **Morning brief beyond the desktop (USABILITY/PLATFORM).** On day
-    rollover, also write a tiny `brief_today.txt` (plan line, co-pilot
-    line, schedule, top anomaly) into the OneDrive-synced diary folder —
-    so the phone shows the morning brief before the PC is even on. The
-    platform escaping the desktop with zero new infrastructure: one extra
-    file write into a folder that already syncs. (Check CLAUDE.md
-    sensitivity: the brief must contain nothing beyond what the day file
-    itself already holds.)
-
-## BRANCH REVIEW KIT — claude/finish-date-projection (for the hand-audit)
-
-Nine commits off clean v8.0 master, sequential, each cherry-pickable;
-author `econjp`, no trailers; only `timerv2/*.py` + docs touched. Run
-`python timerv2\selftest.py` FIRST (8 logic suites must print green),
-then the per-commit Windows smoke checks (~20 min total on a COPY of the
-real data folder, per CLAUDE.md caution):
-
-1. `ff64106` v8.1 projection — open Burn-down on a scoped deadline:
-   footer line "at your real pace … you land ~…" (red/green).
-2. `ac38259` v8.2 trajectory — Ctrl+D Insights: "8-week trajectory" line
-   (needs 5+ active days in each 4-week half; silent otherwise is correct).
-3. `3fa78dd` v8.3 outlook — View > Outlook opens; late/on-pace/blind
-   classification reads sensibly against the real deadline set.
-4. `e268956` v8.4 domains — Tools > Life domains: save, reopen (persists);
-   View > Life alignment shows shares + say-do gap.
-5. `236c19d` v8.5 life review — View > Life review; Copy button fills
-   clipboard.
-6. `f1a25cb` v8.6 co-pilot — next NEW day header gets a "co-pilot:" line
-   when something is genuinely off (absence on a good day is correct).
-7. `1cb04db` v8.7 what-now — View > "What should I do now?" writes one
-   sentence to the status bar.
-8. `2f74cad` v8.8 energy placement — morning "suggested schedule" says
-   "steered to your peak hours" once 20h+ of history exists; with less,
-   output must be identical to v8.0's earliest-first.
-9. (this commit) selftest.py + this kit + backlog #20–23 — docs/tooling
-   only, no app-code change.
-
-**Start with `REVIEW_WALKTHROUGH.md` at the repo root** — the full
-landing guide for the main machine (pre-flight commands, per-commit
-think-through, Path A/B landing, smoke list, cleanup). Delete that file
-after landing; this kit stays as the compact record.
-
-Dependencies (CORRECTED — an earlier version of this kit understated
-them): 8.1, 8.2, 8.4 and 8.8 are standalone; 8.3 and 8.7 need 8.1;
-**8.5 needs 8.1+8.2+8.3+8.4** (it composes them); 8.6 needs 8.5. So:
-take the whole set, or if anything in 8.1–8.4 fails audit, drop 8.5 and
-8.6 with it. `selftest.py` expects the full set — on a partial landing,
-FAILs for the missing suites are expected, not defects.
-
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
 harness (v8.x): lifts pure functions out of the app via ast (no tkinter/
-ctypes import, never touches the real data dir) and runs 8 suites
+ctypes import, never touches the real data dir) and runs 12 suites
 covering projection, trajectory, outlook, alignment, review synthesis,
-anomaly watch, recommend-now and energy placement. Exit 0 = green. Add a
-suite there in the same commit as any new pure-logic feature.
+anomaly watch, recommend-now, energy placement, last-context, break-pull,
+reentry and procrastination. Exit 0 = green. Add a suite there in the
+same commit as any new pure-logic feature.
 
 The older ad-hoc pattern (extract via ast in a scratch file, seed a messy
 csv — v4 rows, case variants, dups, junk, overlaps — and test
