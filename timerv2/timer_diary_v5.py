@@ -60,6 +60,15 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.12 (procrastination pattern map — treat the cause):
+  - new insight: which task do you flee FROM? A 'bounce' = a work run
+    that dies within 10 minutes into a break — aversion's signature.
+    With 6+ starts and a 50%+ bounce rate it names the worst offender:
+    "you bounce off 'thesis: intro' within 10 min on 75% of starts
+    (6 of 8) — that's not laziness, the task is too big; cut it into
+    [30m] pieces." The pull-back (v8.10) treats the symptom in the
+    moment; this finds the task that keeps causing it. selftest suite 12.
+
 New in v8.11 (re-entry ramp — the pull-back's click made cheap):
   - resuming work after a 30min+ break, the status line now hands you the
     smallest concrete opener: "· start small: 'thesis: fix table 3'
@@ -5439,6 +5448,53 @@ class App(tk.Tk):
                      "youtube", "yt", "reddit", "tiktok", "twitter", "news",
                      "uutis")
 
+    def _procrastination_insight(self, days=60):
+        """Which task do you flee FROM? A 'bounce' = a run of work on one
+        task that dies within 10 minutes into a break — the signature of
+        aversion, not tiredness. High bounce rate means the task is too
+        big or too vague; the fix is cutting it smaller, not willpower.
+        Names the worst offender only with n≥6 starts and ≥50% bounces."""
+        cutoff = (self.today - dt.timedelta(days=days)).isoformat()
+        by_day = {}
+        for r in read_rows():
+            if r[0] >= cutoff:
+                by_day.setdefault(r[0], []).append(r)
+        stats = {}                    # lower -> [label, starts, bounces]
+        for rows in by_day.values():
+            rows.sort(key=lambda r: r[2])
+            i = 0
+            while i < len(rows):
+                r = rows[i]
+                if r[1] == "break" or not r[5].strip():
+                    i += 1
+                    continue
+                t = r[5].strip().lower()
+                run, j = 0, i
+                while (j < len(rows) and rows[j][1] != "break"
+                       and rows[j][5].strip().lower() == t):
+                    try:
+                        run += int(rows[j][4])
+                    except ValueError:
+                        pass
+                    j += 1
+                rec = stats.setdefault(t, [r[5].strip(), 0, 0])
+                rec[1] += 1
+                if run <= 10 and j < len(rows) and rows[j][1] == "break":
+                    rec[2] += 1
+                i = j
+        worst = None
+        for label, n, b in stats.values():
+            if n >= 6 and b / n >= 0.5 and (worst is None
+                                            or b / n > worst[2] / worst[1]):
+                worst = (label, n, b)
+        if worst:
+            label, n, b = worst
+            return [f"you bounce off '{label}' within 10 min on "
+                    f"{round(100 * b / n)}% of starts ({b} of {n}) — that's "
+                    "not laziness, the task is too big; cut it into [30m] "
+                    "pieces"]
+        return []
+
     def _break_insight(self, days=60):
         """Break TYPE vs what follows it: pair each labelled break (the
         note you type after '--- Break duration:') with the next work
@@ -5663,6 +5719,7 @@ class App(tk.Tk):
                            f"time this week vs {round(100 * prev_ratio)}% the "
                            "3 weeks before — drifting, worth a look")
 
+        out += self._procrastination_insight()
         out += self._break_insight()
         out += self._trajectory_lines()
         return out

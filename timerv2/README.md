@@ -4,6 +4,18 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Which task do you flee from? (v8.12)
+
+The Insights now spot **aversion's signature**: starts on a task that die
+within 10 minutes into a break, again and again. When one task crosses
+the line (6+ starts, half of them bounces), it gets named:
+
+*"you bounce off 'thesis: intro' within 10 min on 75% of starts (6 of 8)
+— that's not laziness, the task is too big; cut it into [30m] pieces."*
+
+The pull-back handles the moment of procrastination; this finds the task
+that keeps causing it — and the fix is decomposition, not discipline.
+
 ### Re-entry ramp (v8.11)
 
 Coming back after a 30-minute-plus break, the status line offers the

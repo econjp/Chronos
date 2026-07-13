@@ -34,7 +34,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
         "_life_review_lines", "_anomaly_lines", "_copilot_note",
         "_recommend_now", "_deep_window", "_hour_quality", "_energy_place",
-        "_last_context", "_break_insight", "_pull_level", "_reentry_opener"}
+        "_last_context", "_break_insight", "_pull_level", "_reentry_opener",
+        "_procrastination_insight"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL"}
 
@@ -394,6 +395,27 @@ def suite_reentry():
     assert D._reentry_opener(d, "x") is None
 
 
+def suite_procrastination():
+    D, ns = fresh()
+    rows = []
+    for i in range(8):
+        d0 = (dt.date(2026, 7, 1) + dt.timedelta(days=i)).isoformat()
+        if i < 6:      # 6 bounces: 5 min on intro, then a break
+            rows += [[d0, "work", "09:00", "09:05", "5", "thesis: intro", ""],
+                     [d0, "break", "09:05", "09:25", "20", "", "scroll"]]
+        else:          # 2 real runs: no bounce
+            rows += [[d0, "work", "09:00", "10:00", "60", "thesis: intro", ""]]
+        rows += [[d0, "work", "10:30", "11:30", "60", "email", ""]]  # healthy
+    seed(ns, rows)
+    d = _mk(D)
+    out = D._procrastination_insight(d)
+    assert out and "'thesis: intro'" in out[0], out
+    assert "75% of starts (6 of 8)" in out[0], out
+    assert "email" not in out[0]
+    seed(ns, rows[:8])              # too few starts -> silent
+    assert D._procrastination_insight(d) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -401,7 +423,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("energy-place", suite_energy_place),
           ("last-context", suite_last_context),
           ("break-pull", suite_break_pull),
-          ("reentry", suite_reentry)]
+          ("reentry", suite_reentry),
+          ("procrastination", suite_procrastination)]
 
 
 def main():

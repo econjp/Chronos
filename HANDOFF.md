@@ -292,6 +292,12 @@ purpose; the *walls* are the major thing, and they're now named.
 
 ## Version history (one line each)
 
+- **v8.12** (procrastination pattern map — backlog #32). New
+  `_procrastination_insight(days=60)`: maximal same-task work runs per
+  day (rows sorted by start time); a run ≤10 min followed by a break is a
+  bounce; ≥6 starts and ≥50% rate names the worst offender with the
+  decomposition advice. Hooked into `_insight_lines` ahead of the break
+  insight. selftest suite 12; 12/12 green.
 - **v8.11** (re-entry ramp — backlog #34, completes the anti-
   procrastination arc with v8.10). `_reentry_opener(task)` picks the
   smallest concrete opener (related > signal > any, by estimate; TODO-
@@ -1094,14 +1100,12 @@ purpose; the *walls* are the major thing, and they're now named.
     (break lengths after pull-back fired) — evaluate before ever
     considering a hard gate.
 
-32. **Procrastination pattern map (FEEDBACK — pairs with the pull-back).**
-    Which tasks do you flee FROM? For each task, the fraction of its
-    starts that die within 10 minutes into a break: "you bounce off
-    'thesis: intro' in under 10 min on 70% of starts (n=10) — that's not
-    laziness, the task is too big; cut it into [30m] pieces." Detects the
-    avoidance shape the pull-back only treats the symptom of. Pure csv
-    analysis (start→next-break gap per task), n-gated, one insight line
-    plus optionally a per-task flag in the Tasks window.
+32. ~~**Procrastination pattern map.**~~ — DONE v8.12
+    (`_procrastination_insight`, run-length analysis per task, n≥6 starts
+    and ≥50% bounce before naming; worst offender only). Still open
+    (small): a per-task bounce-rate flag in the Tasks/Library window, and
+    counting a flee-into-another-task (switch within 10 min) as a softer
+    second bounce type — currently only flee-into-break counts.
 
 33. **Break budget (FEEDBACK — reframe, not police).** Instead of judging
     each break, a daily allowance learned from your own good days: "breaks
@@ -1157,6 +1161,36 @@ purpose; the *walls* are the major thing, and they're now named.
     ("avoid 6% ↓ this week"), a quiet week-over-week arrow, and the
     trajectory/insights can cross it (avoid-share vs energy). Completes
     the lens family symmetrically — three lines of parsing, big mirror.
+
+40. **First-hour audit (FEEDBACK).** The first tracked hour predicts the
+    day. Measure what your opening block actually is (signal vs admin vs
+    email) and its knock-on: "days you open with signal work end 1.8h
+    heavier than days you open with email (n=22 vs 14) — the first hour
+    is a lever, not a warm-up." Pure csv (first work run per day
+    classified by the lens), n-gated, one line.
+
+41. **Rescue block — the day is not lost (FEEDBACK/PLANNING).** When a
+    day is clearly going sideways by mid-afternoon (tracked << plan and
+    the deadline needs it), one stated salvage line via the co-pilot
+    surface: "salvage plan: one 45m block on Thesis before dinner makes
+    today count — 0.7h is 100% more than 0h." Attacks the all-or-nothing
+    write-off spiral. Reuses _recommend_now's inputs; strictly a stated
+    line (anti-nagging precedent), at most once per day.
+
+42. **Monday week-ahead risk brief (FORESIGHT).** The Monday review looks
+    back; nothing yet looks at the WEEK ahead as a whole. One block:
+    calendar density per day (free-slot totals), the outlook's late
+    deadlines mapped onto those days, sleep-debt carry-in — "this week's
+    biggest risk: Thu is 80% meetings while TUTA needs 2h/day; front-load
+    to Tue/Wed." Composes _free_slots + _outlook_lines + _sleep_h over
+    the next 7 days; the weekly twin of the daily co-pilot line.
+
+43. **Library graveyard sweep (USABILITY/HYGIENE).** Task-library items
+    age silently; a backlog full of corpses stops being trusted. Once a
+    month (first Monday), the review block lists items untouched 60+
+    days: "6 items older than 60 days — still real? Start one, re-date
+    it, or delete it." Never auto-deletes; one prompt, then silence for
+    another month. Keeps #19/#27's library honest with ~20 lines of code.
 
 31. **Morning brief beyond the desktop (USABILITY/PLATFORM).** On day
     rollover, also write a tiny `brief_today.txt` (plan line, co-pilot

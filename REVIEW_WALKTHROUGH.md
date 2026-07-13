@@ -26,7 +26,8 @@ scaffolding, not documentation.** HANDOFF.md stays the permanent brain.
 | 10 | e3ab8b0 | — | this walkthrough + backlog #24–27 | docs | none |
 | 11 | 5d4fbe8 | 8.9 | "where you left off": task start shows your last note about it | view (status bar) | low |
 | 12 | 4b3edcb | 8.10 | break pull-back (signal tasks, loud nudge not a lock) + doomscroll-tax insight | pill behavior + view | med |
-| 13 | (tip) | 8.11 | re-entry ramp: "start small: …" opener after 30m+ breaks | view (status bar) | low |
+| 13 | dd88c0c | 8.11 | re-entry ramp: "start small: …" opener after 30m+ breaks | view (status bar) | low |
+| 14 | (tip) | 8.12 | procrastination map: names the task you bounce off, with the fix | view (insight) | low |
 
 **Dependencies (corrected — the HANDOFF kit's first version understated
 these):** 8.1, 8.2, 8.4, 8.8 and 8.9 are standalone. 8.3 and 8.7 need 8.1.
