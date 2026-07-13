@@ -194,7 +194,98 @@ the three-bucket model is already correct and more honest than a blend.
 - **Export life record (JSON)** (File menu) is the canonical portable
   dump: per-day record + diary text + goals + deadlines + capacity.
 
+## NORTH STAR — the major direction (owner asked 2026-07-13: "vision big things")
+
+The owner's recurring feeling: lots of useful features, nothing yet that
+feels *major* — not at the full potential of a "total life management
+platform." This is the honest frame for the leap, and the lens for
+prioritising the backlog below. **Don't build this whole thing in one
+session** (it violates the mobile-session rules); build it one brick at a
+time, but know which wall each brick is in.
+
+**The reframe: from a MIRROR to a CO-PILOT.**
+Today the app is an honest *mirror* — it reflects what happened,
+cross-referenced, without flattery (verdicts, insights, the v8.2
+trajectory line). That's necessary but it's still backward- and
+present-looking, and passive. The full-potential version is a *life
+co-pilot*: it holds what you're aiming at, models your real patterns and
+capacity, looks FORWARD, helps you decide and remember at the scale of
+years. Three pillars, each an extension of primitives that already exist
+— not a rewrite:
+
+**Pillar A — FORESIGHT (model the future, not just report the past).**
+The app already computes needed-h/day (`_dl_progress`), today's
+time-blocked schedule (v8.0 `_day_schedule_lines`+`_free_slots`) and, as
+of v8.1, where ONE deadline actually lands at real pace (`_dl_projection`).
+The leap: a **multi-week life simulation** across ALL deadlines + capacity
++ real velocity + health limits at once — roll today's `_free_slots` and
+`_dl_velocity` forward N weeks, place every deadline's need, and surface
+*collisions before they happen*: "weeks of Jul 20 & 27 are both overbooked;
+at your real pace Thesis lands 5d late AND TUTA slips — here are two
+reallocations that clear both." Still a VIEW, still rule-based, still no
+negotiation UI (the standing planning-engine guardrail holds). Backlog
+#11's tier-c is the seed; the new part is *many deadlines × many weeks ×
+real (not assumed) pace*. Start small: extend v8.1's single-deadline
+projection to a 2-deadline collision line.
+
+**Pillar B — MEMORY (life at the scale of years, queryable + narrative).**
+Every view still tops out at a season; v8.2's trajectory line is the first
+crack past that. The leap: the archive becomes a **life memory** you can
+ask and that can tell you its own story. Concrete, staged, all stdlib:
+  1. #14 "ask your diary" — ranked multi-term search + "copy matching days
+     for AI" (no credentials). Makes a year of day-files *queryable*.
+  2. Trajectory v2 — extend v8.2 to per-goal and per-domain arcs over
+     months ("Thesis 2→12h/wk over the term; the term you gave it, sleep
+     fell 0.7h and workouts halved — the true price you paid").
+  3. #15 year-in-review — the once-a-year long read.
+  4. Eventually the AI-analyst layer (see connective tissue) writing a
+     real narrative paragraph INTO the record, not just prepping clipboard.
+
+**Pillar C — ALIGNMENT (life management, not time management).**
+The deepest gap and the most on-vision. The app tracks *time*; a *life*
+platform manages *commitments, decisions and values*. Two moves:
+  1. **A values/domains layer above goals.** A handful of life domains
+     (e.g. Work, Body, Growth, People, Rest) that goals map up to; every
+     tracked hour rolls up; a longitudinal "is your life actually flowing
+     where you say it should" read — the missing top of the
+     source→lens→view stack. Goals answer *why a project*; this answers
+     *why the projects at all, and are you living it*. The waking-hours
+     "LIFE BALANCE" block already gestures at this — make domains explicit
+     and longitudinal.
+  2. **The decision ledger** (career-chat idea, backlog #9, currently held
+     behind the anti-nagging guardrail — revisit deliberately, not as a
+     second gate). A life platform remembers the big NO/SKIP decisions and
+     their reasons so you stop relitigating settled things — tracking
+     *decisions and their outcomes over time*, which is squarely "life
+     management," not time-tracking. Keep it a VIEW/record, never a
+     blocking negotiation, per the twice-held precedent.
+
+**The connective tissue — an AI analyst layer.**
+"Copy for AI review" (v5.1) is v0 of this: the whole record already
+serialises to text/JSON. The real version calls an LLM automatically and
+writes narrative feedback into the day file. It's the enabler across all
+three pillars (foresight explanations, memory narration, alignment
+coaching) — but it carries the one real **credential-handling decision**
+in this whole roadmap (API key vs OneDrive-synced settings.json — see
+backlog #10). **Ask the owner before building it**; everything else here
+is keyless and can proceed first.
+
+**How to use this section:** every backlog item below is a brick in one of
+these walls — when picking the next thing, prefer the one that most
+advances a pillar (A/B/C) rather than an isolated nicety. That is the
+answer to "nothing feels major yet": the individual features are small on
+purpose; the *walls* are the major thing, and they're now named.
+
 ## Version history (one line each)
+
+- **v8.2** (trajectory insight — first brick of Pillar B / Memory). New
+  `_trajectory_lines(weeks=8)` in the insights section: splits the last 8
+  weeks in half, compares work h/wk, sleep, and signal% across the two,
+  and names the sharpest inverse trade-off ("buying work hours with
+  sleep"). Same honesty gates as insights v3 (both halves ≥5 active days;
+  silent when nothing moved). Pure view, reuses `day_index`/`_day_signal`/
+  `_sleep_h`, no new source. Verified on Linux via extracted logic
+  (tradeoff fires, both quiet-gates hold).
 
 - **v8.1** (deadline finish-date projection — backlog #13, DONE). The
   burn-down window footer now extrapolates the ACTUAL landing date from

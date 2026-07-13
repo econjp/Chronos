@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Trajectory — the months-scale read (v8.2)
+
+Every other insight looks at the last few weeks. This one (in the
+dashboard's Insights, `Ctrl+D`) splits the **last 8 weeks in half** and
+compares them across domains, then names the trade-off you're actually
+making: *"8-week trajectory: work 5.0→15.0h/wk ↑, sleep 7.5→6.2h ↓ → you're
+buying work hours with sleep — a sprint move, not a season."* It stays
+quiet unless something genuinely moved (both halves need real history).
+The first feature that looks at your life at the scale of **months**, not
+the current week — the seed of a bigger trajectory/life-memory direction.
+
 ### Finish-date projection (v8.1)
 
 The burn-down window (View → Burn-down) now ends with one blunt line: not

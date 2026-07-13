@@ -60,6 +60,16 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.2 (trajectory insight — life at the scale of months):
+  - a new INSIGHT that, unlike every other one (all capped at 3-4 weeks),
+    splits the last 8 weeks in half and compares the earlier half to the
+    recent one across domains — "8-week trajectory: work 5.0→15.0h/wk ↑,
+    sleep 7.5→6.2h ↓" — then names the sharpest TRADE-OFF in one line:
+    "you're buying work hours with sleep — a sprint move, not a season."
+    Same honesty gates as the rest (both halves need 5+ active days;
+    silent when nothing meaningfully moved). First brick of the
+    "trajectory / life-memory" North Star now written into HANDOFF.
+
 New in v8.1 (deadline finish-date projection — backlog #13):
   - the burn-down window gains one honest footer line: instead of only
     "needs Xh/day" (which assumes perfect future compliance), it says
@@ -4794,6 +4804,81 @@ class App(tk.Tk):
                 out.append(f"breaks are {round(100 * cur_ratio)}% of tracked "
                            f"time this week vs {round(100 * prev_ratio)}% the "
                            "3 weeks before — drifting, worth a look")
+
+        out += self._trajectory_lines()
+        return out
+
+    def _trajectory_lines(self, weeks=8):
+        """The longitudinal, cross-domain view the other insights can't
+        give: split the last `weeks` weeks in half, compare the earlier
+        half against the recent one across domains — work, sleep, signal —
+        and name the sharpest TRADE-OFF, the thing you're buying with the
+        thing you're spending. Everything else in this section tops out at
+        3-4 weeks; this is the first 'life at the scale of months' read,
+        the seed of the trajectory/memory direction in HANDOFF."""
+        idx = day_index()
+        half = weeks * 7 // 2
+        recent_lo = self.today - dt.timedelta(days=half - 1)
+        prior_lo = self.today - dt.timedelta(days=2 * half - 1)
+
+        def acc(lo, hi):
+            work = sig = active = 0
+            sleeps = []
+            d = lo
+            while d <= hi:
+                rec = idx.get(d.isoformat())
+                if rec and rec["work"] > 0:
+                    work += rec["work"]
+                    sig += self._day_signal(d)[0]
+                    active += 1
+                sl = self._sleep_h(d.isoformat())
+                if sl:
+                    sleeps.append(sl)
+                d += dt.timedelta(days=1)
+            return {"work": work, "sig": sig, "active": active, "sleeps": sleeps}
+
+        a = acc(prior_lo, recent_lo - dt.timedelta(days=1))
+        b = acc(recent_lo, self.today)
+        # both halves need real work history or the comparison is noise
+        if a["active"] < 5 or b["active"] < 5:
+            return []
+
+        def arrow(x, y, thr):
+            return "↑" if y >= x + thr else "↓" if y <= x - thr else "→"
+
+        wpw = (a["work"] / 60 / (half / 7), b["work"] / 60 / (half / 7))
+        parts, moved = [], {}
+        aw = arrow(*wpw, 1.0)
+        parts.append(f"work {wpw[0]:.1f}→{wpw[1]:.1f}h/wk {aw}")
+        moved["work"] = aw
+        if len(a["sleeps"]) >= 5 and len(b["sleeps"]) >= 5:
+            sl = (sum(a["sleeps"]) / len(a["sleeps"]),
+                  sum(b["sleeps"]) / len(b["sleeps"]))
+            asl = arrow(*sl, 0.3)
+            parts.append(f"sleep {sl[0]:.1f}→{sl[1]:.1f}h {asl}")
+            moved["sleep"] = asl
+        if a["work"] and b["work"] and (a["sig"] or b["sig"]):
+            sg = (100 * a["sig"] / a["work"], 100 * b["sig"] / b["work"])
+            asig = arrow(*sg, 8)
+            parts.append(f"signal {round(sg[0])}→{round(sg[1])}% {asig}")
+            moved["signal"] = asig
+        if not any(v != "→" for v in moved.values()):
+            return []                       # nothing really moved — stay quiet
+
+        out = [f"{weeks}-week trajectory: " + ", ".join(parts)]
+        # the sharpest trade-off, named — one thing bought with another
+        if moved.get("work") == "↑" and moved.get("sleep") == "↓":
+            out.append("  → you're buying work hours with sleep — a sprint "
+                       "move, not a season; watch the energy insight above")
+        elif moved.get("work") == "↓" and moved.get("sleep") == "↑":
+            out.append("  → fewer work hours, more sleep — recovery if it's "
+                       "chosen, drift if it isn't")
+        elif moved.get("work") == "↑" and moved.get("signal") == "↓":
+            out.append("  → more hours, less of them on-signal — busier, not "
+                       "necessarily closer to what matters")
+        elif moved.get("work") == "↓" and moved.get("signal") == "↑":
+            out.append("  → fewer hours but better aimed — leverage, as long "
+                       "as the totals still clear your deadlines")
         return out
 
     def _draw_week_bars(self, cv, week):
