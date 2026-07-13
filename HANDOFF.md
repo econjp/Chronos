@@ -1423,6 +1423,60 @@ purpose; the *walls* are the major thing, and they're now named.
     DONE v8.21. Header label in the Tasks/Library window, updates on
     every `refresh()`.
 
+56. **App usage-pattern meter (META — the tool auditing its own use,
+    not the owner's life).** Every other insight here studies the
+    owner's time; nothing studies whether the FEATURES built for them
+    actually get opened. A lightweight counter (one dict bump per menu
+    command, persisted in settings, no new UI beyond a Tools entry to
+    view it) surfacing "Dashboard: 40 opens this month · Outlook: 2 ·
+    Life review: 0" — not a judgment, just visibility into which of
+    the 50+ backlog items that got built are actually earning their
+    keep vs quietly unused. Directly useful for THIS backlog's own
+    prioritization: a feature nobody opens in 60 days is a better
+    graveyard-sweep candidate (extend #43's pattern to menu commands,
+    not just task-library items) than a wholly new idea competing for
+    build time. Cheap, single dict, no behavior change to anything it
+    counts.
+
+57. **Conversation-ready status export (USABILITY — a different
+    audience than #14/Copy-for-AI-review).** Copy-for-AI-review is
+    written for feeding an LLM; nothing is written for pasting into an
+    email to an actual supervisor/advisor. A "Copy status update"
+    command producing a short, professionally-toned paragraph from
+    numbers already computed: "Progress update — Thesis: 12h this week
+    (up from 8h last), on pace to finish ch4 by the 23rd. No blockers."
+    Reuses `_dl_progress`/`_dl_projection`'s own numbers, just a
+    different register of sentence than the rest of the app's blunt
+    internal voice — worth being explicit that this ONE surface should
+    sound different on purpose (external-facing), not a precedent for
+    softening anything else.
+
+58. **Best-weeks retrospective (SELF-KNOWLEDGE — replicate the good,
+    not just flag the bad).** Nearly every insight in this file is
+    diagnostic-of-problems (anomalies, drift, shortfalls, thrash). None
+    asks the positive-framed question: what made your OWN best weeks
+    different? Identify the top-N historical weeks by a composite
+    (signal hours × signal%) and name what was distinctive — day-of-
+    week distribution, avoid-share, meeting load, sleep — "your 3 best
+    weeks all had under 10% avoid-share and most signal hours landed
+    Tuesday." A study-your-own-peak-performance complement to the
+    mostly-diagnostic insight set; reuses `_alignment_lines`/
+    `_avoid_trend_suffix`/`_hour_quality`'s existing per-week
+    computations, just ranks weeks instead of comparing to a baseline.
+
+59. **Reallocation scenario — the natural sequel to #47 (PLANNING).**
+    #47 (done) says WHY a deadline is behind: capacity problem or
+    choice problem. For a genuine capacity problem with 2+ competing
+    deadlines, the natural next question is WHAT SPECIFICALLY would
+    fix it: "cutting TUTA to 0.5h/week for 3 weeks would clear Thesis's
+    shortfall." One arithmetic scenario (not a directive, not applied
+    automatically) — redistribute the shared shortfall from the most-
+    urgent deadline onto the least-urgent one(s) and state the trade
+    explicitly, same honesty-not-negotiation framing as everything else
+    in the planning engine. Reuses `_focus_items`/`_capacity_lines`'s
+    existing numbers; the only new part is solving "how much would
+    have to move" instead of just naming that something does.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
