@@ -225,8 +225,12 @@ at your real pace Thesis lands 5d late AND TUTA slips — here are two
 reallocations that clear both." Still a VIEW, still rule-based, still no
 negotiation UI (the standing planning-engine guardrail holds). Backlog
 #11's tier-c is the seed; the new part is *many deadlines × many weeks ×
-real (not assumed) pace*. Start small: extend v8.1's single-deadline
-projection to a 2-deadline collision line.
+real (not assumed) pace*. **First brick DONE v8.3**: `_outlook_lines()` +
+View > Outlook — all scoped deadlines projected at real pace, ranked by
+lateness, with the aggregate "+Xh/day clears everything" lever. Next
+bricks: fold in *capacity per future week* (not just aggregate rate) so it
+places the shortfall in a specific week; then a light multi-week
+`_free_slots` roll-forward so it can say *which* week overbooks.
 
 **Pillar B — MEMORY (life at the scale of years, queryable + narrative).**
 Every view still tops out at a season; v8.2's trajectory line is the first
@@ -278,6 +282,16 @@ purpose; the *walls* are the major thing, and they're now named.
 
 ## Version history (one line each)
 
+- **v8.3** (Outlook — first brick of Pillar A / Foresight). New
+  `_outlook_lines()` + `_outlook_win()` (View > Outlook — weeks ahead) and
+  a menu entry. Forward simulation across ALL scoped deadlines at real
+  pace (reuses v8.1 `_dl_projection`/`_dl_velocity`): classifies each as
+  late / on-pace / too-blind-to-project, ranks the late ones, and states
+  the aggregate per-day lever (Σ max(0, needed_per_day − real_rate) over
+  late deadlines). Complements `_capacity_lines` (abstract capacity) with
+  actual-pace prediction. Pure view, no new data; window mirrors the
+  `_health_view` boilerplate. Verified on Linux (late/on-time/blind
+  classification, gap line, no-scope empty).
 - **v8.2** (trajectory insight — first brick of Pillar B / Memory). New
   `_trajectory_lines(weeks=8)` in the insights section: splits the last 8
   weeks in half, compares work h/wk, sleep, and signal% across the two,

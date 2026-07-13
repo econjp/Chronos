@@ -4,6 +4,18 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Outlook — the weeks ahead (v8.3)
+
+View → **Outlook — weeks ahead** is the first view that looks *forward*
+instead of back. It simulates every scoped deadline at once at the pace
+you've *actually* kept (not your theoretical capacity) and tells you what's
+going to go wrong before it does: *"1 of 2 deadlines land LATE — ⚠ Thesis:
+due 22.07, lands ~13.08 (22d late) at 2.7h/wk actual · +1h/day → 23d
+sooner,"* plus the one aggregate lever that clears everything (*"needs
+about +0.8h/day more than you're averaging"*). Prediction and prescription,
+not just a mirror of the past. Deadlines with too little recent tracking to
+project are named as such rather than guessed at.
+
 ### Trajectory — the months-scale read (v8.2)
 
 Every other insight looks at the last few weeks. This one (in the

@@ -60,6 +60,17 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.3 (Outlook — the app starts looking FORWARD, not just back):
+  - View > "Outlook — weeks ahead…": a forward simulation across ALL
+    scoped deadlines at once, at your REAL recent pace (not the abstract
+    capacity _capacity_lines uses). States which deadlines land late, in
+    what order, by how much — "⚠ Thesis: due 22.07, lands ~13.08 (22d
+    late) at 2.7h/wk actual · +1h/day → 23d sooner" — plus the aggregate
+    lever: "landing all of them on time needs about +0.8h/day more than
+    you're averaging." Prediction + prescription. First brick of the
+    FORESIGHT pillar (see HANDOFF North Star); pure math over v8.1's
+    _dl_projection, no new data, tested on Linux.
+
 New in v8.2 (trajectory insight — life at the scale of months):
   - a new INSIGHT that, unlike every other one (all capped at 3-4 weeks),
     splits the last 8 weeks in half and compares the earlier half to the
@@ -1276,6 +1287,7 @@ class App(tk.Tk):
         viewm.add_command(label="Trend (8 weeks)", command=self._trend)
         viewm.add_command(label="Month heatmap", command=self._heatmap)
         viewm.add_command(label="Deadline burn-down", command=self._burndown)
+        viewm.add_command(label="Outlook — weeks ahead…", command=self._outlook_win)
         viewm.add_command(label="Health × focus (14 days)", command=self._health_view)
         viewm.add_command(label="Search all days…", command=self._search_diary)
         viewm.add_separator()
@@ -3859,6 +3871,79 @@ class App(tk.Tk):
                         lines.append(f"   ✗ {name} ({left}d left) — 0h fits; "
                                      f"the full {req:.1f}h is the cut")
         return lines
+
+    def _outlook_lines(self):
+        """Forward simulation across ALL scoped deadlines at REAL pace —
+        the complement to _capacity_lines (which compares abstract
+        available capacity to needed hours). This asks the harder
+        question: at the pace you're ACTUALLY keeping, which deadlines
+        land late, in what order, and what's the smallest lever that
+        changes it. Prediction + prescription, not a mirror. Pure math
+        over _dl_progress + _dl_projection (v8.1); no new data."""
+        scoped = []
+        for dl in self.deadlines():
+            try:
+                p = self._dl_progress(dl)
+            except (ValueError, KeyError):
+                continue
+            if not p.get("total_h") or p["left"] < 0 or p["remaining_h"] <= 0:
+                continue
+            scoped.append((dl, p, self._dl_projection(dl)))
+        if not scoped:
+            return []
+        late, ok, blind = [], [], []
+        for dl, p, proj in sorted(scoped, key=lambda x: x[1]["due"]):
+            if proj is None:
+                blind.append((dl, p))
+            elif proj["delta"] > 0:
+                late.append((dl, p, proj))
+            else:
+                ok.append((dl, p, proj))
+        seen = len(late) + len(ok)
+        lines = []
+        if late:
+            lines.append(f"at your real recent pace, {len(late)} of {seen} "
+                         "tracked deadline(s) land LATE:")
+            for dl, p, proj in sorted(late, key=lambda x: -x[2]["delta"]):
+                lever = (f"  ·  +1h/day → {proj['sooner']}d sooner"
+                         if proj["sooner"] else "")
+                lines.append(f"  ⚠ {dl['name']}: due {p['due']:%d.%m}, "
+                             f"lands ~{proj['land']:%d.%m} "
+                             f"({proj['delta']}d late) at "
+                             f"{proj['rate'] * 7:.1f}h/wk actual{lever}")
+            gap = sum(max(0.0, p["needed_per_day"] - proj["rate"])
+                      for _dl, p, proj in late)
+            if gap > 0.1:
+                lines.append(f"  → landing all of them on time needs about "
+                             f"+{gap:.1f}h/day more than you're averaging on "
+                             "them now — or move a due date, or cut a scope")
+        elif seen:
+            lines.append(f"at your real recent pace, all {seen} tracked "
+                         "deadline(s) land on time. ✓")
+        for dl, p, proj in ok:
+            lines.append(f"  ✓ {dl['name']}: due {p['due']:%d.%m}, "
+                         f"on/ahead of pace (~{proj['land']:%d.%m})")
+        for dl, p in blind:
+            lines.append(f"  · {dl['name']}: due {p['due']:%d.%m}, needs "
+                         f"{p['needed_per_day']:.1f}h/day — too little recent "
+                         "tracked time to project a real pace yet")
+        return lines
+
+    def _outlook_win(self):
+        win = tk.Toplevel(self)
+        win.title("Outlook — the weeks ahead, at your real pace")
+        win.geometry("620x300")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10))
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        body = self._outlook_lines()
+        if not body:
+            body = ["No scoped deadlines with hours remaining to forecast.",
+                    "",
+                    "Set a deadline with a total-hours scope (Tools >",
+                    "Deadline countdowns) and track some time against it —",
+                    "this window then projects where it actually lands."]
+        txt.insert("1.0", "\n".join(body))
+        txt.config(state="disabled")
 
     def _capacity_win(self):
         win = tk.Toplevel(self)
