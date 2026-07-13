@@ -292,6 +292,13 @@ purpose; the *walls* are the major thing, and they're now named.
 
 ## Version history (one line each)
 
+- **(tooling, no version bump)** `timerv2/selftest.py`: committed,
+  stdlib-only, cross-platform test harness — lifts pure logic out of the
+  app via ast (no GUI import, sandboxed temp csv) and runs 8 suites over
+  the v8.1–v8.8 tier. Replaces the per-session scratchpad test files that
+  died with each container. `python timerv2/selftest.py`, exit 0 = green.
+  Plus the BRANCH REVIEW KIT section below (per-commit Windows smoke
+  checks + dependency notes for the hand-audit) and backlog #20–23.
 - **v8.8** (energy-aware scheduling — backlog #17, the planner gets smart).
   `_hour_quality(days=60)` (0–1 per-hour profile of where work lands) +
   `_energy_place(items, slots, quality)` (each item claims its best-quality
@@ -938,14 +945,105 @@ purpose; the *walls* are the major thing, and they're now named.
     library's add path; the popup is ~30 lines mirroring the break-pill
     Toplevel. Pure usability, high daily value.
 
+20. **Weekly experiment engine (FEEDBACK → ACTION → MEASUREMENT).** The
+    insights diagnose ("you're more fragmented", "sleep is worth +1.3h")
+    but nothing closes the loop. Opt-in, in-file, one at a time: the user
+    types `EXPERIMENT: no work after 21:00` in Monday's header (same
+    convention as SIGNAL/ENERGY — never prompted, never suggested more
+    than once); the following Monday's WEEK REVIEW reports the measured
+    delta vs the trailing 4-week baseline on the relevant metrics (late-
+    evening minutes, next-day energy, sleep, output) and says plainly
+    "kept it 5/7 days; sleep +0.4h; output unchanged — worth keeping?"
+    Rule-based measurement of a self-chosen change — the co-pilot helping
+    you CHANGE, not just know. Guardrail: results are stated once in the
+    review, never enforced, never re-nagged mid-week.
+
+21. **Meeting fragmentation tax (ANALYSIS).** Meetings cost more than
+    their duration: a 1h meeting at 13:00 splits a 5h afternoon into
+    2h+1.5h shards. `parse_ics_intervals` (v7.9) has the actual ranges;
+    compute per day the DEEP CAPACITY (sum of free blocks ≥90m) with and
+    without each meeting, and report the difference as the real price:
+    "Tuesday's 13:00 status call: 1h long, cost 3.1h of deep capacity."
+    Weekly total = your fragmentation tax; pairs with the existing
+    meeting-load insight (which only counts hours) and gives the user
+    ammunition to move a standing meeting to the edge of the day. Needs
+    `_busy_data`'s parse window to cover the recent past on master
+    (check — the branch widened it once; master's window may differ).
+
+22. **Lag correlations — "what today does to tomorrow" (ANALYSIS).**
+    Every current insight correlates same-day pairs. The new dimension is
+    TIME-LAGGED: workout day → next-day output/energy; short sleep →
+    NEXT-day output (sleep debt lands late); late-evening work (tracked
+    past 21:00) → next-morning first-session start time. Same honesty
+    gates (n≥5 pairs per bucket), same day-record data, one new loop
+    shape: iterate (day, day+1) pairs instead of days. Output like "the
+    morning after a workout day you start 40min earlier and do +0.9h
+    (n=14) — the gym is a productivity tool, not a cost." Probably the
+    highest insight-per-line-of-code item left.
+
+23. **Sensor health meter (TRUST / USABILITY).** Every insight silently
+    degrades when a source rots: the phone sleep-export automation breaks,
+    the .ics goes stale, ENERGY stops being typed. One small view (or a
+    Data-doctor section): per source — last date seen, coverage % over 30
+    days, and a plain alarm line ("sleep import: nothing for 12 days —
+    the phone automation likely broke"). Also shows the personal baselines
+    the anomaly watch compares against (your normal sleep, normal week),
+    making the co-pilot's judgments inspectable instead of oracular. The
+    platform watching its own instruments — cheap, and protects everything
+    else. Could piggyback on `_health_data`'s existing mtime cache + the
+    settings keys for ics/health paths.
+
+## BRANCH REVIEW KIT — claude/finish-date-projection (for the hand-audit)
+
+Nine commits off clean v8.0 master, sequential, each cherry-pickable;
+author `econjp`, no trailers; only `timerv2/*.py` + docs touched. Run
+`python timerv2\selftest.py` FIRST (8 logic suites must print green),
+then the per-commit Windows smoke checks (~20 min total on a COPY of the
+real data folder, per CLAUDE.md caution):
+
+1. `ff64106` v8.1 projection — open Burn-down on a scoped deadline:
+   footer line "at your real pace … you land ~…" (red/green).
+2. `ac38259` v8.2 trajectory — Ctrl+D Insights: "8-week trajectory" line
+   (needs 5+ active days in each 4-week half; silent otherwise is correct).
+3. `3fa78dd` v8.3 outlook — View > Outlook opens; late/on-pace/blind
+   classification reads sensibly against the real deadline set.
+4. `e268956` v8.4 domains — Tools > Life domains: save, reopen (persists);
+   View > Life alignment shows shares + say-do gap.
+5. `236c19d` v8.5 life review — View > Life review; Copy button fills
+   clipboard.
+6. `f1a25cb` v8.6 co-pilot — next NEW day header gets a "co-pilot:" line
+   when something is genuinely off (absence on a good day is correct).
+7. `1cb04db` v8.7 what-now — View > "What should I do now?" writes one
+   sentence to the status bar.
+8. `2f74cad` v8.8 energy placement — morning "suggested schedule" says
+   "steered to your peak hours" once 20h+ of history exists; with less,
+   output must be identical to v8.0's earliest-first.
+9. (this commit) selftest.py + this kit + backlog #20–23 — docs/tooling
+   only, no app-code change.
+
+Merge order is commit order; stopping after any prefix leaves a coherent
+app. If one commit fails audit, skip it and continue — none of the later
+ones import symbols only that commit defines EXCEPT: v8.3 outlook and
+v8.5+ (co-pilot/review) call `_dl_projection` from v8.1, and v8.7's
+`_deep_window` is used by v8.8's wording only via `_hour_quality`
+(independent). So: v8.1 is load-bearing for v8.3/v8.5/v8.6; take it first.
+
 ## How to verify changes without Windows
 
-Extract pure functions via ast and test them (pattern in previous
-sessions): seed a messy csv (v4 rows, case variants, dups, junk,
-overlaps), test `read_rows`/`day_index`/`_doctor_scan`/`_insight_lines`/
-`_sleep_h`/`_energy_from_text` with stubbed `self`. Always
-`python3 -m py_compile` the app file. The tkinter surfaces need a real
-run on the user's Windows machine (Ctrl+D dashboard, Data doctor scan).
+**Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
+harness (v8.x): lifts pure functions out of the app via ast (no tkinter/
+ctypes import, never touches the real data dir) and runs 8 suites
+covering projection, trajectory, outlook, alignment, review synthesis,
+anomaly watch, recommend-now and energy placement. Exit 0 = green. Add a
+suite there in the same commit as any new pure-logic feature.
+
+The older ad-hoc pattern (extract via ast in a scratch file, seed a messy
+csv — v4 rows, case variants, dups, junk, overlaps — and test
+`read_rows`/`day_index`/`_doctor_scan`/`_insight_lines`/`_sleep_h`/
+`_energy_from_text` with stubbed `self`) still applies for anything
+selftest doesn't cover yet. Always `python3 -m py_compile` the app file.
+The tkinter surfaces need a real run on the user's Windows machine
+(Ctrl+D dashboard, Data doctor scan).
 
 ## Git
 
