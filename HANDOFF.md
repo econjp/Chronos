@@ -2137,6 +2137,61 @@ purpose; the *walls* are the major thing, and they're now named.
     entirely). Same shape as the existing function, one more grouping
     key.
 
+73. **Weekday-aware peak-hour profile (PLANNING, extends `_hour_quality`
+    v8.0 + the year rhythm map's grid shape, v8.43).** `_hour_quality`
+    collapses ALL history into one 24-hour profile — but the year
+    rhythm map just proved (week, hour) is a shape worth keeping
+    separate, and break budget v2/energy forecast (v8.39/v8.44) both
+    found real value in bucketing by weekday specifically. Widen
+    `_hour_quality` to a (weekday, hour) grid — Monday mornings and
+    Friday afternoons plausibly have genuinely different real peaks,
+    not one blended curve — feeding `_energy_place`/`_recommend_now`
+    a sharper signal, falling back to the flat 24-hour profile when a
+    specific weekday doesn't have its own n≥20h yet (same degrade-not-
+    silence discipline as every weekday-bucketed check this session).
+
+74. **Deadline crunch cost (ANALYSIS, a lag-style check reusing the
+    running-hot machinery, v8.41, against deadline PROXIMITY instead
+    of weekday timing).** The running-hot index watches sleep/workout/
+    late-nights/break-ratio drift over a rolling window; this asks the
+    same question anchored to a different clock — the 7 days before a
+    scoped deadline's due date, compared against the person's normal
+    baseline. "The week before a deadline, you average 1.1h less sleep
+    and 2x the late nights — crunch has a real cost, not just a
+    feeling." Reuses `_week_metric_totals` (v8.45) directly: baseline
+    = trailing weeks NOT adjacent to any deadline, crunch = the week
+    immediately before `dl["date"]`. n-gated on real deadline history
+    (needs several past deadlines to compare, not just the live one).
+
+75. **Experiment history ledger (MEMORY, the natural follow-up to the
+    weekly experiment engine, v8.45).** Once a few `EXPERIMENT:` lines
+    exist, nothing lists them together. A view scanning every day file
+    for an `EXPERIMENT:` line + the `_experiment_review_line` verdict
+    that ran for it the following Monday (already generated and
+    sitting in that week's file — this is a READ, not a new
+    computation) — "3 experiments this quarter: no work after 21:00
+    (sleep +0.5h, kept); no phone before 09:00 (no measurable
+    change)." Turns a string of one-off self-experiments into a
+    trend the person can actually learn from, same "the day file is
+    the source of truth, this just reads it back" pattern as the
+    on-this-day / themed-writing views.
+
+76. **Experiment suggestion — closing the loop the OTHER direction
+    (FEEDBACK, extends the lag-correlation family, v8.31/v8.38, and
+    the experiment engine, v8.45).** The experiment engine measures a
+    SELF-CHOSEN change; nothing suggests WHICH change might be worth
+    trying. When a lag-correlation insight clears an unusually strong,
+    well-gated effect (e.g. `_lag_evening_start_line`'s swing is large
+    and n is comfortably past the gate), one line — stated ONCE, never
+    repeated, never auto-inserted into the file — proposes the
+    matching `EXPERIMENT:` text the person could paste in themselves:
+    "your data suggests this might be worth testing: EXPERIMENT: no
+    work after 21:00 (copy into Monday's header if you want to try
+    it)." Purely a suggestion the user acts on or ignores — the
+    guardrail this session held everywhere else (stated once, never a
+    gate, never re-nagged) applies here at its sharpest, since this is
+    the one feature that could tempt turning insight into instruction.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
