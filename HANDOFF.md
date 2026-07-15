@@ -882,6 +882,20 @@ purpose; the *walls* are the major thing, and they're now named.
   compose into `_lag_insight`, hooked into Insights. selftest suite 18
   (each sub-check's positive-fire case with hand-traced arithmetic,
   full silence-gate coverage); 18/18 green.
+- **v8.32** (week-ahead risk brief — backlog #42, DONE). Monday's header
+  gains WEEK AHEAD alongside the existing backward-looking WEEK REVIEW:
+  `_week_ahead_lines` composes `_day_capacity` over the next 7 days with
+  every scoped deadline's `_dl_progress`/`_dl_projection` — aggregate
+  free hours vs aggregate need, the single tightest day if it's genuinely
+  tight (not just the least-roomy of an otherwise-even week), and which
+  deadlines are already behind at real pace. Silent unless at least one
+  of overbooked/tight-day/behind actually holds — a normal week produces
+  nothing. Built on simpler primitives than the original design note
+  sketched (`_day_capacity` instead of `_free_slots`+`_outlook_lines`);
+  the note is kept at backlog #42 with what's still open. selftest suite
+  19 (overbooked, genuinely-tight-day, behind-at-pace, and both silence
+  cases — no deadlines at all, and a normal roomy/on-pace week); 19/19
+  green.
 
 ## BACKLOG (priority order — continue here)
 
@@ -1444,7 +1458,17 @@ purpose; the *walls* are the major thing, and they're now named.
     `_recommend_now` (on-demand, not auto-injected — no "once per day"
     tracking needed since the user chooses when to check).
 
-42. **Monday week-ahead risk brief (FORESIGHT).** The Monday review looks
+42. ~~**Monday week-ahead risk brief (FORESIGHT).**~~ — DONE v8.32:
+    `_week_ahead_lines` (via `_day_capacity`/`_dl_progress`/
+    `_dl_projection`, not the originally-sketched `_free_slots`/
+    `_outlook_lines` — simpler primitives that already gave the same
+    answer with less composition risk). Still open (small): fold in
+    sleep-debt carry-in as originally sketched, and map the tight day
+    specifically onto WHICH deadline needs it (currently names the
+    tightest day and the behind deadlines as two separate facts, not
+    yet "Thu is tight AND that's exactly when Thesis needs its hours").
+    Original design note kept below for reference.
+    The Monday review looks
     back; nothing yet looks at the WEEK ahead as a whole. One block:
     calendar density per day (free-slot totals), the outlook's late
     deadlines mapped onto those days, sleep-debt carry-in — "this week's
@@ -1778,12 +1802,13 @@ purpose; the *walls* are the major thing, and they're now named.
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
 harness (v8.x): lifts pure functions out of the app via ast (no tkinter/
-ctypes import, never touches the real data dir) and runs 18 suites
+ctypes import, never touches the real data dir) and runs 19 suites
 covering projection, trajectory, outlook, alignment, review synthesis,
 anomaly watch, recommend-now, energy placement, last-context, break-pull,
 reentry, procrastination, metrics, the widened health parser, daylight,
-word drift, the diary ranker and lag correlations. Exit 0 = green. Add a
-suite there in the same commit as any new pure-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
+word drift, the diary ranker, lag correlations and the week-ahead brief.
+Exit 0 = green. Add a suite there in the same commit as any new pure-
+logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
 first-hour/thrash/shallow-work/graveyard/mood/usage-meter/best-weeks/
 reallocation batch) were verified by hand per their own commit messages
 and never got selftest suites added — a real gap, not a judgment call;

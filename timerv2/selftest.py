@@ -42,7 +42,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_diary_word_counts", "_word_drift_insight",
         "_diary_rank_days", "_matching_days_text",
         "_lag_workout_line", "_lag_sleep_debt_line", "_day_start_late_map",
-        "_lag_evening_start_line", "_lag_insight"}
+        "_lag_evening_start_line", "_lag_insight", "_week_ahead_lines"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "_LINE_TAG_RULES", "_WORD_RE", "_WORD_STOPWORDS"}
@@ -712,6 +712,46 @@ def suite_lag():
     assert D._lag_insight(d2, 90) == []
 
 
+def suite_week_ahead():
+    D, ns = fresh()
+    d = _mk(D, today=dt.date(2026, 7, 13))   # a Monday
+
+    # ---- overbooked: aggregate need exceeds aggregate capacity ----
+    d.deadlines = lambda: [{"name": "Thesis"}, {"name": "TUTA"}]
+    d._day_capacity = lambda dd: 2.0                          # 14h/week total
+    d._dl_progress = lambda dl: {"total_h": 20, "left": 30,
+                                 "remaining_h": 20, "needed_per_day": 4.0}
+    d._dl_projection = lambda dl: None                         # not "behind"
+    out = D._week_ahead_lines(d)
+    assert out and out[0] == "" and "WEEK AHEAD: 14.0h free" in out[1], out
+    assert any("overbooked" in x for x in out), out
+
+    # ---- one genuinely tight day among otherwise-roomy ones ----
+    tight_day = d.today + dt.timedelta(days=3)
+    d._day_capacity = lambda dd: 1.0 if dd == tight_day else 6.0
+    d._dl_progress = lambda dl: {"total_h": 10, "left": 30,
+                                 "remaining_h": 2.0, "needed_per_day": 0.3}
+    out2 = D._week_ahead_lines(d)
+    assert out2 and any("tightest day" in x for x in out2), out2
+    assert not any("overbooked" in x for x in out2), out2   # not ALSO overbooked
+
+    # ---- a deadline behind at real pace gets named ----
+    d._day_capacity = lambda dd: 6.0                           # uniform, roomy
+    d._dl_projection = lambda dl: {"delta": 5}                 # behind
+    out3 = D._week_ahead_lines(d)
+    assert out3 and any("already behind at real pace" in x and "Thesis" in x
+                        for x in out3), out3
+
+    # ---- silence: no deadlines with real remaining scope at all ----
+    d.deadlines = lambda: []
+    assert D._week_ahead_lines(d) == []
+
+    # ---- silence: a normal week — slack, no tight day, ahead of pace ----
+    d.deadlines = lambda: [{"name": "Thesis"}]
+    d._dl_projection = lambda dl: {"delta": -2}                # ahead
+    assert D._week_ahead_lines(d) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -726,7 +766,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("daylight", suite_daylight),
           ("word-drift", suite_word_drift),
           ("ask-diary", suite_ask_diary),
-          ("lag", suite_lag)]
+          ("lag", suite_lag),
+          ("week-ahead", suite_week_ahead)]
 
 
 def main():

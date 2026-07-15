@@ -4,6 +4,24 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Week ahead (v8.32)
+
+Monday's file already reviews last week; it now also previews the next
+one. **WEEK AHEAD** composes your calendar-aware capacity and your
+deadlines' real-pace projections across the coming 7 days into one
+block:
+
+```
+WEEK AHEAD: 14.0h free across the next 7 days · deadlines need ~40.0h
+  ⚠ overbooked by 26.0h before the week even starts
+  tightest day: Thu 16.07 (1.0h free) — front-load elsewhere if something's due
+  already behind at real pace: Thesis
+```
+
+Silent on a normal week — it only speaks when something's genuinely
+worth flagging before the week starts, the same restraint as the daily
+co-pilot line.
+
 ### What today does to tomorrow (v8.31)
 
 Every insight so far compares things on the SAME day. Three new checks

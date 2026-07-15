@@ -60,6 +60,17 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.32 (week-ahead risk brief — backlog #42, the co-pilot's weekly twin):
+  - Monday's file already opens with WEEK REVIEW (looking back); it now
+    also gets WEEK AHEAD, looking forward across the next 7 days as a
+    whole — composes _day_capacity/_dl_progress/_dl_projection (no new
+    data): "14.0h free across the next 7 days · deadlines need ~40.0h ·
+    ⚠ overbooked by 26.0h before the week even starts", plus which day
+    is genuinely tight ("front-load elsewhere if something's due") and
+    which deadlines are already behind at real pace. Silent for a normal
+    week with slack and nothing behind — only speaks when something's
+    actually worth flagging before Monday even starts. selftest suite 19.
+
 New in v8.31 (lag correlations — backlog #22, what today does to tomorrow):
   - every insight so far correlates SAME-DAY pairs. Three new checks use
     the new loop shape instead — (day, day+1) — same honesty gates
@@ -3552,6 +3563,7 @@ class App(tk.Tk):
         parts += self._day_schedule_lines()
         if self.today.weekday() == 0:
             parts += self._week_review_block()
+            parts += self._week_ahead_lines()
             parts += self._graveyard_lines()
         parts.append(f"SIGNAL: {self._carry_signal()}")
         parts.append(f"AVOID: {self._carry_avoid()}")
@@ -3761,6 +3773,53 @@ class App(tk.Tk):
             parts.append(f"  {g['name']}: {m / 60:.1f}h")
         parts.append("  what worked / what stole time? ->")
         return parts
+
+    def _week_ahead_lines(self):
+        """Backlog #42: the weekly twin of the daily co-pilot line — the
+        review above looks BACK at last week; this looks FORWARD across
+        the next 7 days as a whole. Composes primitives that already
+        exist (_day_capacity, _dl_progress, _dl_projection) — no new
+        data. Silent unless something's actually worth flagging: no
+        deadlines with real remaining scope, or a normal week with slack
+        and nothing already behind, produce nothing at all."""
+        week = [self.today + dt.timedelta(days=i) for i in range(7)]
+        caps = [(d, self._day_capacity(d)) for d in week]
+        total_cap = sum(c for _d, c in caps)
+        needs = []
+        for dl in self.deadlines():
+            try:
+                p = self._dl_progress(dl)
+            except (ValueError, KeyError):
+                continue
+            if not p.get("total_h") or p["left"] < 0 or p["remaining_h"] <= 0:
+                continue
+            proj = self._dl_projection(dl)
+            behind = bool(proj and proj["delta"] > 0)
+            need = min(p["needed_per_day"] * 7, p["remaining_h"])
+            needs.append((dl["name"], need, behind))
+        if not needs:
+            return []
+        total_need = sum(n for _n, n, _b in needs)
+        tightest_d, tightest_h = min(caps, key=lambda x: x[1])
+        avg_cap = total_cap / 7
+        overbooked = total_need > total_cap
+        real_tight_day = tightest_h < avg_cap * 0.4 and tightest_h < 3.0
+        behind_names = [n for n, _need, b in needs if b]
+        if not (overbooked or real_tight_day or behind_names):
+            return []                # a normal week — nothing to flag
+        lines = ["", f"WEEK AHEAD: {total_cap:.1f}h free across the next "
+                    f"7 days · deadlines need ~{total_need:.1f}h"]
+        if overbooked:
+            lines.append(f"  ⚠ overbooked by {total_need - total_cap:.1f}h "
+                         "before the week even starts")
+        if real_tight_day:
+            lines.append(f"  tightest day: {tightest_d:%a %d.%m} "
+                         f"({tightest_h:.1f}h free) — front-load elsewhere "
+                         "if something's due")
+        if behind_names:
+            lines.append(f"  already behind at real pace: "
+                         + ", ".join(behind_names))
+        return lines
 
     @staticmethod
     def _verdict(work_min, sig_min, sig_work, declared_cap_h=None):
