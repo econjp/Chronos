@@ -4,6 +4,16 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Ask your diary (v8.30)
+
+**Search all days** now has a second button: **Copy matching days for
+AI**. Type any query — multiple words work as an OR search, ranked by
+how many of them each day actually mentions, not just raw hit count — and
+it copies the top 5 matching days' relevant lines (not whole files) to
+your clipboard with date headers, ready to paste into an AI chat with
+your real question on top. A year of day files becomes queryable, no API
+key, same manual-copy-paste spirit as the existing weekly AI review.
+
 ### What's actually on your mind (v8.29)
 
 A new Insight reads the diary text itself — not your tracked task labels,

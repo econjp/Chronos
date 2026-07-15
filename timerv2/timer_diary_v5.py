@@ -60,6 +60,21 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.30 (ask your diary — backlog #14, ranked multi-term search):
+  - Search all days gains a second button, "Copy matching days for AI",
+    next to the existing literal single-term search (kept as-is,
+    nothing removed). _diary_rank_days splits a query into terms,
+    OR-matches every day file, and ranks by BREADTH (distinct terms hit
+    — a day mentioning all your terms beats one repeating just one of
+    them), then depth, then recency — an honest better keyword search,
+    not fake semantic search (no embeddings, stdlib-only rule holds).
+    _matching_days_text builds the clipboard payload: the top 5 ranked
+    days' matching lines (not whole files) with date headers, same
+    manual-copy-paste pattern as the existing weekly "Copy for AI
+    review" (v5.1) — a year of day files becomes queryable without an
+    API key. selftest suite 17 (breadth-beats-depth ranking, no-match
+    and empty-query cases, the clipboard text shape).
+
 New in v8.29 (word drift — the diary's own free text, unlocked at last):
   - a new insight reads what you actually WROTE, not just your tracked
     task labels: _diary_word_counts tokenizes free-typed diary text
@@ -4578,10 +4593,75 @@ class App(tk.Tk):
         if p:
             os.startfile(p)
 
+    def _diary_rank_days(self, query, max_days=2000):
+        """Backlog #14: an honest BETTER keyword search, not fake semantic
+        search (no embeddings — stdlib-only rule stands). Splits the query
+        into terms, OR-matches across every day file, and ranks by breadth
+        (how many DISTINCT terms hit — a day mentioning 3 of your 3 terms
+        beats one mentioning 1 term ten times), then depth (total matching
+        lines), then recency. Returns [(date, breadth, hit_lines)], best
+        match first; hit_lines is every matching line in that file, for
+        building an excerpt without needing the whole file."""
+        terms = [t for t in re.findall(r"\w+", query.lower()) if len(t) >= 2]
+        if not terms:
+            return []
+        try:
+            names = sorted(os.listdir(self.diary_dir()), reverse=True)
+        except OSError:
+            return []
+        out, seen = [], 0
+        for fn in names:
+            if not fn.endswith(".txt"):
+                continue
+            try:
+                day = dt.date.fromisoformat(fn[:-4])
+            except ValueError:
+                continue
+            if seen >= max_days:
+                break
+            seen += 1
+            try:
+                with open(os.path.join(self.diary_dir(), fn),
+                          encoding="utf-8") as f:
+                    lines = f.read().splitlines()
+            except OSError:
+                continue
+            matched, hits = set(), []
+            for line in lines:
+                low = line.lower()
+                line_terms = {t for t in terms if t in low}
+                if line_terms:
+                    matched |= line_terms
+                    hits.append(line)
+            if matched:
+                out.append((day, len(matched), hits))
+        out.sort(key=lambda x: (-x[1], -len(x[2]), -x[0].toordinal()))
+        return out
+
+    def _matching_days_text(self, query, top_n=5, max_lines_per_day=12):
+        """The clipboard payload for 'Copy matching days for AI': the top
+        N ranked day EXCERPTS (matching lines only, not whole files) with
+        date headers — makes a year of day files queryable via a normal
+        AI chat without an API key, same manual-copy-paste pattern as the
+        weekly 'Copy for AI review' (v5.1)."""
+        ranked = self._diary_rank_days(query)
+        if not ranked:
+            return None
+        parts = [f'Diary search: "{query}" — top {min(top_n, len(ranked))} '
+                f"of {len(ranked)} matching day(s)"]
+        for day, score, hit_lines in ranked[:top_n]:
+            parts.append(f"\n===== {day:%a %Y-%m-%d} (matched {score} "
+                         "term(s)) =====")
+            parts += hit_lines[:max_lines_per_day]
+            if len(hit_lines) > max_lines_per_day:
+                parts.append(f"  … {len(hit_lines) - max_lines_per_day} "
+                             "more matching line(s) in this day, not shown")
+        return "\n".join(parts)
+
     def _search_diary(self):
         win = tk.Toplevel(self)
         win.title("Search all days")
-        win.geometry("620x440")
+        win.geometry("700x440")
         bar = ttk.Frame(win)
         bar.pack(fill="x", padx=8, pady=8)
         q = ttk.Entry(bar)
@@ -4613,7 +4693,25 @@ class App(tk.Tk):
                 txt.insert("1.0", "No matches.")
             txt.config(state="disabled")
 
+        def copy_matching():
+            query = q.get().strip()
+            if not query:
+                return
+            text = self._matching_days_text(query)
+            if not text:
+                self.status.config(text=f"No matches for '{query}'.")
+                return
+            self.clipboard_clear()
+            self.clipboard_append(
+                text + "\n\nAsk: what actually happened with this, and "
+                "what should I do about it now?")
+            self.status.config(
+                text=f"Copied top matching days for '{query}' — paste "
+                     "into Claude/whatever, ask your real question.")
+
         ttk.Button(bar, text="Search", command=go).pack(side="left", padx=(6, 0))
+        ttk.Button(bar, text="Copy matching days for AI",
+                  command=copy_matching).pack(side="left", padx=(6, 0))
         q.bind("<Return>", go)
 
     # ----- summaries + trend -----

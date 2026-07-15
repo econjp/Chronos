@@ -39,7 +39,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_last_context", "_break_insight", "_pull_level", "_reentry_opener",
         "_procrastination_insight", "_metrics_from_text", "_day_metrics",
         "_metrics_insight", "_daylight_h", "_daylight_insight",
-        "_diary_word_counts", "_word_drift_insight"}
+        "_diary_word_counts", "_word_drift_insight",
+        "_diary_rank_days", "_matching_days_text"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "_LINE_TAG_RULES", "_WORD_RE", "_WORD_STOPWORDS"}
@@ -609,6 +610,42 @@ def suite_word_drift():
     assert D._word_drift_insight(d2) == []
 
 
+def suite_ask_diary():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    d = _mk(D, diary_dir=lambda: tmp)
+
+    # day A: 5 hits but only 1 DISTINCT term ("thesis") -> breadth 1
+    with open(os.path.join(tmp, "2026-01-01.txt"), "w", encoding="utf-8") as f:
+        f.write("\n".join(["thesis progress notes"] * 5))
+    # day B: 2 hits, 2 DISTINCT terms ("thesis" + "interview") -> breadth 2
+    with open(os.path.join(tmp, "2026-01-02.txt"), "w", encoding="utf-8") as f:
+        f.write("thesis update\ninterview scheduled next week\n")
+    # a day with no match at all
+    with open(os.path.join(tmp, "2026-01-03.txt"), "w", encoding="utf-8") as f:
+        f.write("unrelated content about groceries\n")
+
+    ranked = D._diary_rank_days(d, "thesis interview")
+    assert len(ranked) == 2, ranked
+    # breadth (distinct terms matched) beats raw hit count
+    assert ranked[0][0] == dt.date(2026, 1, 2), ranked
+    assert ranked[0][1] == 2, ranked
+    assert ranked[1][0] == dt.date(2026, 1, 1), ranked
+    assert ranked[1][1] == 1 and len(ranked[1][2]) == 5, ranked
+
+    assert D._diary_rank_days(d, "groceries") and \
+        D._diary_rank_days(d, "groceries")[0][0] == dt.date(2026, 1, 3)
+    assert D._diary_rank_days(d, "xyznonexistent") == []
+    assert D._diary_rank_days(d, "") == []       # no usable terms
+
+    text = D._matching_days_text(d, "thesis interview")
+    assert 'Diary search: "thesis interview"' in text, text
+    assert "2026-01-02" in text and "2026-01-01" in text, text
+    # day B (higher-ranked) must appear before day A in the excerpt text
+    assert text.index("2026-01-02") < text.index("2026-01-01"), text
+    assert D._matching_days_text(d, "nothingmatchesthis") is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -621,7 +658,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("metrics", suite_metrics),
           ("health-parse", suite_health_parse),
           ("daylight", suite_daylight),
-          ("word-drift", suite_word_drift)]
+          ("word-drift", suite_word_drift),
+          ("ask-diary", suite_ask_diary)]
 
 
 def main():

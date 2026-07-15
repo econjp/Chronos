@@ -859,6 +859,17 @@ purpose; the *walls* are the major thing, and they're now named.
   correctness incl. TODO-bullet-text-counts-but-TODO-header-doesn't,
   stopwords, the drift-detection case with hand-verified arithmetic, the
   volume-gate silence case); 16/16 green.
+- **v8.30** (ask your diary — backlog #14, DONE). `_diary_rank_days`:
+  splits a query into terms, OR-matches across every day file, ranks by
+  breadth (distinct terms hit) then depth (total hits) then recency —
+  the honest "better keyword search" the backlog asked for, not fake
+  semantic search. `_matching_days_text` builds the clipboard payload
+  (top 5 days' matching lines, not whole files, dated headers). A new
+  "Copy matching days for AI" button sits ALONGSIDE the existing
+  literal single-term search in the same Search-all-days window —
+  nothing removed or replaced. selftest suite 17 (breadth beats raw hit
+  count, no-match/empty-query cases, clipboard text ordering); 17/17
+  green.
 
 ## BACKLOG (priority order — continue here)
 
@@ -1140,8 +1151,12 @@ purpose; the *walls* are the major thing, and they're now named.
     new data source; needs n≥5ish real intervals on a task before it
     speaks, same honesty gate as insights v3.
 
-14. **"Ask your diary" — smart multi-day search, still copy-paste not
-    API.** Search-all-days (existing) is a literal substring match.
+14. ~~**"Ask your diary" — smart multi-day search, still copy-paste not
+    API.**~~ — DONE v8.30. `_diary_rank_days`/`_matching_days_text` +
+    a "Copy matching days for AI" button added ALONGSIDE the existing
+    literal single-term search in the same window (nothing replaced).
+    Original design note kept below for reference.
+    Search-all-days (existing) is a literal substring match.
     The gap: with a year+ of day files accumulating, "when did I last
     mention the EU thing" or "what did I decide about X" needs more than
     exact-string recall. Given the no-dependencies rule rules out real
@@ -1747,12 +1762,12 @@ purpose; the *walls* are the major thing, and they're now named.
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
 harness (v8.x): lifts pure functions out of the app via ast (no tkinter/
-ctypes import, never touches the real data dir) and runs 16 suites
+ctypes import, never touches the real data dir) and runs 17 suites
 covering projection, trajectory, outlook, alignment, review synthesis,
 anomaly watch, recommend-now, energy placement, last-context, break-pull,
-reentry, procrastination, metrics, the widened health parser, daylight
-and word drift. Exit 0 = green. Add a suite there in the same commit as
-any new pure-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
+reentry, procrastination, metrics, the widened health parser, daylight,
+word drift and the diary ranker. Exit 0 = green. Add a suite there in the
+same commit as any new pure-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
 first-hour/thrash/shallow-work/graveyard/mood/usage-meter/best-weeks/
 reallocation batch) were verified by hand per their own commit messages
 and never got selftest suites added — a real gap, not a judgment call;
