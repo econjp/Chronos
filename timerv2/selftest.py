@@ -43,7 +43,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_diary_rank_days", "_matching_days_text",
         "_lag_workout_line", "_lag_sleep_debt_line", "_day_start_late_map",
         "_lag_evening_start_line", "_lag_insight", "_week_ahead_lines",
-        "_break_budget_line", "_lens_registry", "_lens_overlap_lines"}
+        "_break_budget_line", "_lens_registry", "_lens_overlap_lines",
+        "_health_extras_lines"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -843,6 +844,31 @@ def suite_lens_overlap():
     assert D._lens_overlap_lines(d, 60) == []
 
 
+def suite_health_extras():
+    D, ns = fresh()
+    d = _mk(D, today=dt.date(2026, 7, 13))
+
+    # ---- nothing configured/captured -> the explanatory footer ----
+    d._health_data = lambda: {}
+    d._daylight_h = lambda day: None
+    out = D._health_extras_lines(d)
+    assert any("Nothing here yet" in x for x in out), out
+
+    # ---- real data on one day -> exact column formatting ----
+    target = d.today.isoformat()
+    d._health_data = lambda: {target: {"mindful_min": 12, "rhr": 58,
+                                       "hrv": 42, "weight_kg": 70.5}}
+    d._daylight_h = lambda day: 8.3 if day == d.today else None
+    out2 = D._health_extras_lines(d)
+    assert not any("Nothing here yet" in x for x in out2), out2
+    row_line = next(x for x in out2 if x.startswith(f" {d.today:%a %d.%m}"))
+    assert "12m" in row_line and "58" in row_line and "42" in row_line, row_line
+    assert "70.5" in row_line and "8.3h" in row_line, row_line
+    # a day with nothing at all still renders as dashes, not a crash
+    other_line = out2[3]     # second data row (index 2 is the first date)
+    assert "-" in other_line
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -860,7 +886,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("lag", suite_lag),
           ("week-ahead", suite_week_ahead),
           ("break-budget", suite_break_budget),
-          ("lens-overlap", suite_lens_overlap)]
+          ("lens-overlap", suite_lens_overlap),
+          ("health-extras", suite_health_extras)]
 
 
 def main():

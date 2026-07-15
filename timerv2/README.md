@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Health-hub view (v8.36)
+
+**View → Health × focus** gains a second table underneath the existing
+one: mindful minutes, resting heart rate, HRV, weight and daylight hours
+— all captured since v8.27/v8.28 but never shown as more than one header
+line before now. Empty until you turn a column on (a health-export field,
+or Tools → Daylight location for the last one) — the footer says exactly
+how.
+
 ### Lens overlap check (v8.35)
 
 Every percentage this app has ever shown you — alignment shares, signal

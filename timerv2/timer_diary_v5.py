@@ -60,6 +60,19 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.36 (health-hub view — backlog #65, captured data finally shown):
+  - View > "Health × focus" gains a second table: mindful minutes, RHR,
+    HRV, weight (v8.27) and daylight hours (v8.28) — all captured onto
+    the day record for a while now, none of them ever shown as more
+    than a single header line. Kept as its OWN table in the SAME window
+    rather than widened into one ~90-char row with the proven sleep/
+    workout/steps/work/signal table above — stays readable, and nothing
+    about that first table had to change. A footer explains exactly how
+    to turn each column on when everything's still empty. New
+    `_health_extras_lines` is pure logic split from the Tk glue (same
+    pattern as the rest of the app), so it's tested without a display.
+    selftest suite 22 — the last of this session's run.
+
 New in v8.35 (lens overlap check — backlog #48, the honesty layer audits itself):
   - View > "Lens overlap check…": every % this app has ever printed
     (alignment shares, signal%, goal minutes) assumes SIGNAL/AVOID/
@@ -4743,7 +4756,7 @@ class App(tk.Tk):
         hd = self._health_data()
         win = tk.Toplevel(self)
         win.title("Health × focus — last 14 days")
-        win.geometry("560x430")
+        win.geometry("620x560")
         txt = tk.Text(win, wrap="none", font=("Consolas", 10))
         txt.pack(fill="both", expand=True, padx=8, pady=8)
 
@@ -4782,8 +4795,46 @@ class App(tk.Tk):
         if not hd:
             lines += ["", " No health data yet — set the folder via",
                       " File > Health import folder…"]
+        lines.append("")
+        lines += self._health_extras_lines()
         txt.insert("1.0", "\n".join(lines))
         txt.config(state="disabled")
+
+    def _health_extras_lines(self):
+        """The health-hub extras (v8.27 mindful/RHR/HRV/weight, v8.28
+        daylight) as their own compact 14-day table — captured onto the
+        day record but never shown as more than one header line before
+        this. Kept SEPARATE from _health_view's main table rather than
+        widened into one ~90-char row (see the concept model's "don't
+        duplicate a view" rule — this is one more block in the SAME
+        window, not a rival view): stays readable at a normal window
+        width, and nothing about the proven first table has to change to
+        make room for it. Pure logic, split from the Tk glue above so it
+        can be tested without a display."""
+        hd = self._health_data()
+        lines = [" day        mindful    rhr    hrv  weight  daylight",
+                " " + "-" * 55]
+        any_extra = False
+        for i in range(13, -1, -1):
+            d = self.today - dt.timedelta(days=i)
+            rec = hd.get(d.isoformat(), {})
+            dl = self._daylight_h(d)
+            if any(rec.get(k) for k in ("mindful_min", "rhr", "hrv",
+                                        "weight_kg")) or dl is not None:
+                any_extra = True
+            lines.append(
+                f" {d:%a %d.%m}  "
+                + (f"{round(rec['mindful_min']):>5}m" if rec.get("mindful_min") else "      -")
+                + (f"  {rec['rhr']:>5.0f}" if rec.get("rhr") else "      -")
+                + (f"  {rec['hrv']:>5.0f}" if rec.get("hrv") else "      -")
+                + (f"  {rec['weight_kg']:>5.1f}" if rec.get("weight_kg") else "      -")
+                + (f"  {dl:>6.1f}h" if dl is not None else "       -"))
+        if not any_extra:
+            lines += ["", " Nothing here yet — mindful/RHR/HRV/weight need",
+                      " those columns in your health export (File > Health",
+                      " import folder…); daylight needs a latitude (Tools",
+                      " > Daylight location…). Both are free once set."]
+        return lines
 
     # ----- open old day / search -----
 

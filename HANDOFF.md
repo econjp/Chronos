@@ -932,6 +932,17 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.36** (health-hub view — backlog #65, DONE — last of this
+  session's run). `_health_view` gains a SECOND compact 14-day table
+  (mindful minutes, RHR, HRV, weight, daylight) rather than widening the
+  proven sleep/workout/steps/work/signal/energy table into one ~90-char
+  row — same window, "don't duplicate a view" respected, nothing about
+  the first table changed. `_health_extras_lines` split out as pure
+  logic (same self/Tk-glue separation pattern as every other feature
+  this session), with an explanatory footer when every column is still
+  empty. selftest suite 22 (empty-state footer, real-data exact column
+  formatting, a data-free day still renders as dashes not a crash);
+  22/22 green.
 
 ## BACKLOG (priority order — continue here)
 
@@ -1793,8 +1804,18 @@ purpose; the *walls* are the major thing, and they're now named.
     theme is honest at this app's current maturity or premature until
     more multi-year data actually exists to make it mean something.
 
-65. **Health-hub view (VISUAL/HEALTH — the home for v8.27's captured
-    data).** RHR/HRV/weight are now captured onto `_life_day` (v8.27)
+65. ~~**Health-hub view (VISUAL/HEALTH — the home for v8.27's captured
+    data).**~~ — DONE v8.36. Landed as a SECOND table in the same
+    `_health_view` window rather than widening the existing table into
+    one ~90-char row — same "extend, don't replace" spirit as originally
+    asked, just a layout call made once the column count (mindful, RHR,
+    HRV, weight, AND daylight — one more than this note anticipated)
+    made one flat row impractical. `_health_extras_lines` split out as
+    pure logic for testability, matching every other feature this
+    session. Still open: n-gated trend arrows once real HRV/RHR history
+    exists, exactly as this note originally asked — not attempted yet,
+    genuinely needs the real data to accumulate first.
+    RHR/HRV/weight are now captured onto `_life_day` (v8.27)
     but only mindful minutes reached a visible surface (the header line)
     — the rest is sitting in the record unseen, which is exactly the
     "capture now, surface later" gap this backlog exists to close.
@@ -1853,13 +1874,14 @@ purpose; the *walls* are the major thing, and they're now named.
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
 harness (v8.x): lifts pure functions out of the app via ast (no tkinter/
-ctypes import, never touches the real data dir) and runs 21 suites
+ctypes import, never touches the real data dir) and runs 22 suites
 covering projection, trajectory, outlook, alignment, review synthesis,
 anomaly watch, recommend-now, energy placement, last-context, break-pull,
 reentry, procrastination, metrics, the widened health parser, daylight,
 word drift, the diary ranker, lag correlations, the week-ahead brief, the
-break budget and lens overlap. Exit 0 = green. Add a suite there in the
-same commit as any new pure-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
+break budget, lens overlap and the health-hub extras table. Exit 0 =
+green. Add a suite there in the same commit as any new pure-logic
+feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
 first-hour/thrash/shallow-work/graveyard/mood/usage-meter/best-weeks/
 reallocation batch) were verified by hand per their own commit messages
 and never got selftest suites added — a real gap, not a judgment call;
