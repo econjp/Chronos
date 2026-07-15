@@ -86,6 +86,15 @@ your clipboard with date headers, ready to paste into an AI chat with
 your real question on top. A year of day files becomes queryable, no API
 key, same manual-copy-paste spirit as the existing weekly AI review.
 
+### What's gone quiet (v8.37)
+
+The mind-share insight (v8.29) only ever noticed words trending UP. Now
+it also notices the opposite — a topic that was frequent and went quiet,
+which often matters more than a new one appearing: *"words appearing
+less lately: 'girlfriend' (20→0 mentions, last 30d vs prior 90d) — gone
+quiet, worth noticing why."* Reported as its own separate line from the
+increase insight.
+
 ### What's actually on your mind (v8.29)
 
 A new Insight reads the diary text itself — not your tracked task labels,

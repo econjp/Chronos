@@ -950,6 +950,16 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.37** (word drift, the fade direction — backlog #69, DONE, start
+  of a new session's batch). `_word_drift_counts` factored out of
+  `_word_drift_insight` so the increase check (v8.29) and the new
+  `_word_fade_insight` share one file scan instead of two identical
+  ones. Fade check is symmetric to the increase check (pn≥3 in the OLD
+  window, vanished or collapsed to ≤1/3 its prior share), reported as
+  its own separate insight line. Same "word-drift" selftest suite
+  extended (a dedicated fade word with zero overlap with the existing
+  increase test's data, silence gate covers both directions); 22/22
+  green (no new suite — an existing one grew).
 - **v8.36** (health-hub view — backlog #65, DONE — last of this
   session's run). `_health_view` gains a SECOND compact 14-day table
   (mindful minutes, RHR, HRV, weight, daylight) rather than widening the
@@ -1888,8 +1898,12 @@ purpose; the *walls* are the major thing, and they're now named.
     line, same restraint as the rest of the co-pilot surfaces, never a
     gate on what the schedule allows.
 
-69. **Word drift v2 — what you've stopped writing about (MEMORY, the
-    other direction of v8.29).** `_word_drift_insight` only ever reports
+69. ~~**Word drift v2 — what you've stopped writing about.**~~ — DONE
+    v8.37. `_word_drift_counts` factored out so both directions share
+    one file scan; `_word_fade_insight` is the decrease side, reported
+    separately as designed. Original design note kept below.
+    (MEMORY, the
+    other direction of v8.29). `_word_drift_insight` only ever reports
     words trending UP. The DECREASE direction is at least as telling —
     a topic that was frequent and went quiet (a person, a worry, a
     plan) often matters more than a new one appearing. Same

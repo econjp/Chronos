@@ -40,7 +40,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_procrastination_insight", "_metrics_from_text", "_day_metrics",
         "_metrics_insight", "_daylight_h", "_daylight_insight",
         "_diary_word_counts", "_word_drift_insight",
-        "_diary_rank_days", "_matching_days_text",
+        "_diary_rank_days", "_matching_days_text", "_word_drift_counts",
+        "_word_fade_insight",
         "_lag_workout_line", "_lag_sleep_debt_line", "_day_start_late_map",
         "_lag_evening_start_line", "_lag_insight", "_week_ahead_lines",
         "_break_budget_line", "_lens_registry", "_lens_overlap_lines",
@@ -607,7 +608,10 @@ def suite_word_drift():
     for pd in prior_days:
         with open(os.path.join(tmp, pd.isoformat() + ".txt"), "w",
                   encoding="utf-8") as f:
-            f.write(filler + "\n")
+            # "girlfriend" only ever appears in the PRIOR window (2x/day,
+            # so it clearly beats other candidates for the fade check) —
+            # never mentioned in the recent files below at all
+            f.write(filler + " girlfriend girlfriend\n")
     for rd in recent_days:
         with open(os.path.join(tmp, rd.isoformat() + ".txt"), "w",
                   encoding="utf-8") as f:
@@ -616,10 +620,17 @@ def suite_word_drift():
     assert out and "'apartment'" in out[0], out
     assert "(0→20 mentions, last 30d vs prior 90d)" in out[0], out
 
+    # ---- fade direction: a word frequent before, silent now ----
+    fade = D._word_fade_insight(d)
+    assert fade and "'girlfriend'" in fade[0], fade
+    assert "(20→0 mentions, last 30d vs prior 90d)" in fade[0], fade
+    assert "gone quiet" in fade[0], fade
+
     # ---- silence gate: too little total volume either side ----
     d2 = _mk(D, today=dt.date(2099, 1, 1),
              diary_path=lambda dd: os.path.join(tmp, dd.isoformat() + ".txt"))
     assert D._word_drift_insight(d2) == []
+    assert D._word_fade_insight(d2) == []
 
 
 def suite_ask_diary():

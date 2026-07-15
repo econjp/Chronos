@@ -60,6 +60,19 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.37 (word drift, the other direction — backlog #69):
+  - _word_drift_insight (v8.29) only ever reported words trending UP.
+    A new _word_fade_insight reports the opposite: a topic that was
+    frequent and went quiet — "words appearing less lately: 'girlfriend'
+    (20→0 mentions, last 30d vs prior 90d) — gone quiet, worth noticing
+    why." Often matters more than a new word appearing. Symmetric gate
+    to the increase check (pn≥3 in the old window, vanished or collapsed
+    to ≤1/3 its prior share); reported as its own separate insight line,
+    not merged with the increase — up and down are different kinds of
+    noticing. _word_drift_counts factored out so both directions share
+    one file scan instead of two identical ones. Same "word-drift"
+    selftest suite extended.
+
 New in v8.36 (health-hub view — backlog #65, captured data finally shown):
   - View > "Health × focus" gains a second table: mindful minutes, RHR,
     HRV, weight (v8.27) and daylight hours (v8.28) — all captured onto
@@ -6144,6 +6157,22 @@ class App(tk.Tk):
             d += dt.timedelta(days=1)
         return counts, total
 
+    def _word_drift_counts(self, recent_days=30, prior_days=90):
+        """Shared word-count computation for both drift directions (the
+        increase check below and the fade check, backlog #69) — one file
+        scan instead of two identical ones. Returns (rec_counts,
+        rec_total, pri_counts, pri_total), or None if either window is
+        too thin (<30 words) to compare honestly."""
+        recent_hi = self.today
+        recent_lo = recent_hi - dt.timedelta(days=recent_days - 1)
+        prior_hi = recent_lo - dt.timedelta(days=1)
+        prior_lo = prior_hi - dt.timedelta(days=prior_days - 1)
+        rec_counts, rec_total = self._diary_word_counts(recent_lo, recent_hi)
+        pri_counts, pri_total = self._diary_word_counts(prior_lo, prior_hi)
+        if rec_total < 30 or pri_total < 30:
+            return None
+        return rec_counts, rec_total, pri_counts, pri_total
+
     def _word_drift_insight(self, recent_days=30, prior_days=90):
         """What's actually occupying your mind lately, separate from your
         tracked task labels — the word with the sharpest real increase in
@@ -6152,14 +6181,10 @@ class App(tk.Tk):
         lengths don't skew it. Needs real volume both sides (>=30 words
         each) and a real jump (>=3 recent mentions, and either new or
         >=3x its prior share) — a single passing mention never qualifies."""
-        recent_hi = self.today
-        recent_lo = recent_hi - dt.timedelta(days=recent_days - 1)
-        prior_hi = recent_lo - dt.timedelta(days=1)
-        prior_lo = prior_hi - dt.timedelta(days=prior_days - 1)
-        rec_counts, rec_total = self._diary_word_counts(recent_lo, recent_hi)
-        pri_counts, pri_total = self._diary_word_counts(prior_lo, prior_hi)
-        if rec_total < 30 or pri_total < 30:
+        counts = self._word_drift_counts(recent_days, prior_days)
+        if not counts:
             return []
+        rec_counts, rec_total, pri_counts, pri_total = counts
         best = None    # (score, word, rec_n, pri_n)
         for w, rn in rec_counts.items():
             if rn < 3:
@@ -6179,6 +6204,37 @@ class App(tk.Tk):
                 f"mentions, last {recent_days}d vs prior {prior_days}d) — "
                 "what's actually on your mind, separate from your tracked "
                 "tasks"]
+
+    def _word_fade_insight(self, recent_days=30, prior_days=90):
+        """Backlog #69 — the other direction. A topic that was frequent
+        and went quiet often matters more than a new one appearing: a
+        person, a worry, a plan that stopped getting mentioned. Symmetric
+        gate to the increase check: pn>=3 in the OLD window, and either
+        vanished entirely now or its share collapsed to <=1/3 of before.
+        Reported separately from the increase line — up and down are
+        different kinds of noticing, not one slot competing for both."""
+        counts = self._word_drift_counts(recent_days, prior_days)
+        if not counts:
+            return []
+        rec_counts, rec_total, pri_counts, pri_total = counts
+        best = None    # (score, word, rec_n, pri_n)
+        for w, pn in pri_counts.items():
+            if pn < 3:
+                continue
+            pri_pct = pn / pri_total
+            rn = rec_counts.get(w, 0)
+            rec_pct = rn / rec_total
+            if not (rn == 0 or pri_pct >= 3 * rec_pct):
+                continue
+            score = pri_pct - rec_pct
+            if best is None or score > best[0]:
+                best = (score, w, rn, pn)
+        if not best:
+            return []
+        _score, word, rn, pn = best
+        return [f"words appearing less lately: '{word}' ({pn}→{rn} "
+                f"mentions, last {recent_days}d vs prior {prior_days}d) — "
+                "gone quiet, worth noticing why"]
 
     # ----- lag correlations: what TODAY does to TOMORROW -----
     #
@@ -7321,6 +7377,7 @@ class App(tk.Tk):
         out += self._metrics_insight()
         out += self._daylight_insight()
         out += self._word_drift_insight()
+        out += self._word_fade_insight()
         out += self._lag_insight()
         out += self._best_weeks_lines()
         out += self._trajectory_lines()
