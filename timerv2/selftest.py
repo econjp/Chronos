@@ -50,7 +50,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_break_budget_line", "_lens_registry", "_lens_overlap_lines",
         "_health_extras_lines", "_running_hot_line",
         "_day_fragmentation_tax", "_meeting_fragmentation_lines",
-        "_year_rhythm_grid"}
+        "_year_rhythm_grid", "_energy_forecast_line"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -1152,6 +1152,67 @@ def suite_year_rhythm():
     assert grid == {(0, 9): 45, (1, 14): 50, (3, 8): 15}, grid
 
 
+def suite_energy_forecast():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 7, 14)      # a Tuesday
+    days = 70
+    cutoff = TODAY - dt.timedelta(days=days)
+
+    tuesdays = []
+    dcur = cutoff
+    while dcur < TODAY:
+        if dcur.weekday() == 1:
+            tuesdays.append(dcur)
+        dcur += dt.timedelta(days=1)
+    assert len(tuesdays) == 10, tuesdays
+    rest_tues, debt_tues = tuesdays[:5], tuesdays[5:]
+
+    sleep = {}
+    dcur = cutoff - dt.timedelta(days=5)
+    while dcur <= TODAY + dt.timedelta(days=1):
+        sleep[dcur.isoformat()] = 7.5          # broad default: the norm
+        dcur += dt.timedelta(days=1)
+    for t in rest_tues:
+        for i in range(3):
+            sleep[(t - dt.timedelta(days=i)).isoformat()] = 8.5   # rested
+    for t in debt_tues:
+        for i in range(3):
+            sleep[(t - dt.timedelta(days=i)).isoformat()] = 5.5   # in debt
+    for i in range(3):
+        sleep[(TODAY - dt.timedelta(days=i)).isoformat()] = 5.5   # today: debt
+
+    rows = []
+    for t in rest_tues:
+        rows.append([t.isoformat(), "work", "09:00", "14:00", "300", "x", ""])
+    for t in debt_tues:
+        rows.append([t.isoformat(), "work", "09:00", "11:00", "120", "x", ""])
+    seed(ns, rows)
+    d = _mk(D, today=TODAY, _sleep_h=lambda iso: sleep.get(iso))
+
+    line = D._energy_forecast_line(d, days)
+    assert line is not None, line
+    # norm (median of 70 days, mostly 7.5h) = 7.5h; today's own 3-night
+    # rolling average is 5.5h (<norm) -> "running on debt"; the 5 debt
+    # Tuesdays all tracked exactly 2.0h -> the matched band collapses
+    # to a single value, hand-verified
+    assert line == ("today smells like a 2.0-2.0h day (Tuesday, running "
+                    "on debt, n=5) — plan the must-do inside that"), line
+
+    # ---- silence: no usable rolling reading for today (all 3 of the
+    # last nights unknown, not just one) ----
+    blank_recent = {TODAY.isoformat(),
+                    (TODAY - dt.timedelta(days=1)).isoformat(),
+                    (TODAY - dt.timedelta(days=2)).isoformat()}
+    d2 = _mk(D, today=TODAY, _sleep_h=lambda iso: None
+             if iso in blank_recent else sleep.get(iso))
+    assert D._energy_forecast_line(d2, days) is None
+
+    # ---- silence: not enough sleep history to trust a personal norm ----
+    d3 = _mk(D, today=TODAY, _sleep_h=lambda iso: 7.5
+             if iso == TODAY.isoformat() else None)
+    assert D._energy_forecast_line(d3, days) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1174,7 +1235,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("backup-integrity", suite_backup_integrity),
           ("running-hot", suite_running_hot),
           ("meeting-fragmentation", suite_meeting_fragmentation),
-          ("year-rhythm", suite_year_rhythm)]
+          ("year-rhythm", suite_year_rhythm),
+          ("energy-forecast", suite_energy_forecast)]
 
 
 def main():

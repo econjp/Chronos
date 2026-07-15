@@ -60,6 +60,28 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.44 (energy forecast for today — backlog #29, what your body's
+data suggests vs what the weekday table plans):
+  - New `_energy_forecast_line(days=90)`, hooked into the morning
+    header right after the co-pilot note: "today smells like a
+    3.5-4.5h day (Tuesday, running on debt, n=6) — plan the must-do
+    inside that." "Last night's sleep" and "trailing sleep debt"
+    combine into ONE honest signal — the 3-night rolling average
+    ending on a given day — compared against your own trailing-90-day
+    median, then bucketed against your own weekday pattern (same
+    weekday as today, same rolling-sleep tier). The matching bucket's
+    actual tracked-work range (25th-75th percentile band, not a single
+    guess) is the forecast. `_capacity` says what you PLAN to have;
+    this says what your recent data suggests you'll ACTUALLY have — no
+    change to `_capacity` itself, a separate signal alongside it.
+    Needs today's own rolling-sleep reading (silent without it) and
+    n≥5 matching historical days; silent otherwise. New
+    "energy-forecast" selftest suite (a hand-verified 10-Tuesday
+    rest/debt split where the matched band collapses to one exact
+    value, silence with no usable rolling reading for today, silence
+    with too little sleep history to trust a personal norm); 27/27
+    green.
+
 New in v8.43 (year rhythm map — backlog #26, the year's shape at a
 glance):
   - View > "Year rhythm map": a new canvas, 52 columns (Monday-start
@@ -3884,6 +3906,9 @@ class App(tk.Tk):
         note = self._copilot_note()      # the co-pilot speaks first
         if note:
             parts.append(note)
+        forecast = self._energy_forecast_line()
+        if forecast:
+            parts.append(forecast)
         plan = self._plan_line()
         if plan:
             parts.append(plan)
@@ -5254,6 +5279,69 @@ class App(tk.Tk):
     def _capacity(self):
         cap = self.settings.get("capacity", self.DEFAULT_CAP)
         return [float(x) for x in cap] if len(cap) == 7 else self.DEFAULT_CAP
+
+    def _energy_forecast_line(self, days=90):
+        """Backlog #29: what today's capacity is LIKELY to be — not
+        _capacity's PLANNED weekday hours, what your body's own recent
+        data suggests you'll ACTUALLY have. "Last night's sleep" and
+        "trailing sleep debt" combine into one honest signal: the
+        3-night rolling average ending on a given day (that day's own
+        last night plus the two before it) against your personal
+        trailing-`days`-day median. Bucketed against your own WEEKDAY
+        pattern (same weekday as today, same rolling-sleep tier — at/
+        above your norm, or below it): the matching bucket's actual
+        tracked-work range (25th-75th percentile band, not a single
+        number) is the forecast: "today smells like a 3.5-4.5h day
+        (Tuesday, running on debt, n=6) — plan the must-do inside
+        that." Needs today's own rolling-sleep reading to speak at all
+        (grounded in this morning's real data, not the calendar alone)
+        and n≥5 matching historical days; silent otherwise — no
+        forecast beats an unfounded one."""
+        idx = day_index()
+        cutoff = self.today - dt.timedelta(days=days)
+        hist_sleep = []
+        d = cutoff
+        while d < self.today:
+            s = self._sleep_h(d.isoformat())
+            if s:
+                hist_sleep.append(s)
+            d += dt.timedelta(days=1)
+        if len(hist_sleep) < 10:
+            return None
+        norm = sorted(hist_sleep)[len(hist_sleep) // 2]
+
+        def rolling(iso):
+            d0 = dt.date.fromisoformat(iso)
+            vals = [self._sleep_h((d0 - dt.timedelta(days=i)).isoformat())
+                   for i in range(3)]
+            vals = [v for v in vals if v]
+            return sum(vals) / len(vals) if len(vals) >= 2 else None
+
+        today_roll = rolling(self.today.isoformat())
+        if today_roll is None:
+            return None
+        rested = today_roll >= norm
+
+        matched = []
+        d = cutoff
+        while d < self.today:
+            iso = d.isoformat()
+            if d.weekday() == self.today.weekday():
+                rec = idx.get(iso)
+                r = rolling(iso)
+                if (rec and rec["work"] > 0 and r is not None
+                        and (r >= norm) == rested):
+                    matched.append(rec["work"] / 60)
+            d += dt.timedelta(days=1)
+        if len(matched) < 5:
+            return None
+        matched.sort()
+        lo = matched[int(0.25 * (len(matched) - 1))]
+        hi = matched[int(0.75 * (len(matched) - 1))]
+        tag = "well-rested" if rested else "running on debt"
+        return (f"today smells like a {lo:.1f}-{hi:.1f}h day "
+               f"({self.today:%A}, {tag}, n={len(matched)}) — plan the "
+               "must-do inside that")
 
     def _busy_data(self):
         """Calendar busy hours per date, cached on the ics file's mtime."""

@@ -950,6 +950,22 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.44** (energy forecast for today — backlog #29, DONE, what your
+  data suggests vs what the weekday table plans). New
+  `_energy_forecast_line(days=90)`, hooked into the morning header
+  right after the co-pilot note. "Last night's sleep" + "trailing
+  sleep debt" combine into ONE signal (the 3-night rolling average
+  ending on a given day) vs your own trailing-90-day median; bucketed
+  by weekday + rolling-sleep tier (rested/debt); the matching
+  bucket's 25th-75th percentile tracked-work range is the forecast —
+  "today smells like a 3.5-4.5h day (Tuesday, running on debt, n=6)."
+  `_capacity` unchanged (still the PLANNED weekday table); this is a
+  separate ACTUAL-data signal alongside it. Needs today's own
+  rolling-sleep reading and n>=5 matching historical days; silent
+  otherwise. New "energy-forecast" selftest suite (hand-verified
+  10-Tuesday rest/debt split collapsing to one exact value, silence
+  with no usable rolling reading, silence with too little sleep
+  history); 27/27 green (new suite, was 26).
 - **v8.43** (year rhythm map — backlog #26, DONE, the year's shape at
   a glance). View > "Year rhythm map": a 52-week × 24-hour canvas,
   each cell shaded by tracked minutes in that hour that week — where
@@ -1536,7 +1552,14 @@ purpose; the *walls* are the major thing, and they're now named.
     can later quote its own track record ("my forecasts have run ±3d on
     your last 4 deadlines"), which is the honest version of trust.
 
-29. **Energy forecast for today (ANALYSIS/PLANNING).** Morning header
+29. ~~**Energy forecast for today.**~~ — DONE v8.44. New
+    `_energy_forecast_line`: last night's sleep + trailing debt
+    combined into one signal (3-night rolling average vs personal
+    90-day median), bucketed by weekday + rolling-sleep tier;
+    matching bucket's 25th-75th percentile tracked-work range is the
+    forecast. Hooked into the morning header after the co-pilot note.
+    Original design note kept below for reference.
+    (ANALYSIS/PLANNING).** Morning header
     line predicting today's likely capacity band from last night's
     imported sleep + trailing sleep debt + your weekday pattern: "today
     smells like a 3.5–4.5h day — put the must-do inside that." The

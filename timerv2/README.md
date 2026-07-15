@@ -4,6 +4,18 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Energy forecast for today (v8.44)
+
+A new line in the morning header, right after the co-pilot note: `today
+smells like a 3.5-4.5h day (Tuesday, running on debt, n=6) — plan the
+must-do inside that.` "Last night's sleep" and "trailing sleep debt"
+combine into one signal — your 3-night rolling average — compared
+against your own trailing 90-day median, then matched against your own
+weekday pattern. The weekday capacity table (Tools → Weekly capacity)
+says what you PLANNED to have; this says what your recent data suggests
+you'll ACTUALLY have. Needs today's own sleep reading and enough matching
+history; silent otherwise.
+
 ### Year rhythm map (v8.43)
 
 **View → Year rhythm map**: 52 columns (weeks) × 24 rows (hour of day),
