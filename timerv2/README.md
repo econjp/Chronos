@@ -4,6 +4,18 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Focus signature (v8.63)
+
+Neither the weekday-pattern insight (total hours per weekday) nor
+`_hour_quality` (total hours per hour-of-day, collapsed across every
+weekday) shows the actual two-dimensional shape: WHEN, within which
+days, signal work reliably happens. A new line in the Monday review —
+read once in a while, not a daily view — names the standout cell of a
+(weekday × 4-hour-bucket) consistency grid: `focus signature: Tue
+08-12 lights up 100% of the time (n=4); Mon 00-04 never does (n=4)`.
+Needs real volume (several weeks per weekday, a real consistency
+majority) before it speaks at all.
+
 ### Conversation-ready status export (v8.62)
 
 The Life dashboard gains a **Copy status update** button — a different

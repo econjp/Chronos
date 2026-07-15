@@ -62,7 +62,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_commitment_reliability", "_commitment_reliability_line",
         "_protected_intervals", "_milestone_progress_line",
         "_waiting_on_lines", "_cost_of_yes_line", "_status_update_text",
-        "_status_update_all",
+        "_status_update_all", "_focus_signature_grid", "_focus_signature_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -71,7 +71,7 @@ STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
                "_WORD_STOPWORDS", "_DECAY_BUCKETS", "_CAPSULE_RE",
-               "_COMMIT_RE"}
+               "_COMMIT_RE", "_FOCUS_SIG_WD"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -2072,6 +2072,50 @@ def suite_status_update():
     assert combined.count("Progress update") == 1, combined
 
 
+def suite_focus_signature():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 16)      # Sunday
+    days = 28                          # exactly 4 weeks -> n=4 per weekday
+
+    cutoff = TODAY - dt.timedelta(days=days - 1)
+    tuesdays = []
+    d0 = cutoff
+    while d0 <= TODAY:
+        if d0.weekday() == 1:
+            tuesdays.append(d0)
+        d0 += dt.timedelta(days=1)
+    assert len(tuesdays) == 4, tuesdays
+
+    # signal-matched work on ALL 4 Tuesdays, hour 9 (bucket 08-12) -> 100%
+    rows = [[t.isoformat(), "work", "09:00", "10:00", "60",
+            "thesis: writing", ""] for t in tuesdays]
+    seed(ns, rows)
+    d = _mk(D, today=TODAY, _signal_kws=lambda: ["thesis"])
+
+    grid = D._focus_signature_grid(d, days)
+    assert grid[(1, 2)] == (4, 4), grid       # Tuesday, 08-12: 4/4
+    assert grid[(0, 0)] == (0, 4), grid       # Monday, 00-04: 0/4
+
+    line = D._focus_signature_line(d, days)
+    assert line == ("focus signature: Tue 08-12 lights up 100% of the "
+                    "time (n=4); Mon 00-04 never does (n=4)"), line
+
+    # ---- silence: no SIGNAL declared ----
+    d2 = _mk(D, today=TODAY, _signal_kws=lambda: [])
+    assert D._focus_signature_grid(d2, days) is None
+    assert D._focus_signature_line(d2, days) is None
+
+    # ---- silence: best cell doesn't clear the 50% consistency bar ----
+    # only 1 of the 4 Tuesdays has signal work this time -> 25%
+    seed(ns, rows[:1])
+    d3 = _mk(D, today=TODAY, _signal_kws=lambda: ["thesis"])
+    assert D._focus_signature_line(d3, days) is None
+
+    # ---- silence: window too short for the n>=4 occurrence gate ----
+    d4 = _mk(D, today=TODAY, _signal_kws=lambda: ["thesis"])
+    assert D._focus_signature_grid(d4, 3) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2112,7 +2156,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("milestones", suite_milestones),
           ("waiting-on", suite_waiting_on),
           ("cost-of-yes", suite_cost_of_yes),
-          ("status-update", suite_status_update)]
+          ("status-update", suite_status_update),
+          ("focus-signature", suite_focus_signature)]
 
 
 def main():

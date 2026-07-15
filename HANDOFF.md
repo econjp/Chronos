@@ -950,6 +950,18 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.63** (focus signature — backlog #53, DONE, the shape of a real
+  week). New `_focus_signature_grid`: for each (weekday, 4-hour
+  bucket) cell, the fraction of that weekday's occurrences (trailing
+  180 days) with any SIGNAL-matched work in that bucket — a
+  consistency score, not a raw total. n>=4 occurrences per weekday
+  gate. New `_focus_signature_line`, in the Monday review: "focus
+  signature: Tue 08-12 lights up 100% of the time (n=4); Mon 00-04
+  never does (n=4)." Silent unless the best cell clears a real 50%
+  consistency bar. New "focus-signature" selftest suite (a hand-
+  verified 4-week scenario landing on exact grid values, silence with
+  no SIGNAL, silence below the consistency bar, silence below the
+  occurrence gate); 45/45 green (new suite, was 44).
 - **v8.62** (conversation-ready status export — backlog #57, DONE, a
   deliberately different register). New `_status_update_text`/
   `_status_update_all` + Life dashboard "Copy status update" button:
@@ -2133,7 +2145,12 @@ purpose; the *walls* are the major thing, and they're now named.
     later) into a visible choice at the only point it's still cheap to
     say no.
 
-53. **Focus signature — hour-of-day × day-of-week, not either alone
+53. ~~**Focus signature — hour-of-day × day-of-week, not either
+    alone.**~~ — DONE v8.63. New `_focus_signature_grid` (consistency
+    %, not raw totals, per (weekday, 4h-bucket) cell) +
+    `_focus_signature_line`, in the Monday review. n≥4 occurrence gate
+    per weekday, ≥50% consistency bar to speak at all. Original design
+    note kept below for reference.
     (SELF-KNOWLEDGE — the shape of a real week).** The weekday-pattern
     insight (v7.4) compares total HOURS per weekday; `_hour_quality`
     (v8.8) compares total hours per hour-of-day, collapsed across every

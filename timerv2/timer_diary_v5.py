@@ -60,6 +60,26 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.63 (focus signature — backlog #53, the shape of a real
+week):
+  - The weekday-pattern insight (v7.4) compares total hours per
+    weekday; `_hour_quality` (v8.8) compares total hours per hour-of-
+    day, collapsed across every weekday. Neither shows the actual 2D
+    shape: WHEN, within which days, signal work reliably happens. New
+    `_focus_signature_grid`: for each (weekday, 4-hour bucket) cell,
+    the fraction of that weekday's occurrences (trailing 180 days)
+    with any SIGNAL-matched work in that bucket — a CONSISTENCY score,
+    not a raw total, so one unusually long day doesn't drown out the
+    pattern. A weekday needs 4+ occurrences in the window before its
+    cells count at all. New `_focus_signature_line`, in the Monday
+    review (read once in a while, not a daily view): "focus signature:
+    Tue 08-12 lights up 100% of the time (n=4); Mon 00-04 never does
+    (n=4)." Silent unless the best cell clears a real 50% consistency
+    bar. New "focus-signature" selftest suite (a hand-verified 4-week
+    scenario landing on the exact grid values, silence with no SIGNAL
+    declared, silence below the 50% consistency bar, silence below the
+    n≥4 occurrence gate); 45/45 green.
+
 New in v8.62 (conversation-ready status export — backlog #57, a
 deliberately different register):
   - Copy-for-AI-review is written for feeding an LLM; nothing was
@@ -5150,6 +5170,9 @@ class App(tk.Tk):
         commit_rel = self._commitment_reliability_line()
         if commit_rel:
             parts.append(commit_rel)
+        focus_sig = self._focus_signature_line()
+        if focus_sig:
+            parts.append(f"  {focus_sig}")
         return parts
 
     def _week_ahead_lines(self):
@@ -6790,6 +6813,81 @@ class App(tk.Tk):
             return None
         mx = max(by_hour) or 1
         return [x / mx for x in by_hour]
+
+    _FOCUS_SIG_WD = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+    def _focus_signature_grid(self, days=180):
+        """Backlog #53: hour-of-day × day-of-week, not either alone —
+        the weekday-pattern insight (v7.4) collapses hours,
+        `_hour_quality` (v8.8) collapses weekdays. Neither shows the
+        actual 2D shape: WHEN, within which days, signal work reliably
+        happens. For each (weekday, 4-hour bucket) cell: the fraction
+        of that weekday's occurrences (over the trailing `days`) with
+        ANY signal-matched work in that bucket — a CONSISTENCY score,
+        not a raw total, so one unusually long day doesn't drown out
+        the pattern. Needs real volume: a weekday needs 4+ occurrences
+        in the window before its cells are included at all — the
+        honesty gate a 2D grid needs before a cell means anything.
+        Returns {(weekday, bucket): (hit_count, occurrence_count)} or
+        None with no SIGNAL declared or nothing clears the gate."""
+        kws = self._signal_kws()
+        if not kws:
+            return None
+        cutoff = self.today - dt.timedelta(days=days - 1)
+        occurrences = {}
+        d = cutoff
+        while d <= self.today:
+            occurrences.setdefault(d.weekday(), set()).add(d)
+            d += dt.timedelta(days=1)
+        cutoff_iso, today_iso = cutoff.isoformat(), self.today.isoformat()
+        hits = {}
+        for r in read_rows():
+            if r[1] == "break" or not (cutoff_iso <= r[0] <= today_iso):
+                continue
+            if not task_matches(r[5], kws):
+                continue
+            try:
+                date = dt.date.fromisoformat(r[0])
+                h = int(r[2].split(":")[0]) % 24
+            except (ValueError, IndexError):
+                continue
+            hits.setdefault((date.weekday(), h // 4), set()).add(date)
+        grid = {}
+        for wd, dates in occurrences.items():
+            n = len(dates)
+            if n < 4:
+                continue
+            for bucket in range(6):
+                grid[(wd, bucket)] = (len(hits.get((wd, bucket), set())), n)
+        return grid or None
+
+    def _focus_signature_line(self, days=180):
+        """One line naming the standout cell(s) of the focus-signature
+        grid — read once in a while, not a daily view. Silent unless
+        the best cell clears a real consistency bar (≥50% of that
+        weekday's occurrences)."""
+        grid = self._focus_signature_grid(days)
+        if not grid:
+            return None
+
+        def label(bucket):
+            return f"{bucket * 4:02d}-{bucket * 4 + 4:02d}"
+
+        best_key, (best_hits, best_n) = max(
+            grid.items(), key=lambda kv: kv[1][0] / kv[1][1])
+        best_pct = round(100 * best_hits / best_n)
+        if best_pct < 50:
+            return None
+        wd, bucket = best_key
+        line = (f"focus signature: {self._FOCUS_SIG_WD[wd]} {label(bucket)} "
+               f"lights up {best_pct}% of the time (n={best_n})")
+        worst_key, (worst_hits, worst_n) = min(
+            grid.items(), key=lambda kv: kv[1][0] / kv[1][1])
+        if worst_hits == 0 and worst_key != best_key:
+            wwd, wbucket = worst_key
+            line += (f"; {self._FOCUS_SIG_WD[wwd]} {label(wbucket)} never "
+                    f"does (n={worst_n})")
+        return line
 
     def _energy_place(self, items, slots, quality):
         """Assign free `slots` (time,time pairs) to `items` (most-urgent
