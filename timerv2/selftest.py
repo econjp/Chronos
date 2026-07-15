@@ -47,7 +47,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_day_switches", "_shallow_threshold", "_day_shallow_frac",
         "_decay_cycle", "_lag_fragmentation_line",
         "_break_budget_line", "_lens_registry", "_lens_overlap_lines",
-        "_health_extras_lines"}
+        "_health_extras_lines", "_running_hot_line"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -262,7 +262,12 @@ def suite_anomaly():
             domains=lambda: [{"name": "Finnish", "match": "finnish"},
                              {"name": "Work", "match": "thesis"}],
             _sleep_h=lambda iso: 5.5 if iso >= "2026-07-13" else 7.5,
-            _day_signal=lambda day, *a, **k: (5, 60))
+            _day_signal=lambda day, *a, **k: (5, 60),
+            _health_data=lambda: {})   # _copilot_note now also checks
+                                       # _running_hot_line; keep it silent
+                                       # here so this suite's assertions
+                                       # about the OTHER co-pilot sources
+                                       # stay unaffected
     an = D._anomaly_lines(d)
     assert "worst sleep week" in an[0], an          # severity ranks first
     assert any("20 days since any Finnish" in x for x in an), an
@@ -997,6 +1002,74 @@ def suite_backup_integrity():
                                   # 15d-old file also sits in backups/
 
 
+def suite_running_hot():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 7, 13)
+    recent_lo = TODAY - dt.timedelta(days=13)                 # 2026-06-30
+    prior_hi = recent_lo - dt.timedelta(days=1)                # 2026-06-29
+    prior_lo = prior_hi - dt.timedelta(days=59)                # 2026-05-01
+    recent_isos = {(recent_lo + dt.timedelta(days=i)).isoformat()
+                   for i in range(14)}
+    prior_isos = {(prior_lo + dt.timedelta(days=i)).isoformat()
+                  for i in range(60)}
+
+    def wb(iso, work_min, brk_min, start="09:00"):
+        end = f"{int(start[:2]) + 1:02d}:{start[3:]}"
+        return [[iso, "work", start, end, str(work_min), "x", ""],
+                [iso, "break", "12:00", "12:30", str(brk_min), "", ""]]
+
+    # ---- speaks: sleep debt + late nights (2 signals) ----
+    rows = []
+    for iso in prior_isos:
+        rows += wb(iso, 100, 20)
+    for iso in recent_isos:
+        rows += wb(iso, 100, 20)          # same ratio both sides: no break flag
+    late_isos = ["2026-07-01", "2026-07-03", "2026-07-05"]
+    for iso in late_isos:
+        rows += [[iso, "work", "21:30", "22:00", "30", "y", ""]]
+    seed(ns, rows)
+    d = _mk(D, today=TODAY, _health_data=lambda: {},
+            _sleep_h=lambda iso: 6.5 if iso in recent_isos else
+                                 (7.5 if iso in prior_isos else None))
+    line = D._running_hot_line(d, 14, 60)
+    assert line is not None, line
+    assert line.startswith("14 days running hot ("), line
+    assert "sleep -1.0h/night vs norm" in line, line
+    assert "3 late nights" in line, line
+    assert "breaks compressed" not in line, line
+    assert "schedule one flat day before your body schedules it" in line, line
+
+    # ---- silence: only ONE signal (sleep alone) never speaks ----
+    d2 = _mk(D, today=TODAY, _health_data=lambda: {},
+             _sleep_h=lambda iso: 6.5 if iso in recent_isos else
+                                  (7.5 if iso in prior_isos else None))
+    rows_silent = []
+    for iso in prior_isos | recent_isos:
+        rows_silent += wb(iso, 100, 20)   # same ratio both sides, no late rows
+    seed(ns, rows_silent)
+    assert D._running_hot_line(d2, 14, 60) is None
+
+    # ---- silence: sparse sleep data can't clear the n>=5/n>=10 gate ----
+    d3 = _mk(D, today=TODAY, _health_data=lambda: {},
+             _sleep_h=lambda iso: 5.0 if iso == max(recent_isos) else None)
+    assert D._running_hot_line(d3, 14, 60) is None
+
+    # ---- speaks: workouts stopped + break-ratio compression (2 signals) ----
+    rows2 = []
+    for iso in prior_isos:
+        rows2 += wb(iso, 100, 20)          # prior ratio 20/100 = 0.20
+    for iso in recent_isos:
+        rows2 += wb(iso, 100, 5)           # recent ratio 5/100 = 0.05 <= 0.6*0.20
+    seed(ns, rows2)
+    d4 = _mk(D, today=TODAY, _sleep_h=lambda iso: 7.0,
+             _health_data=lambda: {iso: {"workout_min": 30} for iso in prior_isos})
+    line2 = D._running_hot_line(d4, 14, 60)
+    assert line2 is not None, line2
+    assert "workouts stopped" in line2, line2
+    assert "breaks compressed" in line2, line2
+    assert "sleep" not in line2.split("(")[1].split(")")[0], line2
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1016,7 +1089,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("break-budget", suite_break_budget),
           ("lens-overlap", suite_lens_overlap),
           ("health-extras", suite_health_extras),
-          ("backup-integrity", suite_backup_integrity)]
+          ("backup-integrity", suite_backup_integrity),
+          ("running-hot", suite_running_hot)]
 
 
 def main():

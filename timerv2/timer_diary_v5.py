@@ -60,6 +60,27 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.41 (running-hot index — backlog #24, the early-warning
+version of the sleep-for-work trade):
+  - New `_running_hot_line(recent_days=14, prior_days=60)`: same
+    recent-vs-prior window shape as word drift (v8.29/v8.37). Four
+    independent signals, each with its own honest sample-size gate —
+    sleep below your own recent norm, workout frequency drop,
+    late-night count (reuses `_day_start_late_map`, v8.38), break-ratio
+    compression — speaks only when at least TWO move together: "14
+    days running hot (sleep -1.0h/night vs norm, 3 late nights) —
+    schedule one flat day before your body schedules it." One signal
+    alone has too many honest explanations to be worth a line; two
+    moving together is the actual early warning the trajectory line
+    (which only catches this after ~4 weeks) misses. Hooked into
+    `_copilot_note` between the bottom-line risk and the sharpest
+    anomaly — a body-schedule risk outranks a task-schedule risk.
+    Silent again the moment the signals ease, no memory of having
+    spoken before. New "running-hot" selftest suite (two-signal speak
+    case, one-signal-alone silence, sparse-data gate silence, a second
+    two-signal case exercising the workout/break-ratio pair); 24/24
+    green.
+
 New in v8.40 (backup integrity check — backlog #63, the safety net
 auditing itself):
   - #23's sensor health meter covers external INPUT sources going
@@ -4714,12 +4735,17 @@ class App(tk.Tk):
         """The single most important proactive line for the morning header
         — the co-pilot greeting you rather than waiting to be opened.
         Prefer an actionable risk (the bottom line) when there is one;
-        otherwise the sharpest anomaly. None when there's nothing real to
-        say (no filler 'good state' in the day file)."""
+        then the running-hot index (backlog #24, a body-schedule risk
+        outranks a schedule risk); otherwise the sharpest anomaly. None
+        when there's nothing real to say (no filler 'good state' in the
+        day file)."""
         bl = self._review_bottom_line()
         if bl and any(k in bl[0] for k in
                       ("behind on", "Main risk", "below where you said")):
             return "co-pilot: " + bl[0]
+        hot = self._running_hot_line()
+        if hot:
+            return "co-pilot: " + hot
         an = self._anomaly_lines()
         if an:
             return "co-pilot: " + an[0]
@@ -6463,6 +6489,70 @@ class App(tk.Tk):
                               self._lag_sleep_debt_line(days),
                               self._lag_evening_start_line(days),
                               self._lag_fragmentation_line(days)) if ln]
+
+    def _running_hot_line(self, recent_days=14, prior_days=60):
+        """Backlog #24: the early-warning version of the sleep-for-work
+        trade the trajectory line only spots after ~4 weeks of drift.
+        Same recent-vs-prior window shape as word drift (v8.29/v8.37):
+        the last `recent_days` vs the `prior_days` immediately before
+        that. Four independent signals — sleep below your own recent
+        norm, workout frequency drop, late-night count, break-ratio
+        compression — each gated on its own real sample size and a
+        real swing. Speaks only when at least TWO move together (never
+        off one signal alone — any single one has too many honest
+        explanations); silent again the moment the signals ease, no
+        memory of having spoken before."""
+        recent_hi = self.today
+        recent_lo = recent_hi - dt.timedelta(days=recent_days - 1)
+        prior_hi = recent_lo - dt.timedelta(days=1)
+        prior_lo = prior_hi - dt.timedelta(days=prior_days - 1)
+        recent_isos = [(recent_lo + dt.timedelta(days=i)).isoformat()
+                       for i in range(recent_days)]
+        prior_isos = [(prior_lo + dt.timedelta(days=i)).isoformat()
+                      for i in range(prior_days)]
+        idx = day_index()
+        hd = self._health_data()
+        late_map = self._day_start_late_map(prior_lo.isoformat())
+
+        flags, parts = [], []
+
+        r_sleep = [self._sleep_h(iso) for iso in recent_isos if self._sleep_h(iso)]
+        p_sleep = [self._sleep_h(iso) for iso in prior_isos if self._sleep_h(iso)]
+        if len(r_sleep) >= 5 and len(p_sleep) >= 10:
+            r_avg, p_avg = sum(r_sleep) / len(r_sleep), sum(p_sleep) / len(p_sleep)
+            if p_avg - r_avg >= 0.4:
+                flags.append("sleep")
+                parts.append(f"sleep -{p_avg - r_avg:.1f}h/night vs norm")
+
+        r_wo = sum(1 for iso in recent_isos if (hd.get(iso) or {}).get("workout_min"))
+        p_wo = sum(1 for iso in prior_isos if (hd.get(iso) or {}).get("workout_min"))
+        if p_wo >= 3:
+            p_rate = p_wo / len(prior_isos)
+            r_rate = r_wo / len(recent_isos)
+            if r_rate <= p_rate * 0.6:
+                flags.append("workouts")
+                parts.append("workouts stopped" if r_wo == 0 else
+                             f"workouts down to {round(100 * r_rate / p_rate)}%")
+
+        n_late = sum(1 for iso in recent_isos if late_map.get(iso, {}).get("late"))
+        if n_late >= 3:
+            flags.append("late")
+            parts.append(f"{n_late} late nights")
+
+        r_work = sum(idx.get(iso, {"work": 0})["work"] for iso in recent_isos)
+        r_brk = sum(idx.get(iso, {"brk": 0})["brk"] for iso in recent_isos)
+        p_work = sum(idx.get(iso, {"work": 0})["work"] for iso in prior_isos)
+        p_brk = sum(idx.get(iso, {"brk": 0})["brk"] for iso in prior_isos)
+        if r_work >= 300 and p_work >= 1000 and p_brk > 0:
+            r_ratio, p_ratio = r_brk / r_work, p_brk / p_work
+            if r_ratio <= p_ratio * 0.6:
+                flags.append("breaks")
+                parts.append("breaks compressed")
+
+        if len(flags) < 2:
+            return None
+        return (f"{recent_days} days running hot ({', '.join(parts)}) — "
+               "schedule one flat day before your body schedules it")
 
     def _life_day(self, d, signal=True):
         """Everything the app knows about one date, merged into ONE dict —

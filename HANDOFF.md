@@ -950,6 +950,21 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.41** (running-hot index — backlog #24, DONE, the early-warning
+  version of the sleep-for-work trade). New `_running_hot_line`,
+  recent-vs-prior window shape (last 14 days vs the 60 before that,
+  same shape as word drift v8.29/v8.37). Four independently n-gated
+  signals — sleep below your own recent norm (>=0.4h real swing),
+  workout frequency drop (recent rate <=60% of prior rate, n>=3
+  prior workouts), late-night count (reuses `_day_start_late_map`
+  from v8.38, >=3 in the window), break-ratio compression (recent
+  ratio <=60% of prior ratio, real minute floors both sides) — speaks
+  only when >=2 move together, never off one alone. Hooked into
+  `_copilot_note` between the bottom-line risk and the sharpest
+  anomaly. New "running-hot" selftest suite (sleep+late two-signal
+  speak case, sleep-alone silence, sparse-sleep-data gate silence,
+  workouts+breaks two-signal speak case); 24/24 green (new suite, was
+  23).
 - **v8.40** (backup integrity check — backlog #63, DONE — the safety
   net auditing itself). New module-level `backup_integrity_line()`:
   scans `backups/` for the newest `sessions_YYYY-MM-DD.csv`, silent
@@ -1423,7 +1438,14 @@ purpose; the *walls* are the major thing, and they're now named.
     else. Could piggyback on `_health_data`'s existing mtime cache + the
     settings keys for ics/health paths.
 
-24. **Running-hot index / recovery-debt early warning (FEEDBACK).** The
+24. ~~**Running-hot index / recovery-debt early warning.**~~ — DONE
+    v8.41. New `_running_hot_line(recent_days=14, prior_days=60)`:
+    same recent-vs-prior window shape as word drift. Four signals
+    (sleep vs own norm, workout frequency, late nights, break-ratio
+    compression), each independently n-gated; speaks only when >=2
+    move together. Hooked into `_copilot_note`. Original design note
+    kept below for reference.
+    (FEEDBACK).** The
     trajectory line spots a sleep-for-work trade AFTER four weeks; this
     is the early-warning version: a rolling debt score from days of
     sleep-below-your-norm, workout-frequency drop vs baseline, tracked

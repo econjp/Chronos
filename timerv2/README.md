@@ -4,6 +4,19 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Running-hot index (v8.41)
+
+The trajectory line eventually notices a sleep-for-work trade — but only
+after roughly a month of drift. This is the early-warning version: a
+rolling check over your last 14 days vs the 60 before that, watching four
+independent signals — sleep below your own recent norm, workout frequency
+drop, late-night count, break-ratio compression. Speaks only when at
+least **two** move together, as one line in the co-pilot greeting: `14
+days running hot (sleep -1.0h/night vs norm, 3 late nights) — schedule
+one flat day before your body schedules it`. One signal alone stays
+silent (too many honest explanations); silent again the moment things
+ease, with no memory of having spoken before.
+
 ### Backup integrity check (v8.40)
 
 **Tools → Data doctor** now opens with one more line above the usual
