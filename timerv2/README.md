@@ -4,6 +4,18 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Meeting fragmentation tax (v8.42)
+
+The meeting-load insight only ever counted busy hours. This prices what
+a meeting does to the OPEN time around it — a short meeting stranding a
+small sliver either side can cost far more than its own length in lost
+deep-work capacity (contiguous free blocks ≥90 minutes). Simulates
+removing each meeting on its own, one at a time, and reports the worst
+offender plus the week's total: `Wednesday's 15:40 meeting: 0.3h long,
+cost 1.3h of deep capacity` / `meeting fragmentation tax this week:
+1.7h`. Needs a calendar synced (Tools menu); silent when the week's
+total tax is negligible.
+
 ### Running-hot index (v8.41)
 
 The trajectory line eventually notices a sleep-for-work trade — but only

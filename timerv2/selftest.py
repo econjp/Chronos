@@ -30,7 +30,8 @@ SRC = os.path.join(HERE, "timer_diary_v5.py")
 TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "fmt_sleep", "_time_span_hours", "_add_hours",
        "parse_health_dir", "_parse_any_date", "_dur_minutes", "_num",
-       "day_length_hours", "backup_integrity_line"}
+       "day_length_hours", "backup_integrity_line",
+       "_free_from_busy", "_deep_capacity_minutes", "_merge_time_intervals"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -47,7 +48,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_day_switches", "_shallow_threshold", "_day_shallow_frac",
         "_decay_cycle", "_lag_fragmentation_line",
         "_break_budget_line", "_lens_registry", "_lens_overlap_lines",
-        "_health_extras_lines", "_running_hot_line"}
+        "_health_extras_lines", "_running_hot_line",
+        "_day_fragmentation_tax", "_meeting_fragmentation_lines"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -1070,6 +1072,58 @@ def suite_running_hot():
     assert "sleep" not in line2.split("(")[1].split(")")[0], line2
 
 
+def suite_meeting_fragmentation():
+    D, ns = fresh()
+    win_start, win_end = time(9, 0), time(17, 0)
+    d = _mk(D, today=dt.date(2026, 7, 13))
+
+    # ---- pure helpers, hand-verified ----
+    free = ns["_free_from_busy"](win_start, win_end, [(time(12, 0), time(13, 0))])
+    assert free == [(time(9, 0), time(12, 0)), (time(13, 0), time(17, 0))], free
+    # both sides of a 1h midday meeting stay >=90m -> both count
+    assert ns["_deep_capacity_minutes"](free) == 180 + 240, free
+
+    # a meeting near the END of the window strands a <90m sliver after
+    # it — that sliver stops counting as deep capacity at all
+    meetings = [(time(15, 40), time(16, 0))]      # 20-minute meeting
+    tax = D._day_fragmentation_tax(d, meetings, win_start, win_end)
+    assert len(tax) == 1, tax
+    s, e, cost = tax[0]
+    assert (s, e) == (time(15, 40), time(16, 0)), tax
+    # WITH: only the 09:00-15:40 (400m) block qualifies (16:00-17:00 is
+    # 60m, under the 90m floor). WITHOUT: the whole 09:00-17:00 (480m)
+    # qualifies as one block. cost = (480-400)/60 = 1.333h -> "1.3"
+    assert abs(cost - 80 / 60) < 1e-9, cost
+
+    # ---- composition: silent with no calendar configured ----
+    d = _mk(D, today=dt.date(2026, 7, 13))
+    d._busy_intervals = lambda: {}
+    d._work_window = lambda: (win_start, win_end)
+    assert D._meeting_fragmentation_lines(d) == []
+
+    # ---- composition: silent when the week's total tax is negligible ----
+    d._busy_intervals = lambda: {"2026-07-10": [(time(12, 0), time(12, 20))]}
+    assert D._meeting_fragmentation_lines(d) == []   # 0.3h < the 0.5h floor
+
+    # ---- composition: speaks — worst offender + week total ----
+    d._busy_intervals = lambda: {
+        "2026-07-08": [(time(15, 40), time(16, 0))],   # Wednesday, 1.333h tax
+        "2026-07-10": [(time(12, 0), time(12, 20))],   # Friday, 0.333h tax
+    }
+    out = D._meeting_fragmentation_lines(d)
+    assert len(out) == 2, out
+    assert out[0] == ("Wednesday's 15:40 meeting: 0.3h long, cost 1.3h "
+                      "of deep capacity"), out
+    assert out[1] == "meeting fragmentation tax this week: 1.7h", out
+
+    # ---- honesty: a day outside the 7-day window doesn't count ----
+    d._busy_intervals = lambda: {
+        "2026-06-01": [(time(15, 40), time(16, 0))],   # long ago
+        "2026-07-10": [(time(12, 0), time(12, 20))],
+    }
+    assert D._meeting_fragmentation_lines(d) == []      # only 0.3h left
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1090,7 +1144,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("lens-overlap", suite_lens_overlap),
           ("health-extras", suite_health_extras),
           ("backup-integrity", suite_backup_integrity),
-          ("running-hot", suite_running_hot)]
+          ("running-hot", suite_running_hot),
+          ("meeting-fragmentation", suite_meeting_fragmentation)]
 
 
 def main():

@@ -60,6 +60,31 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.42 (meeting fragmentation tax — backlog #21, meetings cost
+more than their duration):
+  - The existing meeting-load insight only ever counted HOURS busy.
+    New `_meeting_fragmentation_lines(days=7)` prices what a meeting
+    does to the open time AROUND it: for each meeting on each of the
+    last 7 days, `_day_fragmentation_tax` simulates removing just that
+    one meeting (all others held fixed) and measures the DEEP CAPACITY
+    (free blocks ≥90m) recovered — a 20-minute meeting stranding a
+    60-minute sliver after it can cost 1.3h, not 0.3h. Reports the
+    worst single meeting plus the week's total: "Wednesday's 15:40
+    meeting: 0.3h long, cost 1.3h of deep capacity" / "meeting
+    fragmentation tax this week: 1.7h." New module-level
+    `_free_from_busy`/`_deep_capacity_minutes` factored out of
+    `_free_slots` (the scheduler's own free-time math) so the same
+    core is shared instead of reimplemented; `_free_slots` refactored
+    to call it, behaviour unchanged. Silent with no calendar configured
+    or when the week's total tax is negligible (<0.5h) — same
+    threshold discipline as every other insight. Hooked into
+    `_insight_lines` right after the meeting-load check it complements.
+    New "meeting-fragmentation" selftest suite (pure-helper checks,
+    hand-verified single-meeting marginal cost, silence with no
+    calendar, silence below the tax floor, the worst-offender+total
+    composition, and an honesty check that a day outside the 7-day
+    window doesn't count); 25/25 green.
+
 New in v8.41 (running-hot index — backlog #24, the early-warning
 version of the sleep-for-work trade):
   - New `_running_hot_line(recent_days=14, prior_days=60)`: same
@@ -1326,6 +1351,33 @@ def _merge_time_intervals(intervals):
 def _time_span_hours(s, e):
     return (dt.datetime.combine(dt.date.min, e)
             - dt.datetime.combine(dt.date.min, s)).total_seconds() / 3600
+
+
+def _free_from_busy(win_start, win_end, busy):
+    """Free (start, end) time ranges inside [win_start, win_end) once
+    `busy` intervals are merged and subtracted — the pure core of
+    _free_slots(), factored out so backlog #21's fragmentation-cost
+    simulation can ask "what if this one meeting weren't there" as a
+    plain function call, no live App/csv needed."""
+    merged = _merge_time_intervals(busy)
+    slots, cur = [], win_start
+    for s, e in merged:
+        if s > cur:
+            slots.append((cur, min(s, win_end)))
+        cur = max(cur, e)
+        if cur >= win_end:
+            break
+    if cur < win_end:
+        slots.append((cur, win_end))
+    return [(s, e) for s, e in slots if s < e]
+
+
+def _deep_capacity_minutes(slots, min_block=90):
+    """Total minutes across free `slots` at least `min_block` minutes
+    long — a 20-minute gap between meetings isn't capacity for deep
+    work, it's just a gap."""
+    return sum(round(_time_span_hours(s, e) * 60) for s, e in slots
+              if _time_span_hours(s, e) * 60 >= min_block)
 
 
 def _add_hours(t, hours):
@@ -5253,17 +5305,8 @@ class App(tk.Tk):
         busy = list(self._busy_intervals().get(d.isoformat(), []))
         if d == dt.date.today():
             busy += self._logged_intervals(d)
-        busy = _merge_time_intervals(busy)
-        slots, cur = [], win_start
-        for s, e in busy:
-            if s > cur:
-                slots.append((cur, min(s, win_end)))
-            cur = max(cur, e)
-            if cur >= win_end:
-                break
-        if cur < win_end:
-            slots.append((cur, win_end))
-        return [(s, e) for s, e in slots if s < e and _time_span_hours(s, e) >= 0.25]
+        slots = _free_from_busy(win_start, win_end, busy)
+        return [(s, e) for s, e in slots if _time_span_hours(s, e) >= 0.25]
 
     def _next_free_block_line(self):
         """One line that proves the interval math end to end: the
@@ -5277,6 +5320,58 @@ class App(tk.Tk):
         s, e = max(slots, key=lambda se: _time_span_hours(*se))
         return (f"biggest free block today: {s:%H:%M}-{e:%H:%M} "
                 f"({_time_span_hours(s, e):.1f}h)")
+
+    def _day_fragmentation_tax(self, meetings, win_start, win_end):
+        """Backlog #21: the marginal deep-capacity cost of EACH meeting
+        on one day, holding the others fixed — a 1h meeting at 13:00
+        can cost far more than 1h if it splits a long open afternoon
+        into two shards under the 90-minute deep-work threshold.
+        Returns [(start, end, cost_hours), ...] for meetings whose
+        removal would recover real capacity (>3 minutes; floating-
+        point noise otherwise), most expensive first."""
+        out = []
+        for i, m in enumerate(meetings):
+            others = meetings[:i] + meetings[i + 1:]
+            with_m = _deep_capacity_minutes(
+                _free_from_busy(win_start, win_end, meetings))
+            without_m = _deep_capacity_minutes(
+                _free_from_busy(win_start, win_end, others))
+            cost = (without_m - with_m) / 60
+            if cost > 0.05:
+                out.append((m[0], m[1], cost))
+        return sorted(out, key=lambda t: -t[2])
+
+    def _meeting_fragmentation_lines(self, days=7):
+        """Backlog #21: meetings cost more than their duration — they
+        SPLIT open time. Pairs with the existing meeting-load insight
+        (which only ever counted hours) by pricing the fragmentation
+        itself: the worst single meeting this week plus the week's
+        total 'fragmentation tax' (deep capacity — free blocks >=90m —
+        recovered if that meeting simply weren't there). Needs a
+        calendar configured (Tools > calendar sync) and at least one
+        day with more than one meeting worth comparing; silent
+        otherwise, same as the meeting-load insight it complements."""
+        busy = self._busy_intervals()
+        if not busy:
+            return []
+        win_start, win_end = self._work_window()
+        cutoff = (self.today - dt.timedelta(days=days)).isoformat()
+        today_iso = self.today.isoformat()
+        week_tax, worst = 0.0, None
+        for iso, meetings in busy.items():
+            if not (cutoff <= iso < today_iso) or len(meetings) < 1:
+                continue
+            for s, e, cost in self._day_fragmentation_tax(meetings, win_start, win_end):
+                week_tax += cost
+                if worst is None or cost > worst[3]:
+                    worst = (iso, s, e, cost)
+        if week_tax < 0.5 or worst is None:
+            return []
+        iso, s, e, cost = worst
+        wd = dt.date.fromisoformat(iso).strftime("%A")
+        return [f"{wd}'s {s:%H:%M} meeting: {_time_span_hours(s, e):.1f}h "
+               f"long, cost {cost:.1f}h of deep capacity",
+               f"meeting fragmentation tax this week: {week_tax:.1f}h"]
 
     # ----- right-now recommender (real-time companion to the day plan) -----
 
@@ -7584,6 +7679,11 @@ class App(tk.Tk):
             out.append(f"days with ≥2h of meetings: {ha:.1f}h of work "
                        f"({len(heavy)} days) vs {la:.1f}h on lighter-calendar "
                        f"days ({len(light)} days) — {verdict}")
+
+        # meeting fragmentation tax (backlog #21): the load check above
+        # only counts HOURS; this prices the SPLITTING a meeting does to
+        # the open time around it
+        out += self._meeting_fragmentation_lines()
 
         # break-ratio drift — is the work:break balance creeping the
         # wrong way, not just this week being unusually chatty

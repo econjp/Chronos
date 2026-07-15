@@ -950,6 +950,23 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.42** (meeting fragmentation tax — backlog #21, DONE, meetings
+  cost more than their duration). New `_meeting_fragmentation_lines`/
+  `_day_fragmentation_tax`: for each meeting on each of the last 7
+  days, simulates removing just that ONE meeting (others held fixed)
+  and measures the deep-capacity (free blocks ≥90m) recovered — a
+  20-minute meeting stranding a 60-minute sliver can cost 1.3h, not
+  0.3h. Reports the worst offender + week total: "Wednesday's 15:40
+  meeting: 0.3h long, cost 1.3h of deep capacity" / "meeting
+  fragmentation tax this week: 1.7h." New module-level
+  `_free_from_busy`/`_deep_capacity_minutes` factored out of
+  `_free_slots` so the scheduler's own free-time math is shared
+  instead of reimplemented; `_free_slots` itself refactored onto it,
+  behaviour unchanged. Hooked into `_insight_lines` next to the
+  meeting-load check it complements. New "meeting-fragmentation"
+  selftest suite (pure-helper checks, hand-verified marginal cost,
+  two silence gates, the worst-offender+total composition, a 7-day
+  window honesty check); 25/25 green (new suite, was 24).
 - **v8.41** (running-hot index — backlog #24, DONE, the early-warning
   version of the sleep-for-work trade). New `_running_hot_line`,
   recent-vs-prior window shape (last 14 days vs the 60 before that,
@@ -1399,7 +1416,17 @@ purpose; the *walls* are the major thing, and they're now named.
     you CHANGE, not just know. Guardrail: results are stated once in the
     review, never enforced, never re-nagged mid-week.
 
-21. **Meeting fragmentation tax (ANALYSIS).** Meetings cost more than
+21. ~~**Meeting fragmentation tax.**~~ — DONE v8.42. New
+    `_meeting_fragmentation_lines`/`_day_fragmentation_tax`: for each
+    meeting on each of the last 7 days, simulates removing just that
+    meeting (others held fixed) and measures the deep-capacity (free
+    blocks ≥90m) recovered. New `_free_from_busy`/
+    `_deep_capacity_minutes` factored out of `_free_slots` so the
+    scheduler's own free-time math is shared, not reimplemented.
+    Confirmed `_busy_intervals`'s parse window on this branch is
+    already -14/+90 days from today — covers the recent past fine, no
+    widening needed. Original design note kept below for reference.
+    (ANALYSIS).** Meetings cost more than
     their duration: a 1h meeting at 13:00 splits a 5h afternoon into
     2h+1.5h shards. `parse_ics_intervals` (v7.9) has the actual ranges;
     compute per day the DEEP CAPACITY (sum of free blocks ≥90m) with and
