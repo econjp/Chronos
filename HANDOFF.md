@@ -950,6 +950,22 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.50** (deadline post-mortem — backlog #28, DONE, each closed
+  deadline becomes calibration data). New `_deadline_postmortem_lines`
+  (pure): scope vs actual hours, the estimate factor on THIS project
+  (`_estimate_factor` extended with an optional keyword filter, app-
+  wide blend unchanged by default), a retrospective projection check
+  (what the trailing-21-day pace math would have predicted 21 days
+  before the due date vs when the scope was actually completed —
+  "predicted 13.07, actually finished 04.07 — ran 9d pessimistic"),
+  and the real pace kept over the project's whole life. New
+  `_run_deadline_postmortems` write-once guard (`postmortem_written`
+  on the deadline dict), hooked into `_new_day_header`. Only the "due
+  date passes" trigger implemented, not "or its task is Done" (no
+  deadline-to-task-library linkage exists to hook that on). New
+  "deadline-postmortem" selftest suite (fully hand-verified scenario
+  exercising all four lines, two silence gates, the write-once guard);
+  33/33 green (new suite, was 32).
 - **v8.49** (goal lifetime ledger — backlog #45, DONE, the un-windowed
   view). New `_lifetime_ledger_line(name, kws, start_iso)`: total
   hours + session count since `start_iso` (a deadline's own stored
@@ -1611,7 +1627,16 @@ purpose; the *walls* are the major thing, and they're now named.
     MORE than one line of the old context; and surfacing it in the Tasks/
     Library window's Start ▶ path too (currently only timer-box starts).
 
-28. **Deadline post-mortem (FEEDBACK/MEMORY).** When a scoped deadline's
+28. ~~**Deadline post-mortem.**~~ — DONE v8.50. New
+    `_deadline_postmortem_lines` (pure) + `_run_deadline_postmortems`
+    (write-once guard via `postmortem_written` on the deadline dict),
+    hooked into `_new_day_header`. Only the "date passes" trigger is
+    implemented — the "or its task is Done" trigger was dropped since
+    deadlines aren't currently linked to task-library Done status (no
+    such linkage exists to hook). `_estimate_factor` extended with an
+    optional keyword filter for the per-project figure. Original
+    design note kept below for reference.
+    (FEEDBACK/MEMORY).** When a scoped deadline's
     date passes (or its task is Done), write one retro block into that
     day's file: scope vs actual hours, the estimate factor on THIS
     project, what the v8.1 projection predicted vs what happened

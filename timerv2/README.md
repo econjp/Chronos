@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Deadline post-mortem (v8.50)
+
+Once a scoped deadline's due date passes, one retro block writes into
+that day's file automatically (once — never repeated): scope vs actual
+hours logged, the estimate factor on that specific project, a
+retrospective check of what a projection made 21 days before the due
+date would have predicted vs when the scope was actually completed
+("predicted 13.07, actually finished 04.07 — ran 9d pessimistic"), and
+the real pace kept over the project's whole life. Each closed deadline
+becomes calibration data instead of just vanishing.
+
 ### Goal lifetime ledger (v8.49)
 
 Every existing view is windowed — 8 weeks, a deadline's own scope, a

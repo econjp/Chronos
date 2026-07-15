@@ -60,6 +60,27 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.50 (deadline post-mortem — backlog #28, each deadline closed
+becomes calibration data):
+  - Once a scoped deadline's due date passes, one retro block writes
+    into that day's file instead of the deadline just quietly
+    disappearing: scope vs actual hours logged; the estimate factor on
+    THIS project specifically (`_estimate_factor` extended to take an
+    optional keyword filter, app-wide blend unchanged by default); a
+    RETROSPECTIVE projection check — what the same trailing-21-day
+    pace math `_dl_velocity`/`_dl_projection` use would have predicted,
+    evaluated as of 21 days before the due date, against the date the
+    scope was actually completed: "predicted 13.07, actually finished
+    04.07 — ran 9d pessimistic"; and the real pace kept over the
+    project's whole life. New `_deadline_postmortem_lines` (pure) +
+    `_run_deadline_postmortems` (the write-once guard, marks
+    `postmortem_written` on the deadline dict so it never repeats),
+    hooked into `_new_day_header` right after the on-this-day line.
+    New "deadline-postmortem" selftest suite (a fully hand-verified
+    scenario exercising all four lines at once, silence for an
+    unscoped deadline, silence before the due date passes, the
+    write-once guard actually preventing a repeat); 33/33 green.
+
 New in v8.49 (goal lifetime ledger — backlog #45, the un-windowed
 view):
   - Every existing view is windowed — 8 weeks (alignment/trajectory), a
@@ -3316,6 +3337,154 @@ class App(tk.Tk):
             line += f".  +1h/day from now → {pr['sooner']}d sooner"
         return line
 
+    def _deadline_postmortem_lines(self, dl):
+        """Backlog #28: once a scoped deadline's due date has passed,
+        one retro block instead of the deadline just quietly
+        disappearing — each one closed becomes calibration data. Four
+        honest numbers: scope vs actual hours; the estimate factor on
+        THIS project specifically (not `_estimate_factor`'s app-wide
+        blend); a RETROSPECTIVE projection accuracy check — what a
+        projection made 21 days before the due date (the same trailing
+        window `_dl_velocity` uses) would have predicted, against the
+        date the scope was actually completed, if it was; and the real
+        pace kept over the project's whole life, not just a trailing
+        window. Returns None for an unscoped deadline (no `total_h`) or
+        one whose due date hasn't passed yet — the caller is
+        responsible for the "write once" guard."""
+        if not dl.get("total_h"):
+            return None
+        due = dt.date.fromisoformat(dl["date"])
+        if self.today <= due:
+            return None
+        kws = self._match_kws(dl.get("match", ""))
+        start = None
+        if dl.get("start"):
+            try:
+                start = dt.date.fromisoformat(dl["start"])
+            except ValueError:
+                pass
+        lo = start or dt.date.min
+        total_h = float(dl["total_h"])
+        idx = day_index()
+
+        def hours_through(hi):
+            if kws:
+                return matched_minutes(kws, lo, hi) / 60
+            lo_iso, hi_iso = lo.isoformat(), hi.isoformat()
+            return sum(rec["work"] for iso, rec in idx.items()
+                      if lo_iso <= iso <= hi_iso) / 60
+
+        done_h = hours_through(due)
+        lines = [f"DEADLINE POST-MORTEM — {dl['name']} (due {due:%d.%m.%Y}):",
+                f"  scope {total_h:g}h declared, {done_h:.1f}h actually "
+                f"logged ({round(100 * done_h / total_h)}%)"]
+
+        ef = self._estimate_factor(kws) if kws else None
+        if ef:
+            factor, n = ef
+            verdict = ("ran long" if factor > 1.1 else
+                      "ran short" if factor < 0.9 else "roughly accurate")
+            lines.append(f"  estimate factor on this project: {factor:.2f}x "
+                        f"(n={n}) — {verdict}")
+
+        # retrospective projection: what the same trailing-21-day pace
+        # math _dl_projection uses would have predicted, evaluated as
+        # of 21 days before the due date, against what actually happened
+        as_of = due - dt.timedelta(days=21)
+        if start:
+            as_of = max(as_of, start)
+        win_lo = max(as_of - dt.timedelta(days=20), lo)
+        per_day = {}
+        for r in read_rows():
+            if r[1] == "break":
+                continue
+            if kws and not task_matches(r[5], kws):
+                continue
+            try:
+                d = dt.date.fromisoformat(r[0])
+                m = int(r[4])
+            except ValueError:
+                continue
+            if win_lo <= d <= as_of:
+                per_day[d] = per_day.get(d, 0) + m
+        if len(per_day) >= 5:
+            window = (as_of - win_lo).days + 1
+            rate = (sum(per_day.values()) / len(per_day) / 60) * (
+                len(per_day) / window)
+            if rate > 0:
+                remaining = max(0.0, total_h - hours_through(as_of))
+                predicted = as_of + dt.timedelta(days=math.ceil(remaining / rate))
+                actual = None
+                d, cum = lo, 0.0
+                while d <= due:
+                    cum = hours_through(d)
+                    if cum >= total_h:
+                        actual = d
+                        break
+                    d += dt.timedelta(days=1)
+                if actual:
+                    delta = (predicted - actual).days
+                    when = ("right on the day" if delta == 0 else
+                           f"ran {delta}d pessimistic" if delta > 0 else
+                           f"ran {-delta}d optimistic")
+                    lines.append(f"  projection (made 21d before due): "
+                                f"predicted {predicted:%d.%m}, actually "
+                                f"finished {actual:%d.%m} — {when}")
+                else:
+                    lines.append(f"  projection (made 21d before due): "
+                                f"predicted {predicted:%d.%m} — scope was "
+                                "never fully completed by the due date")
+
+        span = max((due - lo).days, 1) if lo != dt.date.min else None
+        full_per_day = {}
+        for r in read_rows():
+            if r[1] == "break":
+                continue
+            if kws and not task_matches(r[5], kws):
+                continue
+            try:
+                d = dt.date.fromisoformat(r[0])
+                m = int(r[4])
+            except ValueError:
+                continue
+            if lo <= d <= due:
+                full_per_day[d] = full_per_day.get(d, 0) + m
+        if full_per_day and span:
+            active = len(full_per_day)
+            avg_active_h = sum(full_per_day.values()) / active / 60
+            lines.append(f"  pace kept: {avg_active_h:.1f}h on active days, "
+                        f"active {round(100 * active / span)}% of the "
+                        f"{span} day(s) since {lo:%d.%m.%Y}")
+        return lines
+
+    def _run_deadline_postmortems(self):
+        """Backlog #28: checked once at day-open (_new_day_header, not
+        on every insight scan — a deadline closes once, the record
+        should write once). Every deadline whose due date has just
+        passed and hasn't been retro'd yet gets marked
+        `postmortem_written` and its lines returned for insertion into
+        TODAY's file; an unscoped deadline still gets marked (nothing
+        useful to say twice) even though `_deadline_postmortem_lines`
+        returns None for it."""
+        out, changed = [], False
+        for dl in self.deadlines():
+            if dl.get("postmortem_written"):
+                continue
+            try:
+                due = dt.date.fromisoformat(dl["date"])
+            except (ValueError, KeyError):
+                continue
+            if self.today <= due:
+                continue
+            lines = self._deadline_postmortem_lines(dl)
+            dl["postmortem_written"] = True
+            changed = True
+            if lines:
+                out += lines
+        if changed:
+            save_settings(self.settings)
+        return out
+
     def _root_cause_line(self, dl):
         """Backlog #47: when a scoped deadline is behind the straight-
         line pace, split WHY into the right lever. Capacity problem —
@@ -4073,6 +4242,9 @@ class App(tk.Tk):
         otd = self._on_this_day_line()
         if otd:
             parts.append(otd)
+        pm = self._run_deadline_postmortems()
+        if pm:
+            parts += ["", *pm]
         note = self._copilot_note()      # the co-pilot speaks first
         if note:
             parts.append(note)
@@ -6468,11 +6640,13 @@ class App(tk.Tk):
                   wraplength=760).pack(anchor="w", padx=8, pady=(0, 6))
         refresh()
 
-    def _estimate_factor(self):
+    def _estimate_factor(self, kws=None):
         """(median actual/estimate ratio, sample count) from '--- Done: x
-        (est Yh, actual Zh)' lines across all day files. None until 3+
-        samples exist."""
-        pat = re.compile(r"--- Done: .*\(est ([0-9.]+)h, actual ([0-9.]+)h\)")
+        (est Yh, actual Zh)' lines across all day files — app-wide by
+        default, or scoped to one project's `kws` (backlog #28's
+        post-mortem wants the estimate factor on THIS project, not the
+        app-wide blend). None until 3+ samples exist."""
+        pat = re.compile(r"--- Done: (.*?) \(est ([0-9.]+)h, actual ([0-9.]+)h\)")
         ratios = []
         try:
             names = os.listdir(self.diary_dir())
@@ -6487,7 +6661,9 @@ class App(tk.Tk):
                     found = pat.findall(f.read())
             except OSError:
                 continue
-            for e, a in found:
+            for name, e, a in found:
+                if kws and not task_matches(name, kws):
+                    continue
                 e, a = float(e), float(a)
                 if e > 0 and a > 0:
                     ratios.append(a / e)

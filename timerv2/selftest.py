@@ -15,6 +15,7 @@ as any new pure-logic feature — this file is the durable form of the
 """
 import ast
 import csv
+import json
 import math
 import os
 import re
@@ -32,7 +33,8 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "parse_health_dir", "_parse_any_date", "_dur_minutes", "_num",
        "day_length_hours", "backup_integrity_line",
        "_free_from_busy", "_deep_capacity_minutes", "_merge_time_intervals",
-       "_pinned_after_add", "_pinned_after_remove", "day_totals"}
+       "_pinned_after_add", "_pinned_after_remove", "day_totals",
+       "load_settings", "save_settings"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -54,7 +56,9 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_year_rhythm_grid", "_energy_forecast_line",
         "_experiment_from_file", "_week_metric_totals",
         "_experiment_review_line", "_scan_decisions",
-        "_carry_year", "_on_this_day_line", "_lifetime_ledger_line"}
+        "_carry_year", "_on_this_day_line", "_lifetime_ledger_line",
+        "_estimate_factor", "_deadline_postmortem_lines",
+        "_run_deadline_postmortems"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -86,7 +90,9 @@ def fresh():
     with its own temp csv and cache — full isolation per suite."""
     tmp = tempfile.mkdtemp()
     ns = {"csv": csv, "os": os, "dt": dt, "re": re, "math": math,
+          "json": json,
           "SESSIONS_CSV": os.path.join(tmp, "sessions.csv"),
+          "SETTINGS_JSON": os.path.join(tmp, "settings.json"),
           "CSV_HEADER": ["date", "type", "start", "end", "minutes",
                          "task", "note"],
           "_ROWS_CACHE": {"key": None, "rows": [], "idx_key": None,
@@ -1437,6 +1443,75 @@ def suite_lifetime_ledger():
     assert D._lifetime_ledger_line(d, "Nope", ["xyznomatch"]) is None
 
 
+def suite_deadline_postmortem():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    TODAY = dt.date(2026, 8, 1)      # well after the deadline below
+    dl = {"name": "Thesis", "date": "2026-07-15", "total_h": 40,
+         "match": "thesis", "start": "2026-06-01"}
+
+    rows = []
+    # phase 1: 06-04..06-24, 60 min/day (the as-of trailing window
+    # _dl_velocity's math would have seen 21 days before the due date)
+    d0 = dt.date(2026, 6, 4)
+    while d0 <= dt.date(2026, 6, 24):
+        rows.append([d0.isoformat(), "work", "09:00", "10:00", "60",
+                     "thesis: writing", ""])
+        d0 += dt.timedelta(days=1)
+    # phase 2: 06-25..07-04, 120 min/day (scope crosses 40h on 07-04)
+    d0 = dt.date(2026, 6, 25)
+    while d0 <= dt.date(2026, 7, 4):
+        rows.append([d0.isoformat(), "work", "09:00", "11:00", "120",
+                     "thesis: writing", ""])
+        d0 += dt.timedelta(days=1)
+    seed(ns, rows)
+
+    with open(os.path.join(tmp, "2026-07-05.txt"), "w",
+              encoding="utf-8") as f:
+        f.write("--- Done: thesis: ch1 (est 5h, actual 6h)\n"
+               "--- Done: thesis: ch2 (est 4h, actual 5.2h)\n"
+               "--- Done: thesis: ch3 (est 10h, actual 14h)\n")
+    d = _mk(D, today=TODAY, diary_dir=lambda: tmp)
+
+    lines = D._deadline_postmortem_lines(d, dl)
+    assert lines is not None, lines
+    assert lines[0] == "DEADLINE POST-MORTEM — Thesis (due 15.07.2026):", lines
+    # 41h logged (60*21 + 120*10 minutes) / 40h declared = 102%
+    assert "scope 40h declared, 41.0h actually logged (102%)" in lines[1], lines
+    # ratios sorted [1.2, 1.3, 1.4] -> median 1.3 -> "ran long"
+    assert any("estimate factor on this project: 1.30x (n=3) — ran long"
+              in ln for ln in lines), lines
+    # projection made 21d before due (2026-06-24) extrapolates the
+    # 1.0h/day trailing pace seen by then to 2026-07-13; scope actually
+    # crossed 40h on 2026-07-04 -> predicted ran 9 days pessimistic
+    assert any("predicted 13.07, actually finished 04.07 — ran 9d "
+              "pessimistic" in ln for ln in lines), lines
+    # 31 active days out of 44 since 2026-06-01, avg 1.3h/active day
+    assert any("pace kept: 1.3h on active days, active 70% of the 44 "
+              "day(s) since 01.06.2026" in ln for ln in lines), lines
+
+    # ---- silence: unscoped deadline (no total_h) ----
+    dl2 = dict(dl)
+    del dl2["total_h"]
+    assert D._deadline_postmortem_lines(d, dl2) is None
+
+    # ---- silence: due date hasn't passed yet ----
+    d3 = _mk(D, today=dt.date(2026, 7, 1), diary_dir=lambda: tmp)
+    assert D._deadline_postmortem_lines(d3, dl) is None
+
+    # ---- _run_deadline_postmortems: write-once guard ----
+    d4 = _mk(D, today=TODAY, diary_dir=lambda: tmp)
+    ns["_ROWS_CACHE"].update(key=None, idx_key=None)
+    settings = {"deadlines": [dict(dl)]}
+    d4.settings = settings
+    d4.deadlines = lambda: settings["deadlines"]
+    out1 = D._run_deadline_postmortems(d4)
+    assert out1 and out1[0].startswith("DEADLINE POST-MORTEM"), out1
+    assert settings["deadlines"][0]["postmortem_written"] is True
+    out2 = D._run_deadline_postmortems(d4)
+    assert out2 == [], out2      # already marked -> never repeats
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1465,7 +1540,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("pinned-searches", suite_pinned_searches),
           ("decision-log", suite_decision_log),
           ("annual-theme", suite_annual_theme),
-          ("lifetime-ledger", suite_lifetime_ledger)]
+          ("lifetime-ledger", suite_lifetime_ledger),
+          ("deadline-postmortem", suite_deadline_postmortem)]
 
 
 def main():
