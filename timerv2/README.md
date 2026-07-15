@@ -4,6 +4,32 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### The health-hub pivot (v8.27)
+
+**METRICS** — a new header line, right next to SIGNAL/AVOID/ENERGY: type
+any personal metric as `key=value` pairs, whenever you want:
+
+```
+METRICS: meditation=10, water=6, mood=calm
+```
+
+No settings, no dialog, no new code per metric — one parser handles
+whatever you invent. An Insight compares signal-share on days you logged
+a given metric vs days you didn't, and names the one with the biggest
+swing: *"days you logged 'meditation': signal 14 points higher (9d
+logged vs 41d not) — worth tracking on purpose, not by accident."*
+
+**Wider health import** — the health-folder parser now also picks up
+mindful/meditation minutes, resting heart rate, HRV, and body weight from
+the same Health Auto Export CSVs already recommended, including files
+that export just ONE of these metrics on their own (previously silently
+skipped). Mindful minutes show in the day header now; RHR/HRV/weight are
+captured and waiting for a dedicated health view.
+
+This is the concrete first step of the "health hub" direction: biohacking
+habits get logged right next to the diary text they belong with — one
+file, not a second app to maintain.
+
 ### Five more, same push (v8.22-v8.26)
 
 - **Rescue block** — "What should I do now?" gets a mid-afternoon

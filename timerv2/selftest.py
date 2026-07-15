@@ -28,16 +28,18 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "timer_diary_v5.py")
 
 TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
-       "fmt_sleep", "_time_span_hours", "_add_hours"}
+       "fmt_sleep", "_time_span_hours", "_add_hours",
+       "parse_health_dir", "_parse_any_date", "_dur_minutes", "_num"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
         "_life_review_lines", "_anomaly_lines", "_copilot_note",
         "_recommend_now", "_deep_window", "_hour_quality", "_energy_place",
         "_last_context", "_break_insight", "_pull_level", "_reentry_opener",
-        "_procrastination_insight"}
+        "_procrastination_insight", "_metrics_from_text", "_day_metrics",
+        "_metrics_insight"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
-CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL"}
+CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -416,6 +418,94 @@ def suite_procrastination():
     assert D._procrastination_insight(d) == []
 
 
+def suite_metrics():
+    D, ns = fresh()
+
+    # ---- pure parser: numbers, labels, case/space tolerance, no line ----
+    mf = D._metrics_from_text
+    assert mf(D, "METRICS: water=6, meditation=10") == {
+        "water": 6.0, "meditation": 10.0}, mf(D, "METRICS: water=6, meditation=10")
+    assert mf(D, "METRICS: mood=calm, water=6") == {"mood": "calm", "water": 6.0}
+    assert mf(D, "no metrics line here") == {}
+    assert mf(D, "metrics:  KEY = 5 ") == {"key": 5.0}
+
+    # ---- _day_metrics: live diary text (today) vs a past day file ----
+    class FakeDiary:
+        def __init__(self, text):
+            self._t = text
+
+        def get(self, _a, _b):
+            return self._t
+
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    with open(os.path.join(tmp, "2026-07-10.txt"), "w", encoding="utf-8") as f:
+        f.write("=== Friday 10.07.2026 ===\nMETRICS: meditation=15\n")
+    d = _mk(D, diary=FakeDiary("METRICS: water=8\n"),
+            diary_path=lambda dd: os.path.join(tmp, dd.isoformat() + ".txt"))
+    assert D._day_metrics(d) == {"water": 8.0}                       # today
+    assert D._day_metrics(d, dt.date(2026, 7, 10)) == {"meditation": 15.0}
+    assert D._day_metrics(d, dt.date(2099, 1, 1)) == {}               # no file
+
+    # ---- insight: a logged metric with a real signal-share swing ----
+    days = [dt.date(2026, 6, 1) + dt.timedelta(days=i) for i in range(20)]
+    seed(ns, [row(dd.isoformat(), 60, "thesis") for dd in days])
+    d2 = _mk(D, today=dt.date(2026, 6, 20))
+    d2._signal_kws = lambda day=None: ["thesis"]
+    med_days = {dd.isoformat() for dd in days[:8]}
+
+    def fake_signal(day, kws=None, rows=None):
+        pct = 0.9 if day.isoformat() in med_days else 0.4
+        return int(round(pct * 60)), 60
+    d2._day_signal = fake_signal
+    d2._day_metrics = lambda day=None: (
+        {"meditation": 10} if (day or d2.today).isoformat() in med_days else {})
+    out = D._metrics_insight(d2)
+    assert out and "'meditation'" in out[0] and "higher" in out[0], out
+    assert "8d logged vs 12d not" in out[0], out
+
+    # below the 5-per-side gate -> silent
+    med_days = {dd.isoformat() for dd in days[:3]}
+    assert D._metrics_insight(d2) == []
+
+
+def suite_health_parse():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    hdir = os.path.join(tmp, "health")
+    os.makedirs(hdir, exist_ok=True)
+
+    # one combined export: sleep + the new opportunistic columns
+    with open(os.path.join(hdir, "export.csv"), "w", newline="",
+              encoding="utf-8") as f:
+        f.write("Date,Sleep Analysis [Asleep] (hr),"
+                "Resting Heart Rate (count/min),"
+                "Heart Rate Variability (ms),Mindful Minutes (min),"
+                "Weight (lb)\n")
+        f.write("2026-07-10,7.5,58,42,12,154\n")
+    data = ns["parse_health_dir"](hdir)
+    rec = data["2026-07-10"]
+    assert abs(rec["sleep_h"] - 7.5) < 1e-9, rec
+    assert rec["rhr"] == 58, rec
+    assert rec["hrv"] == 42, rec
+    assert rec["mindful_min"] == 12, rec
+    assert abs(rec["weight_kg"] - 154 * 0.453592) < 1e-6, rec
+
+    # a file with ONLY a metric Health Auto Export ships as its own CSV
+    # (no sleep/workout column at all) must NOT be silently skipped —
+    # this is the actual gap the widened skip-gate fixes
+    with open(os.path.join(hdir, "mindfulness_only.csv"), "w", newline="",
+              encoding="utf-8") as f:
+        f.write("Date,Mindful Minutes (min)\n2026-07-11,20\n")
+    data2 = ns["parse_health_dir"](hdir)
+    assert data2["2026-07-11"]["mindful_min"] == 20, data2
+
+    # a file with no recognisable columns at all is safely ignored
+    with open(os.path.join(hdir, "unrelated.csv"), "w", newline="",
+              encoding="utf-8") as f:
+        f.write("Name,Value\nx,1\n")
+    ns["parse_health_dir"](hdir)   # must not raise
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -424,7 +514,9 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("last-context", suite_last_context),
           ("break-pull", suite_break_pull),
           ("reentry", suite_reentry),
-          ("procrastination", suite_procrastination)]
+          ("procrastination", suite_procrastination),
+          ("metrics", suite_metrics),
+          ("health-parse", suite_health_parse)]
 
 
 def main():

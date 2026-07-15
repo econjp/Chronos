@@ -60,6 +60,35 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.27 (the health-hub pivot — a generic metrics line + wider capture):
+  - METRICS line: a new "METRICS: " header line, same in-file convention
+    as SIGNAL/AVOID/ENERGY — type ANY future personal metric as
+    "key=value" pairs ("meditation=10, water=6, mood=calm") and it lands
+    as one new key on the day record, with zero new code per metric.
+    This is the direct answer to "will we regret not logging something
+    in 6 months": SIGNAL/AVOID/ENERGY/mood each needed a bespoke parser
+    as a new axis came up; METRICS generalises the pattern once so the
+    next one is free. New insight (_metrics_insight) compares signal
+    share on days any given metric was logged vs days it wasn't, and
+    names the metric with the biggest swing — works for whatever key
+    gets invented tomorrow, not a fixed list.
+  - Health import widened: parse_health_dir now also opportunistically
+    captures mindful/meditation minutes, resting heart rate, HRV, and
+    weight — using the SAME already-recommended export app (Health Auto
+    Export), not a new integration. Also fixed a real gap: a file
+    containing ONLY one of these metrics (common — the app exports one
+    CSV per metric type) used to be silently skipped entirely, since the
+    old skip-gate only checked for sleep/workout columns. Mindful
+    minutes now shows in the existing "(sleep …, workout …)" header
+    line; RHR/HRV/weight are captured onto the day record, ready for a
+    future health view (backlog #65+), not yet surfaced to avoid
+    cluttering today's one-line header.
+  - Together these are the concrete first step of turning the app into
+    a health hub without a rewrite: METRICS is where biohacking habits
+    (meditation, cold exposure, supplements, caffeine) get logged, right
+    next to the diary text they're already part of — one file, not a
+    second app. selftest suites 13-14 (14/14 green).
+
 New in v8.22-v8.26 (five more, same push, second wave):
   - v8.22 RESCUE BLOCK (#41): "What should I do now?" gains a mid-
     afternoon-going-sideways branch — if it's 15:00-21:00, a real
@@ -914,12 +943,19 @@ def _num(s):
 
 
 def parse_health_dir(hdir):
-    """Scan csv files for date + sleep/workout/steps columns.
-    Returns {date_iso: {"sleep_h", "workout_min", "steps"}}.
+    """Scan csv files for date + sleep/workout/steps/mindful/RHR/HRV/weight
+    columns. Returns {date_iso: {"sleep_h", "workout_min", "steps",
+    "mindful_min", "rhr", "hrv", "weight_kg"}} (only keys actually found).
     Understands Health Auto Export headers ('Sleep Analysis [Asleep] (hr)'),
     Health App Data Export Tool ('Sleep' = '7h 54m', d.m.yyyy dates,
-    decimal commas) and a hand-made 'date;sleep_h;workout_min' file.
-    Later files/rows overwrite earlier."""
+    decimal commas) and a hand-made 'date;sleep_h;workout_min' file. Apps
+    like Health Auto Export often export ONE CSV PER METRIC (a "Heart Rate
+    Variability.csv" with no sleep/workout column at all) — the file is
+    kept and scanned as long as date + ANY recognised column is present,
+    not just the original sleep/workout pair, so a file full of a newly
+    wanted metric isn't silently skipped the way it would be if this only
+    matched the two metrics the app started with. Later files/rows
+    overwrite earlier."""
     data = {}
     try:
         names = sorted(os.listdir(hdir))
@@ -953,7 +989,15 @@ def parse_health_dir(hdir):
             scol = col("sleep")
         wcol = col("exercise", "workout")
         stcol = col("steps")
-        if dcol is None or (scol is None and wcol is None):
+        # opportunistic extras: captured whenever the SAME already-
+        # recommended export app happens to have these toggled on, not
+        # guessed against a format that hasn't reached this machine
+        mcol = col("mindful", "meditation")
+        rhrcol = col("resting heart rate", "resting_heart_rate", "rhr")
+        hrvcol = col("heart rate variability", "hrv")
+        wtcol = col("weight", "body mass")
+        if dcol is None or not any((scol, wcol, stcol, mcol, rhrcol,
+                                    hrvcol, wtcol)):
             continue
         for r in rows[1:]:
             if len(r) <= dcol:
@@ -984,6 +1028,25 @@ def parse_health_dir(hdir):
                 v = _num(r[stcol])
                 if v and 0 < v <= 200000:
                     rec["steps"] = int(v)
+            if mcol is not None and mcol < len(r):
+                dm = _dur_minutes(r[mcol])
+                v = dm if dm is not None else _num(r[mcol])
+                if v and 0 < v <= 1440:
+                    rec["mindful_min"] = v
+            if rhrcol is not None and rhrcol < len(r):
+                v = _num(r[rhrcol])
+                if v and 20 <= v <= 220:
+                    rec["rhr"] = v
+            if hrvcol is not None and hrvcol < len(r):
+                v = _num(r[hrvcol])
+                if v and 0 < v <= 500:
+                    rec["hrv"] = v
+            if wtcol is not None and wtcol < len(r):
+                v = _num(r[wtcol])
+                if v and 20 <= v <= 300:
+                    if "lb" in hdr[wtcol]:
+                        v *= 0.453592
+                    rec["weight_kg"] = v
     return data
 
 
@@ -997,6 +1060,8 @@ def health_line(rec):
         parts.append(f"sleep {fmt_sleep(rec['sleep_h'])}")
     if rec.get("workout_min"):
         parts.append(f"workout {round(rec['workout_min'])}m")
+    if rec.get("mindful_min"):
+        parts.append(f"mindful {round(rec['mindful_min'])}m")
     if rec.get("steps"):
         parts.append(f"{rec['steps']} steps")
     return f"({', '.join(parts)})" if parts else ""
@@ -3406,6 +3471,7 @@ class App(tk.Tk):
         parts.append(f"SIGNAL: {self._carry_signal()}")
         parts.append(f"AVOID: {self._carry_avoid()}")
         parts.append("ENERGY: ")   # 1-5, optionally + a mood word ("3 anxious")
+        parts.append("METRICS: ")  # anything else: meditation=10, water=6…
         todos = self._carry_todos(yday)
         if todos:
             parts += ["", "TODO (carried from yesterday):"] + todos
@@ -5551,6 +5617,11 @@ class App(tk.Tk):
                "sleep_h": self._sleep_h(iso),
                "workout_min": self._health_data().get(iso, {}).get("workout_min"),
                "steps": self._health_data().get(iso, {}).get("steps"),
+               "mindful_min": self._health_data().get(iso, {}).get("mindful_min"),
+               "rhr": self._health_data().get(iso, {}).get("rhr"),
+               "hrv": self._health_data().get(iso, {}).get("hrv"),
+               "weight_kg": self._health_data().get(iso, {}).get("weight_kg"),
+               "metrics": self._day_metrics(d),
                "busy_h": self._busy_data().get(iso, 0.0),
                "capacity_h": self._day_capacity(d)}
         return rec
@@ -6169,6 +6240,92 @@ class App(tk.Tk):
                 f"{avg_h:.1f}h signal at {avg_pct:.0f}% share, most of it "
                 f"landing on {best_day}s — worth protecting that pattern"]
 
+    # ----- generic metrics line (the health-hub / biohacking primitive) -----
+    #
+    # SIGNAL/AVOID/ENERGY/mood each got their own bespoke one-line parser as
+    # a new axis came up. METRICS is the generalisation: ONE free-form line
+    # + ONE parser that takes any future personal metric (meditation
+    # minutes, caffeine mg, cold exposure, water, supplements, a mood
+    # scale, anything) without new code per metric. Answers "did we
+    # capture everything" not by guessing every future variable in advance
+    # (against the project's own no-speculative-sources rule) but by making
+    # the COST of adding one, the day it's actually wanted, one typed word.
+
+    METRICS_RE = re.compile(r"([a-zA-Z_][a-zA-Z0-9_]*)\s*[=:]\s*"
+                            r"([^,]+?)(?=\s*,|\s*$)")
+
+    @classmethod
+    def _metrics_from_text(cls, text):
+        """First 'METRICS: key=val, key=val' line -> {key: value}. Values
+        parse as float when possible (meditation=10, water=6), else stay
+        as the typed string (mood=calm, supplement=magnesium) — one
+        mechanism for numbers and labels alike. Missing line -> {}."""
+        for line in text.splitlines():
+            s = line.strip()
+            if s.lower().startswith("metrics:"):
+                out = {}
+                for key, val in cls.METRICS_RE.findall(s[8:]):
+                    val = val.strip()
+                    try:
+                        out[key.strip().lower()] = float(val)
+                    except ValueError:
+                        out[key.strip().lower()] = val.lower()
+                return out
+        return {}
+
+    def _day_metrics(self, day=None):
+        if day is None or day == self.today:
+            return self._metrics_from_text(self.diary.get("1.0", "end-1c"))
+        try:
+            with open(self.diary_path(day), encoding="utf-8") as f:
+                return self._metrics_from_text(f.read())
+        except OSError:
+            return {}
+
+    def _metrics_insight(self, days=60):
+        """The generic payoff: for every metric key you've typed, compare
+        signal share on days you logged it (any value) vs days you had
+        tracked work but didn't — same shape as the mood insight, but
+        works for whatever key you invent tomorrow, not a fixed list.
+        Names the single metric with the biggest swing; n>=5 both sides,
+        n>=10 total tracked days for a fair baseline."""
+        cutoff = self.today - dt.timedelta(days=days)
+        idx = day_index()
+        by_key_in, by_key_out, all_pcts = {}, {}, []
+        d = cutoff
+        while d <= self.today:
+            rec = idx.get(d.isoformat())
+            if rec and rec["work"] > 0:
+                kws = self._signal_kws(d)
+                if kws:
+                    sig, work = self._day_signal(d, kws)
+                    if work > 0:
+                        pct = 100 * sig / work
+                        all_pcts.append(pct)
+                        logged = self._day_metrics(d)
+                        for k in set(list(logged) + list(by_key_in)
+                                    + list(by_key_out)):
+                            bucket = by_key_in if k in logged else by_key_out
+                            bucket.setdefault(k, []).append(pct)
+            d += dt.timedelta(days=1)
+        if len(all_pcts) < 10:
+            return []
+        best = None      # (abs_diff, key, diff, n_in, n_out)
+        for k in by_key_in:
+            ins, outs = by_key_in[k], by_key_out.get(k, [])
+            if len(ins) < 5 or len(outs) < 5:
+                continue
+            diff = sum(ins) / len(ins) - sum(outs) / len(outs)
+            if best is None or abs(diff) > best[0]:
+                best = (abs(diff), k, diff, len(ins), len(outs))
+        if best and best[0] >= 10:
+            _adiff, key, diff, n_in, n_out = best
+            verb = "higher" if diff > 0 else "lower"
+            return [f"days you logged '{key}': signal {abs(diff):.0f} points "
+                    f"{verb} ({n_in}d logged vs {n_out}d not) — worth "
+                    "tracking on purpose, not by accident"]
+        return []
+
     @staticmethod
     def _mood_from_text(text):
         """The optional word after the 1-5 number on the ENERGY line —
@@ -6429,6 +6586,7 @@ class App(tk.Tk):
         out += self._thrash_insight()
         out += self._shallow_work_lines()
         out += self._mood_insight()
+        out += self._metrics_insight()
         out += self._best_weeks_lines()
         out += self._trajectory_lines()
         return out

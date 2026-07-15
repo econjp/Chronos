@@ -120,6 +120,72 @@ v6.6):
   `--- Done: ...` lines onto the day record) that also happens to have
   its own persistent list in settings.
 
+## Data architecture for the long term (owner asked 2026-07-14: "won't we realise in 6 months we should have logged more?")
+
+Worth a direct, permanent answer since it's a recurring anxiety, not a
+one-off question. Short version: **the architecture is already built so
+that regret is cheap, and v8.27 made the one remaining gap cheap too.**
+The reasoning, so a future session doesn't re-derive it:
+
+1. **The day record is a VIEW, not the source of truth — this is the
+   whole trick.** `_life_day`/`day_index` are recomputed on demand from
+   the RAW sources (sessions.csv, day-file text, the health-folder CSVs,
+   the .ics file). Nothing is baked into a fixed schema at write time.
+   Consequence: if a source's parser gets WIDENED tomorrow to read a
+   column it ignored before, every past day whose raw file still has
+   that column backfills automatically, for free, no migration. This is
+   exactly what happened in v8.27: `parse_health_dir` started reading
+   mindful-minutes/RHR/HRV/weight columns that may have been sitting in
+   the user's already-exported CSVs unread the whole time.
+2. **Two genuinely different kinds of "missing data," two different
+   fixes — don't conflate them:**
+   - *A source already reaches the machine but the parser doesn't read
+     every column it could* (health export, calendar, a bank csv). Fix:
+     widen the existing parser generically (v8.27 did this for health).
+     Zero regret possible here except the delay before someone widens
+     the parser — and it backfills retroactively per point 1.
+   - *Nobody ever wrote the fact down anywhere* (a subjective state, a
+     habit, a one-off event). This is the ONLY case with real,
+     unrecoverable regret — no parser can invent a fact that was never
+     recorded. The fix is not to guess every future variable in advance
+     (that violates the standing no-speculative-sources rule — see the
+     "Real bed/wake times" backlog note: don't build against a format
+     that doesn't reach the machine yet) — it's to make the COST of
+     starting to log a NEW thing, the day it's actually wanted, as close
+     to zero as possible. **METRICS (v8.27) is that mechanism**: one
+     generic `key=value` line, one parser, works for any future metric
+     with no new code. SIGNAL/AVOID/ENERGY/mood each needed their own
+     bespoke one-line parser as a new axis came up over eight versions;
+     METRICS is the generalisation of that pattern, done once.
+3. **The portability safety net already exists.** File > Export life
+   record (JSON) serialises the full day record + diary text + settings.
+   If the record's shape ever needs a real restructuring later (not
+   just a new key), the whole history round-trips through that export —
+   sensor/parsing work never has to be redone from raw files, only the
+   shape of what's already been extracted.
+4. **Practical checklist for "should I capture X":** is X already
+   reaching the machine in some file (a phone export, a calendar, a bank
+   statement)? → widen that source's parser generically, don't wait to
+   be asked for the specific field. Is X something only the person knows
+   (a feeling, a habit, a supplement)? → it's already free via METRICS;
+   type it under whatever key name makes sense, no code needed. Is X a
+   format that doesn't exist on this machine yet (e.g. sleep-phase
+   times, which need a paid app the user hasn't switched to)? → correctly
+   NOT built yet, per the existing precedent; revisit only when the real
+   file shows up.
+
+**The health-hub direction, concretely.** The owner floated turning the
+app toward biohacking/health (meditation etc.) and "combining into the
+diary." That's not a new direction bolted on — METRICS + the wider health
+import ARE that pivot, using the existing architecture: the day file
+already holds SIGNAL/AVOID/ENERGY next to free-typed diary text; METRICS
+takes the same slot for meditation, water, caffeine, supplements, cold
+exposure, anything — one line, no second app, no new settings dialog.
+RHR/HRV/weight now ride along from the same health-export folder already
+configured. What's still open (see backlog #65-68): a dedicated health
+view surfacing the newly-captured metrics as more than one header line,
+and a readiness-style insight once real HRV/RHR history accumulates.
+
 ## Design rules (non-negotiable, learned over many iterations)
 
 1. **The day file is the app.** Everything visible lands in the day .txt
@@ -184,13 +250,24 @@ the three-bucket model is already correct and more honest than a blend.
   `health_dir`, `diary_dir`, `target_min`, `rollover_hour`, `hotkey`,
   `idle_min`, `float_break`, `nudge`, `asked_autostart`.
 - Day-file conventions parsed by code: `SIGNAL: kw, kw` (carries daily,
-  seeds from goals if blank), `ENERGY: 1-5`, `TODO:`/`SOMEDAY:` headers
-  with `-`/`*`/`[ ]` bullets (TODO carries to next day AND auto-captures
-  into the task library; SOMEDAY never carries, library-captures only),
+  seeds from goals if blank), `AVOID: kw, kw` (v8.13, the inverse lens,
+  carries daily, no goal-seed), `ENERGY: 1-5` optionally + a mood word
+  ("3 anxious", v8.23), `METRICS: key=val, key=val` (v8.27 — the generic
+  logging line, see the data-architecture section above; ANY future
+  personal metric, no new parser needed), `TODAY: 4h` / `TODAY: sick`
+  (v8.16, declares a short day), `TODO:`/`SOMEDAY:` headers with
+  `-`/`*`/`[ ]` bullets (TODO carries to next day AND auto-captures into
+  the task library; SOMEDAY never carries, library-captures only),
   `--- Done: task (est Xh, actual Yh)`, `--- Task:`, `!!! time-box
   exceeded !!!`, session/break lines, `WEEK REVIEW Wnn:` (Mondays),
   `=== THEME: name — HH:MM (Xm) === ... === END THEME ===` (themed
   writing blocks, read back out by Browse Themes — never a second file).
+- The day record (`_life_day`) as of v8.27: `work`/`brk`/`tasks` (csv),
+  `signal`/`energy`/`sleep_h` (existing), `workout_min`/`steps`
+  (health import), `mindful_min`/`rhr`/`hrv`/`weight_kg` (health import,
+  v8.27 — opportunistic, only present if the export CSV has the column),
+  `metrics` (dict from the METRICS line, v8.27), `busy_h`/`capacity_h`
+  (calendar/week-plan). A new source is still always one new key here.
 - **Export life record (JSON)** (File menu) is the canonical portable
   dump: per-day record + diary text + goals + deadlines + capacity.
 
@@ -725,6 +802,26 @@ purpose; the *walls* are the major thing, and they're now named.
   capacity problem and a less-urgent one has slack. Verified #56's
   wiring via an actual menu invocation, not just the wrapper function
   in isolation. Full regression + selftest.py green throughout.
+- **v8.27** (the health-hub pivot — a generic metrics line + wider
+  health capture, DONE). Answers the owner's 2026-07-14 "will we regret
+  not logging enough" question with a mechanism, not a promise: **METRICS**
+  header line (`_metrics_from_text`/`_day_metrics`), the SIGNAL/AVOID/
+  ENERGY/mood pattern generalised into one `key=value` parser that takes
+  any future personal metric with zero new code; `_metrics_insight`
+  compares signal-share on logged-vs-not days for whatever key gets used,
+  n≥5/side, n≥10 total. `parse_health_dir` widened to opportunistically
+  capture mindful/meditation minutes, resting heart rate, HRV and weight
+  from the same already-recommended export app, AND fixed a real gap
+  where a CSV containing only one such metric (common — one file per
+  metric type) was silently skipped entirely by the old sleep/workout-
+  only gate. Mindful minutes surfaced in the existing health header line;
+  RHR/HRV/weight captured onto `_life_day` for a future health view
+  (#65), not yet in the UI. New "Data architecture for the long term"
+  section above records the reasoning for future sessions. selftest
+  gains suites 13-14 (metrics parsing/insight, widened health parsing);
+  14/14 green. Landed on a freshly recreated `claude/life-management-
+  platform-arch-6s4hrv` branch (the old one had already been merged +
+  deleted) — see Git section.
 
 ## BACKLOG (priority order — continue here)
 
@@ -776,11 +873,18 @@ purpose; the *walls* are the major thing, and they're now named.
    autosave tick fires).
 3b. **Screen-time / doomscroll source**: the 19–21 window is documented;
    import phone screen-time (csv drop like health) → new day-record key →
-   insight "scroll vs next-day energy".
+   insight "scroll vs next-day energy". CHEAP STOPGAP now available via
+   METRICS (v8.27): `METRICS: screen_time=143` typed by hand gets the
+   insight machinery for free today; a real csv-drop importer is still
+   the better end state (zero manual typing) but no longer blocking —
+   don't let "no importer yet" stop the owner from starting to log this
+   NOW if they want the data trend started.
 4. ~~**Mood ≠ energy**~~ — DONE v8.23 (`_mood_from_text`/`_day_mood`/
    `_mood_insight`).
 5. **Money source**: monthly csv drop (bank export) → spend per day key;
-   balance section gains a cost line. (User hinted "total life".)
+   balance section gains a cost line. (User hinted "total life".) Same
+   METRICS stopgap note as #3b applies if a rough manual number
+   (`METRICS: spend=45`) is more useful sooner than a real importer later.
 6. ~~JSON import/restore~~ — DONE v7.0, honestly scoped: File > Import
    life record restores settings (goals/deadlines/capacity, merged by
    name) and day files (only ones missing locally) from an export; it
@@ -1551,15 +1655,72 @@ purpose; the *walls* are the major thing, and they're now named.
     theme is honest at this app's current maturity or premature until
     more multi-year data actually exists to make it mean something.
 
+65. **Health-hub view (VISUAL/HEALTH — the home for v8.27's captured
+    data).** RHR/HRV/weight are now captured onto `_life_day` (v8.27)
+    but only mindful minutes reached a visible surface (the header line)
+    — the rest is sitting in the record unseen, which is exactly the
+    "capture now, surface later" gap this backlog exists to close.
+    EXTEND the existing `_health_view` table (14-day sleep/workout/
+    steps/work/signal/energy grid) with mindful/RHR/HRV/weight columns
+    rather than building a rival window — matches the concept model's
+    "don't duplicate a view" precedent (see backlog #1's dashboard-as-
+    hub decision). Trend arrows only once real history exists (n-gated,
+    same honesty rule as everywhere else); most users' HRV/RHR history
+    will be thin at first, so this should degrade gracefully to "not
+    enough data yet" per metric rather than blank columns.
+
+66. **Metrics shorthand — lower friction than key=value (USABILITY,
+    pairs with #19 quick-capture).** METRICS (v8.27) requires typing
+    `key=value`; for simple yes/no habits (meditated, cold shower, took
+    magnesium) that's more typing than the fact deserves. A shorthand:
+    a bare word in the METRICS line with no `=` implicitly logs
+    `word=1` — "METRICS: meditation, cold_shower" instead of
+    "meditation=1, cold_shower=1". Almost free on top of
+    `_metrics_from_text`'s existing regex (one alternate branch for a
+    bare identifier); the generic insight (`_metrics_insight`) needs no
+    change at all, since it already just checks presence-of-key. Natural
+    partner for #19's quick-capture hotkey — a one-keystroke popup that
+    writes straight into today's METRICS line.
+
+67. **Supplement/stack tags — proof METRICS needs no new code per idea
+    (SELF-KNOWLEDGE).** Not a new mechanism — a documented CONVENTION on
+    top of METRICS/#66: log each supplement as its own bare word
+    ("METRICS: magnesium, omega3") and `_metrics_insight` already finds
+    whichever one correlates with a signal-share swing, with zero new
+    code. Worth writing down as an explicit example in the README/Tools
+    tooltip once #66 ships, specifically because it demonstrates the
+    "capture now, ask questions later" architecture answer above in a
+    concrete biohacking use the owner named directly.
+
+68. **Readiness line from HRV/RHR baseline (ANALYSIS/PLANNING — the
+    payoff for capturing HRV/RHR at all).** Once real HRV/RHR history
+    accumulates (this is the actual gate — v8.27 only just started
+    capturing them, so this should NOT be attempted until there's a
+    real multi-week baseline to compare against, same discipline as
+    every other insight here), a morning line comparing today's HRV/RHR
+    to a trailing personal baseline: "HRV 15% below your 30-day norm,
+    RHR +4bpm — a lighter day may pay off more than pushing." Feeds
+    naturally into `_recommend_now`/`_energy_place` as a capacity
+    signal alongside sleep, the same way sleep already informs energy
+    insights. Explicitly NOT a training-load app clone — one honest
+    line, same restraint as the rest of the co-pilot surfaces, never a
+    gate on what the schedule allows.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
 harness (v8.x): lifts pure functions out of the app via ast (no tkinter/
-ctypes import, never touches the real data dir) and runs 12 suites
+ctypes import, never touches the real data dir) and runs 14 suites
 covering projection, trajectory, outlook, alignment, review synthesis,
 anomaly watch, recommend-now, energy placement, last-context, break-pull,
-reentry and procrastination. Exit 0 = green. Add a suite there in the
-same commit as any new pure-logic feature.
+reentry, procrastination, metrics and the widened health parser. Exit 0
+= green. Add a suite there in the same commit as any new pure-logic
+feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
+first-hour/thrash/shallow-work/graveyard/mood/usage-meter/best-weeks/
+reallocation batch) were verified by hand per their own commit messages
+and never got selftest suites added — a real gap, not a judgment call;
+worth backfilling opportunistically when touching adjacent code, not as
+its own dedicated session.
 
 The older ad-hoc pattern (extract via ast in a scratch file, seed a messy
 csv — v4 rows, case variants, dups, junk, overlaps — and test
@@ -1571,14 +1732,18 @@ The tkinter surfaces need a real run on the user's Windows machine
 
 ## Git
 
-Private repo `econjp/chrono`, all work happens directly on `master` —
-no other branch is active. (A mobile-session branch,
-`claude/life-management-platform-arch-*`, was cherry-picked into master
-and re-authored on 2026-07-12 — see CLAUDE.md incident log — and its
-now-redundant remote pointer was deleted on 2026-07-13 during the
-v8.1–v8.12 landing audit below. A second mobile branch,
-`claude/finish-date-projection`, held the fourteen v8.1–v8.12 commits
-that landed the same day — kept on origin at the owner's choice even
-though its content is now redundant on master too.) Commit style:
-short imperative title + honest body listing user-visible changes
-first. No AI co-author trailers, ever (CLAUDE.md).
+Private repo `econjp/chrono`. The owner's main machine works directly on
+`master`. Mobile/GitHub Claude Code sessions work on
+`claude/life-management-platform-arch-6s4hrv` (per the harness's own
+designated-branch instructions) and never merge it themselves — the
+owner reviews, audits and merges by hand. That branch has been merged
+and deleted-then-recreated-from-master-tip more than once already as
+work lands and gets cleaned up (most recently 2026-07-14, before v8.27);
+if it's ever merged and gone again, the correct move for the next
+session is exactly that: recreate it fresh from `origin/master`, don't
+assume it still holds anything live. (A second mobile branch,
+`claude/finish-date-projection`, held the v8.1–v8.12 commits that landed
+2026-07-13 — kept on origin at the owner's choice even though its
+content is now redundant on master too; leave it alone unless asked.)
+Commit style: short imperative title + honest body listing user-visible
+changes first. No AI co-author trailers, ever (CLAUDE.md).
