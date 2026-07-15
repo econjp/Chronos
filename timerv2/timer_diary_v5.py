@@ -60,6 +60,30 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.45 (weekly experiment engine — backlog #20, closing the
+diagnose-then-nothing loop):
+  - A new opt-in, in-file convention: typing `EXPERIMENT: no work after
+    21:00` in Monday's header (same convention as SIGNAL/AVOID/ENERGY —
+    never prompted, never auto-inserted, the user types it themselves
+    when they want to). The FOLLOWING Monday's WEEK REVIEW reports that
+    week's measured shift on work, late-evening (≥21:00) minutes and
+    sleep against the trailing 4-week baseline before it: "EXPERIMENT
+    'no work after 21:00': late-evening -1.0h vs baseline; sleep
+    +0.5h/night vs baseline; output +0.0h vs baseline." Deliberately
+    NEVER a verdict on whether the free-text RULE was followed ("kept
+    it 5/7 days") — parsing arbitrary user text into an enforceable
+    check would be too fragile to state honestly; a plain before/after
+    on numbers the app already tracks instead. New
+    `_experiment_from_file`/`_week_metric_totals`/
+    `_experiment_review_line`, hooked into the existing
+    `_week_review_block`. `EXPERIMENT:` also added to the header
+    syntax-highlight rules alongside SIGNAL/AVOID/ENERGY/METRICS.
+    Needs ≥2 real baseline weeks; silent otherwise — stated once in
+    the review, never re-nagged mid-week. New "experiment-engine"
+    selftest suite (a hand-verified 3-metric delta across 4 baseline
+    weeks + the experiment week, silence with no EXPERIMENT declared,
+    silence with too little baseline history); 28/28 green.
+
 New in v8.44 (energy forecast for today — backlog #29, what your body's
 data suggests vs what the weekday table plans):
   - New `_energy_forecast_line(days=90)`, hooked into the morning
@@ -2795,8 +2819,9 @@ class App(tk.Tk):
         (re.compile(r"^(Start|Stop|Reset);"), "raw_event"),
         (re.compile(r"^=== (THEME|END THEME)"), "theme_block"),
         (re.compile(r"^==="), "day_header"),
-        (re.compile(r"^(SIGNAL:|AVOID:|ENERGY:|METRICS:|TODAY:|TODO|"
-                    r"SOMEDAY:|WEEK REVIEW|plan today:|focus order today)"),
+        (re.compile(r"^(SIGNAL:|AVOID:|ENERGY:|METRICS:|EXPERIMENT:|TODAY:|"
+                    r"TODO|SOMEDAY:|WEEK REVIEW|plan today:|"
+                    r"focus order today)"),
          "meta_header"),
         (re.compile(r"⚠|^!!!"), "warn_line"),
         (re.compile(r"^---"), "struct"),
@@ -4127,6 +4152,9 @@ class App(tk.Tk):
             m = self._goal_minutes(g, mon, sun)
             parts.append(f"  {g['name']}: {m / 60:.1f}h")
         parts.append("  what worked / what stole time? ->")
+        exp_line = self._experiment_review_line(mon)
+        if exp_line:
+            parts.append(exp_line)
         return parts
 
     def _week_ahead_lines(self):
@@ -4333,6 +4361,88 @@ class App(tk.Tk):
             self.status.config(
                 text=f"Backfilled {total} item(s) into the task library "
                     "from the last 14 days.")
+
+    def _experiment_from_file(self, iso):
+        """The EXPERIMENT: line text from ONE day's file, or None — same
+        in-file, opt-in, never-prompted convention as SIGNAL/AVOID/
+        ENERGY (backlog #20). Typed once, typically in Monday's header,
+        never suggested by the app itself."""
+        try:
+            with open(self.diary_path(dt.date.fromisoformat(iso)),
+                      encoding="utf-8") as f:
+                for line in f:
+                    s = line.strip()
+                    if s.lower().startswith("experiment:"):
+                        text = s[len("experiment:"):].strip()
+                        return text or None
+        except OSError:
+            pass
+        return None
+
+    def _week_metric_totals(self, monday):
+        """Backlog #20: one week's aggregate (starting `monday`) on the
+        metrics the rest of the app already tracks — work, breaks,
+        late-evening (>=21:00) minutes, average sleep. Shared by the
+        experiment review so declaring and measuring the same numbers
+        doesn't mean two different scans."""
+        days = {(monday + dt.timedelta(days=i)).isoformat() for i in range(7)}
+        idx = day_index()
+        work = sum((idx.get(iso) or {"work": 0})["work"] for iso in days)
+        brk = sum((idx.get(iso) or {"brk": 0})["brk"] for iso in days)
+        late = 0
+        for r in read_rows():
+            if r[0] in days and r[1] != "break":
+                try:
+                    h = int(r[2].split(":")[0]) % 24
+                    if h >= 21:
+                        late += int(r[4])
+                except (ValueError, IndexError):
+                    continue
+        sleeps = [s for s in (self._sleep_h(iso) for iso in days) if s]
+        sleep = sum(sleeps) / len(sleeps) if sleeps else None
+        return {"work": work, "brk": brk, "late": late, "sleep": sleep}
+
+    def _experiment_review_line(self, monday):
+        """Backlog #20: closes the diagnose-then-nothing loop every
+        other insight leaves open. If `monday`'s day file declared an
+        EXPERIMENT, report that week's measured shift on work, late-
+        evening minutes and sleep against the trailing-4-week baseline
+        before it. Deliberately NEVER a verdict on whether the free-
+        text RULE itself was followed ("kept it 5/7 days") — parsing
+        arbitrary user text into an enforceable check would be too
+        fragile to state honestly; a plain before/after on numbers the
+        app already tracks instead. Needs >=2 real baseline weeks;
+        silent otherwise. Stated once here, never re-nagged mid-week."""
+        text = self._experiment_from_file(monday.isoformat())
+        if not text:
+            return None
+        exp = self._week_metric_totals(monday)
+        base = [self._week_metric_totals(monday - dt.timedelta(weeks=w))
+               for w in range(1, 5)]
+        base = [b for b in base if b["work"] or b["brk"]]
+        if len(base) < 2:
+            return None
+
+        def avg(key):
+            vals = [b[key] for b in base if b[key] is not None]
+            return sum(vals) / len(vals) if vals else None
+
+        parts = []
+        b_late = avg("late")
+        if b_late is not None:
+            parts.append(f"late-evening {(exp['late'] - b_late) / 60:+.1f}h "
+                         "vs baseline")
+        b_sleep = avg("sleep")
+        if exp["sleep"] is not None and b_sleep is not None:
+            parts.append(f"sleep {exp['sleep'] - b_sleep:+.1f}h/night vs "
+                         "baseline")
+        b_work = avg("work")
+        if b_work:
+            parts.append(f"output {(exp['work'] - b_work) / 60:+.1f}h vs "
+                         "baseline")
+        if not parts:
+            return None
+        return f"  EXPERIMENT '{text}': " + "; ".join(parts)
 
     def _carry_signal(self):
         """Yesterday's SIGNAL line text (original case), or ''."""

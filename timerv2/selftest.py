@@ -50,7 +50,9 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_break_budget_line", "_lens_registry", "_lens_overlap_lines",
         "_health_extras_lines", "_running_hot_line",
         "_day_fragmentation_tax", "_meeting_fragmentation_lines",
-        "_year_rhythm_grid", "_energy_forecast_line"}
+        "_year_rhythm_grid", "_energy_forecast_line",
+        "_experiment_from_file", "_week_metric_totals",
+        "_experiment_review_line"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -1213,6 +1215,67 @@ def suite_energy_forecast():
     assert D._energy_forecast_line(d3, days) is None
 
 
+def suite_experiment_engine():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    monday = dt.date(2026, 7, 13)          # a Monday
+    assert monday.weekday() == 0, monday.weekday()
+
+    def week_days(mon):
+        return [mon + dt.timedelta(days=i) for i in range(7)]
+
+    rows, sleep = [], {}
+    # 4 baseline weeks (the 4 weeks BEFORE the experiment week): 6 normal
+    # days + a Sunday work block starting 22:00 (late), 7.0h sleep/night
+    for w in range(1, 5):
+        for i, day in enumerate(week_days(monday - dt.timedelta(weeks=w))):
+            sleep[day.isoformat()] = 7.0
+            if i == 6:
+                rows.append([day.isoformat(), "work", "22:00", "23:00",
+                            "60", "x", ""])
+            else:
+                rows.append([day.isoformat(), "work", "09:00", "12:20",
+                            "200", "x", ""])
+    # the experiment week itself: same total minutes (Sunday's block
+    # just moved earlier, off the late-evening hours), 7.5h sleep/night
+    for i, day in enumerate(week_days(monday)):
+        sleep[day.isoformat()] = 7.5
+        if i == 6:
+            rows.append([day.isoformat(), "work", "18:00", "19:00",
+                        "60", "x", ""])
+        else:
+            rows.append([day.isoformat(), "work", "09:00", "12:20",
+                        "200", "x", ""])
+    seed(ns, rows)
+
+    def write_day_file(day, text):
+        with open(os.path.join(tmp, day.isoformat() + ".txt"), "w",
+                  encoding="utf-8") as f:
+            f.write(text)
+
+    write_day_file(monday, "=== Monday 13.07.2026 ===\nSIGNAL: thesis\n"
+                           "EXPERIMENT: no work after 21:00\n")
+    d = _mk(D, diary_path=lambda dd: os.path.join(tmp, dd.isoformat() + ".txt"),
+            _sleep_h=lambda iso: sleep.get(iso))
+
+    line = D._experiment_review_line(d, monday)
+    assert line is not None, line
+    # baseline: 6*200+60=1260m work, 60m late, 7.0h sleep, every week
+    # experiment week: 1260m work (unchanged), 0m late, 7.5h sleep
+    assert line == ("  EXPERIMENT 'no work after 21:00': late-evening "
+                    "-1.0h vs baseline; sleep +0.5h/night vs baseline; "
+                    "output +0.0h vs baseline"), line
+
+    # ---- silence: no EXPERIMENT line declared that week ----
+    write_day_file(monday, "=== Monday 13.07.2026 ===\nSIGNAL: thesis\n")
+    assert D._experiment_review_line(d, monday) is None
+
+    # ---- silence: declared, but too little real baseline history ----
+    write_day_file(monday, "EXPERIMENT: no work after 21:00\n")
+    seed(ns, [r for r in rows if r[0] >= (monday - dt.timedelta(weeks=1)).isoformat()])
+    assert D._experiment_review_line(d, monday) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1236,7 +1299,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("running-hot", suite_running_hot),
           ("meeting-fragmentation", suite_meeting_fragmentation),
           ("year-rhythm", suite_year_rhythm),
-          ("energy-forecast", suite_energy_forecast)]
+          ("energy-forecast", suite_energy_forecast),
+          ("experiment-engine", suite_experiment_engine)]
 
 
 def main():

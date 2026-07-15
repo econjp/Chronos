@@ -4,6 +4,18 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Weekly experiment engine (v8.45)
+
+A new opt-in line for Monday's header — never inserted automatically,
+you type it yourself when you want to run a self-experiment: `EXPERIMENT:
+no work after 21:00`. The FOLLOWING Monday's WEEK REVIEW reports that
+week's measured shift on work, late-evening minutes and sleep against
+the trailing 4-week baseline before it: `EXPERIMENT 'no work after
+21:00': late-evening -1.0h vs baseline; sleep +0.5h/night vs baseline;
+output +0.0h vs baseline.` It never judges whether you actually followed
+the rule — just the honest before/after on the numbers already tracked,
+so you can decide for yourself whether it's worth keeping.
+
 ### Energy forecast for today (v8.44)
 
 A new line in the morning header, right after the co-pilot note: `today

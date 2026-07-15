@@ -950,6 +950,23 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.45** (weekly experiment engine — backlog #20, DONE, closing the
+  diagnose-then-nothing loop). New opt-in in-file convention:
+  `EXPERIMENT: no work after 21:00` typed in Monday's header (never
+  auto-inserted, same convention as SIGNAL/AVOID/ENERGY). The
+  FOLLOWING Monday's WEEK REVIEW reports that week's measured shift
+  on work, late-evening minutes and sleep vs the trailing 4-week
+  baseline — "EXPERIMENT 'no work after 21:00': late-evening -1.0h vs
+  baseline; sleep +0.5h/night vs baseline; output +0.0h vs baseline."
+  Deliberately never verdicts on whether the free-text RULE was
+  followed (too fragile to parse honestly); a plain before/after on
+  tracked numbers instead. New `_experiment_from_file`/
+  `_week_metric_totals`/`_experiment_review_line`, hooked into
+  `_week_review_block`. `EXPERIMENT:` added to the header syntax-
+  highlight rules. New "experiment-engine" selftest suite (hand-
+  verified 3-metric delta, silence with no EXPERIMENT declared,
+  silence with too little baseline history); 28/28 green (new suite,
+  was 27).
 - **v8.44** (energy forecast for today — backlog #29, DONE, what your
   data suggests vs what the weekday table plans). New
   `_energy_forecast_line(days=90)`, hooked into the morning header
@@ -1431,7 +1448,15 @@ purpose; the *walls* are the major thing, and they're now named.
     library's add path; the popup is ~30 lines mirroring the break-pill
     Toplevel. Pure usability, high daily value.
 
-20. **Weekly experiment engine (FEEDBACK → ACTION → MEASUREMENT).** The
+20. ~~**Weekly experiment engine.**~~ — DONE v8.45. New
+    `_experiment_from_file`/`_week_metric_totals`/
+    `_experiment_review_line`, hooked into `_week_review_block`.
+    Deliberately measures numbers (work, late-evening minutes, sleep)
+    rather than parsing the free-text rule into an enforceable
+    compliance check — "kept it 5/7 days" was judged too fragile to
+    state honestly from arbitrary user text. Original design note
+    kept below for reference.
+    (FEEDBACK → ACTION → MEASUREMENT).** The
     insights diagnose ("you're more fragmented", "sleep is worth +1.3h")
     but nothing closes the loop. Opt-in, in-file, one at a time: the user
     types `EXPERIMENT: no work after 21:00` in Monday's header (same
