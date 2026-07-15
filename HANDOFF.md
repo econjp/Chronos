@@ -950,6 +950,21 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.52** (weekly "one less" — backlog #35, DONE, a subtraction
+  advisor). New `_one_less_candidates`: three removal candidates
+  sourced from mechanisms already built this session — the worst
+  single meeting-fragmentation cost (v8.42), the task bounced off
+  most (v8.12), the after-21:00 work that taxes tomorrow (v8.38) —
+  each only included when it clears its own honesty gate. New pure
+  `_pick_one_less`: picks the first candidate that isn't last week's
+  key, falling back to a repeat only when it's the sole remaining
+  option. One line in the Monday review: "THIS WEEK, TRY ONE LESS:
+  the meeting that fragments your day — Wed's meeting cost 1.3h."
+  New "one-less" selftest suite (the pure rotation rule, candidate
+  composition/framing via stubs on the three already-tested
+  sub-insights, an actual back-to-back-repeat avoidance, a single-
+  candidate week correctly repeating instead of going silent);
+  35/35 green (new suite, was 34).
 - **v8.51** (deadline renegotiation tracker — backlog #46, DONE,
   scope-creep honesty). New module-level
   `_deadline_revisions_after_save(old, new, today_iso)`: compares the
@@ -1725,7 +1740,12 @@ purpose; the *walls* are the major thing, and they're now named.
     break→work toggles set `_last_break_secs`), and let a click on the
     status bar put the opener straight into the task box.
 
-35. **Weekly "one less" — subtraction advisor (FEEDBACK).** Every insight
+35. ~~**Weekly "one less" — subtraction advisor.**~~ — DONE v8.52. New
+    `_one_less_candidates` (three sources: meeting fragmentation v8.42,
+    procrastination bounce v8.12, after-21:00 work v8.38) + pure
+    `_pick_one_less` rotation rule, one line in the Monday review.
+    Original design note kept below for reference.
+    (FEEDBACK).** Every insight
     adds awareness; this one subtracts a thing. Each Monday review picks
     ONE concrete removal candidate from the data: the recurring meeting
     that splits your best block (#21's math), the 11:00 email check that

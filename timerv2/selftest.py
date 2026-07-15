@@ -34,7 +34,8 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "day_length_hours", "backup_integrity_line",
        "_free_from_busy", "_deep_capacity_minutes", "_merge_time_intervals",
        "_pinned_after_add", "_pinned_after_remove", "day_totals",
-       "load_settings", "save_settings", "_deadline_revisions_after_save"}
+       "load_settings", "save_settings", "_deadline_revisions_after_save",
+       "_pick_one_less"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -58,7 +59,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_experiment_review_line", "_scan_decisions",
         "_carry_year", "_on_this_day_line", "_lifetime_ledger_line",
         "_estimate_factor", "_deadline_postmortem_lines",
-        "_run_deadline_postmortems", "_deadline_renegotiation_line"}
+        "_run_deadline_postmortems", "_deadline_renegotiation_line",
+        "_one_less_candidates", "_one_less_line"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -1583,6 +1585,61 @@ def suite_deadline_renegotiation():
     assert D2._deadline_renegotiation_line(d, dl4) is None
 
 
+def suite_one_less():
+    D, ns = fresh()
+    pick = ns["_pick_one_less"]
+
+    # ---- pure selection rule ----
+    cands = [("a", "textA"), ("b", "textB")]
+    assert pick(cands, None) == ("a", "textA")        # no history -> first
+    assert pick(cands, "a") == ("b", "textB")          # avoid repeating "a"
+    assert pick(cands, "b") == ("a", "textA")          # avoid repeating "b"
+    assert pick([("a", "textA")], "a") == ("a", "textA")  # only option: repeats
+    assert pick([], "x") is None
+
+    # ---- composition: candidates wired in priority order, with framing ----
+    d = _mk(D)
+    d._meeting_fragmentation_lines = lambda: []
+    d._procrastination_insight = lambda: []
+    d._lag_evening_start_line = lambda: None
+    assert D._one_less_candidates(d) == []
+    d.settings = {}
+    assert D._one_less_line(d) is None
+
+    d._meeting_fragmentation_lines = lambda: ["Wed's meeting cost 1.3h",
+                                              "week total 1.7h"]
+    d._procrastination_insight = lambda: ["you bounce off 'admin' 80% of "
+                                          "the time"]
+    d._lag_evening_start_line = lambda: ("mornings after working past "
+                                         "21:00 you start 1.2h later")
+    assert D._one_less_candidates(d) == [
+        ("meeting_fragmentation", "the meeting that fragments your day — "
+                                  "Wed's meeting cost 1.3h"),
+        ("procrastination", "the task you keep bouncing off — you bounce "
+                            "off 'admin' 80% of the time"),
+        ("late_evening", "the after-21:00 work — mornings after working "
+                         "past 21:00 you start 1.2h later"),
+    ], D._one_less_candidates(d)
+
+    # ---- _one_less_line: picks the first candidate, remembers the key ----
+    d.settings = {}
+    line = D._one_less_line(d)
+    assert line == ("  THIS WEEK, TRY ONE LESS: the meeting that fragments "
+                    "your day — Wed's meeting cost 1.3h"), line
+    assert d.settings["one_less_last_key"] == "meeting_fragmentation"
+
+    # ---- rotates: same qualifying set, different candidate next time ----
+    line2 = D._one_less_line(d)
+    assert "the task you keep bouncing off" in line2, line2
+    assert d.settings["one_less_last_key"] == "procrastination"
+
+    # ---- only one candidate now qualifies: repeats, doesn't go silent ----
+    d._meeting_fragmentation_lines = lambda: []
+    d._lag_evening_start_line = lambda: None
+    line3 = D._one_less_line(d)
+    assert "the task you keep bouncing off" in line3, line3
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1613,7 +1670,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("annual-theme", suite_annual_theme),
           ("lifetime-ledger", suite_lifetime_ledger),
           ("deadline-postmortem", suite_deadline_postmortem),
-          ("deadline-renegotiation", suite_deadline_renegotiation)]
+          ("deadline-renegotiation", suite_deadline_renegotiation),
+          ("one-less", suite_one_less)]
 
 
 def main():

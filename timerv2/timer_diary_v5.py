@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.52 (weekly "one less" — backlog #35, a subtraction advisor):
+  - Every insight so far adds awareness; this one subtracts. New
+    `_one_less_candidates`: three removal candidates sourced entirely
+    from mechanisms this app already has — the single worst meeting-
+    fragmentation cost (v8.42), the task you bounce off most (v8.12),
+    the after-21:00 work that taxes tomorrow (v8.38) — each only
+    included when it already clears its OWN honesty gate. New
+    `_pick_one_less` (pure): picks the first candidate that isn't the
+    one suggested last week, so an ignored candidate doesn't repeat
+    back-to-back while a different one also qualifies — falls back to
+    repeating when it's the only one left (that's not nagging, it's
+    just still true). One line in the Monday review: "THIS WEEK, TRY
+    ONE LESS: the meeting that fragments your day — Wed's meeting cost
+    1.3h." New "one-less" selftest suite (the pure rotation rule in
+    isolation, candidate composition/framing wired via stubs on the
+    three already-tested sub-insights, the rotation actually avoiding a
+    back-to-back repeat, a single-candidate week correctly repeating
+    instead of going silent); 35/35 green.
+
 New in v8.51 (deadline renegotiation tracker — backlog #46, scope-creep
 honesty):
   - Deadlines could always have their date/scope edited silently, with
@@ -1213,6 +1232,19 @@ def _deadline_revisions_after_save(old_deadlines, new_deadlines, today_iso):
                 nd["history"] = hist
         out.append(nd)
     return out
+
+
+def _pick_one_less(candidates, last_key):
+    """Backlog #35: pure selection rule behind the subtraction advisor.
+    `candidates` is [(key, text), ...] in priority order; picks the
+    first whose key isn't the one suggested last week, so an ignored
+    candidate doesn't repeat back-to-back when a different one also
+    qualifies. Falls back to candidates[0] when everything left IS
+    last week's key (the only real candidate repeating isn't nagging,
+    it's just still true)."""
+    if not candidates:
+        return None
+    return next((c for c in candidates if c[0] != last_key), candidates[0])
 
 
 def already_running():
@@ -4570,6 +4602,9 @@ class App(tk.Tk):
         exp_line = self._experiment_review_line(mon)
         if exp_line:
             parts.append(exp_line)
+        one_less = self._one_less_line()
+        if one_less:
+            parts.append(one_less)
         return parts
 
     def _week_ahead_lines(self):
@@ -4858,6 +4893,45 @@ class App(tk.Tk):
         if not parts:
             return None
         return f"  EXPERIMENT '{text}': " + "; ".join(parts)
+
+    def _one_less_candidates(self):
+        """Backlog #35: this week's removal candidates, one honest
+        reframe — subtraction, not another thing to add. Sourced
+        entirely from mechanisms this app already has: the single
+        worst meeting-fragmentation cost (v8.42), the task you bounce
+        off most (v8.12's procrastination pattern), and the after-
+        21:00 work that taxes tomorrow (v8.38's lag check). Returns
+        only candidates that already clear their OWN honesty gate, in
+        priority order; empty when nothing qualifies."""
+        out = []
+        frag = self._meeting_fragmentation_lines()
+        if frag:
+            out.append(("meeting_fragmentation",
+                       f"the meeting that fragments your day — {frag[0]}"))
+        proc = self._procrastination_insight()
+        if proc:
+            out.append(("procrastination",
+                       f"the task you keep bouncing off — {proc[0]}"))
+        evening = self._lag_evening_start_line()
+        if evening:
+            out.append(("late_evening", f"the after-21:00 work — {evening}"))
+        return out
+
+    def _one_less_line(self):
+        """Backlog #35: one line in the Monday review — "this week,
+        try one less: X" — never a list, never a gate, just a single
+        subtraction to consider. Rotates via `_pick_one_less` so an
+        ignored candidate doesn't repeat back-to-back while a
+        different one also qualifies; remembers only the LAST key
+        suggested, not whether it was acted on (that verdict isn't
+        this app's to make)."""
+        pick = _pick_one_less(self._one_less_candidates(),
+                              self.settings.get("one_less_last_key"))
+        if not pick:
+            return None
+        self.settings["one_less_last_key"] = pick[0]
+        save_settings(self.settings)
+        return f"  THIS WEEK, TRY ONE LESS: {pick[1]}"
 
     def _carry_signal(self):
         """Yesterday's SIGNAL line text (original case), or ''."""

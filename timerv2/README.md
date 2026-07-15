@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Weekly "one less" (v8.52)
+
+Every insight so far adds awareness; this one subtracts. The Monday
+review gains one line picking a single removal candidate from data the
+app already tracks — the meeting that fragments your best block, the
+task you keep bouncing off, or the after-21:00 work that taxes
+tomorrow: `THIS WEEK, TRY ONE LESS: the meeting that fragments your day
+— Wed's meeting cost 1.3h`. Rotates between whichever candidates
+qualify that week so the same one doesn't repeat back-to-back while an
+alternative exists — improvement by removal, not another thing to add.
+
 ### Deadline renegotiation tracker (v8.51)
 
 Deadlines could always have their date/scope edited silently, with
