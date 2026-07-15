@@ -2588,6 +2588,55 @@ purpose; the *walls* are the major thing, and they're now named.
     need tuning on their Windows version, that's the first thing to
     check.
 
+82. **Protected windows should shrink the capacity totals too, not just
+    the scheduler (TRUST — an inconsistency this session's own work
+    created).** v8.58's protected time windows (lunch, wind-down)
+    subtract from `_free_slots` — the scheduler's block-placement math
+    — but `_day_capacity`/`_avail_hours`/`_capacity_lines`/v8.61's cost
+    of yes are a SEPARATE aggregate-hours model (weekday capacity minus
+    calendar busy time) that never learned about them. Declare a
+    1h lunch window and the schedule correctly stops offering to book
+    over it, but the capacity dashboard and cost-of-yes preview still
+    quietly count that hour as available — two capacity models
+    disagreeing with each other is exactly the kind of honesty gap
+    this app usually catches elsewhere. Fix: `_day_capacity` should
+    also subtract each protected window's daily duration from the
+    weekday capacity figure, same primitive, one more subtraction.
+
+83. **Milestone-aware status export (USABILITY, connects v8.59 and
+    v8.62).** The conversation-ready status export currently reports a
+    bare projection date ("landing August 04"); when a deadline has a
+    milestone breakdown (v8.59), the external-facing paragraph could
+    say something an advisor actually cares about instead — "currently
+    on ch5 (60% of its hours)" — reusing `_milestone_progress_line`'s
+    own computation rather than the raw date. Falls back to the
+    existing date-based phrasing when no milestones are declared. Pure
+    composition of two things that already exist; no new data.
+
+84. **Cost of yes should surface pre-existing blocked work under the
+    same goal (PLANNING, connects v8.60 and v8.61).** Previewing a new
+    deadline's capacity cost currently only looks at hours; if the
+    goal it's linked to already has blocked task-library items
+    (v8.60's `blocked_by`), that's relevant context for the same
+    decision — "heads up: 2 task(s) under this goal are already
+    blocked" alongside the slack preview. A one-line addition to
+    `_cost_of_yes_line`'s output when `hypothetical.get("goal")`
+    matches blocked tasks' own goal linkage; silent when nothing's
+    blocked, same as today.
+
+85. **Reconcile the focus signature grid with the weekday-aware
+    peak-hour profile idea (ANALYSIS — avoid building the same 2D grid
+    twice, supersedes/refines #73).** #73 (still open) proposed
+    widening `_hour_quality` into its own (weekday, hour) grid for the
+    scheduler; v8.63's `_focus_signature_grid` already computes a
+    (weekday, 4h-bucket) CONSISTENCY grid for a different purpose
+    (self-knowledge, not scheduling). Before building #73 as a second,
+    separate grid, check whether the scheduler's peak-hour quality
+    profile can be DERIVED from the signature grid's own buckets
+    instead (consistency-weighted, at finer hour resolution) — one 2D
+    computation feeding two consumers, not two nearly-identical ones
+    maintained in parallel.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
