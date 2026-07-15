@@ -950,6 +950,19 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.40** (backup integrity check — backlog #63, DONE — the safety
+  net auditing itself). New module-level `backup_integrity_line()`:
+  scans `backups/` for the newest `sessions_YYYY-MM-DD.csv`, silent
+  when it's ≤10 days old (a buffer over the 7-day `backup_if_due`
+  cadence so normal use never sees it), else "last backup: 15 days ago
+  (expected weekly) — the automation may have stopped" (or "no backup
+  found yet" if the folder's empty). Surfaced as the first line of the
+  Data doctor window, opportunistic rather than a startup nag —
+  directly on-brand given the 2026-07-11 dual-instance data-loss
+  incident. New "backup-integrity" selftest suite (silent with no csv
+  yet, speaks when backups/ is empty, silent within the 10-day buffer,
+  speaks past it, picks the newest of several backup files not the
+  oldest); 23/23 green (new suite, was 22).
 - **v8.39** (break budget v2 — backlog #72, DONE, weekday-specific
   norms). `_break_budget_line` (v8.34) now buckets `real_days` by
   `dt.date.weekday()`: uses today's own weekday's median once it has
@@ -1836,8 +1849,14 @@ purpose; the *walls* are the major thing, and they're now named.
     this starts growing enforcement logic, it has become #9 again —
     stop.
 
-63. **Backup integrity check (TRUST — the safety net auditing
-    itself).** #23 (sensor health meter) covers external INPUT sources
+63. ~~**Backup integrity check.**~~ — DONE v8.40. New module-level
+    `backup_integrity_line()`, silent when the newest `backups/` csv
+    is ≤10 days old, else "last backup: 15 days ago (expected weekly)
+    — the automation may have stopped" (or "no backup found yet").
+    Surfaced on the Data doctor window. Original design note kept
+    below for reference.
+    (TRUST — the safety net auditing
+    itself). #23 (sensor health meter) covers external INPUT sources
     going stale (health export, calendar); nothing checks the OUTPUT
     safety net — the weekly `backups/` csv copies — is actually
     current and restorable. One line, checked opportunistically (e.g.

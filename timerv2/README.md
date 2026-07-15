@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Backup integrity check (v8.40)
+
+**Tools → Data doctor** now opens with one more line above the usual
+housekeeping report, but only when it matters: `last backup: 15 days ago
+(expected weekly) — the automation may have stopped`. The weekly
+`backups/` csv copy has run silently since early versions with nothing
+ever checking that it's actually still current — this closes that gap.
+Silent when the newest backup is recent (a 10-day buffer over the 7-day
+cadence, so normal use never sees it); speaks up only if backups have
+genuinely stopped, or never started at all.
+
 ### Health-hub view (v8.36)
 
 **View → Health × focus** gains a second table underneath the existing

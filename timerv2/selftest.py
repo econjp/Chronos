@@ -30,7 +30,7 @@ SRC = os.path.join(HERE, "timer_diary_v5.py")
 TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "fmt_sleep", "_time_span_hours", "_add_hours",
        "parse_health_dir", "_parse_any_date", "_dur_minutes", "_num",
-       "day_length_hours"}
+       "day_length_hours", "backup_integrity_line"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -954,6 +954,49 @@ def suite_health_extras():
     assert "-" in other_line
 
 
+def suite_backup_integrity():
+    D, ns = fresh()
+    fn = ns["backup_integrity_line"]
+    TODAY = dt.date(2026, 7, 14)
+
+    # ---- silence: no sessions.csv yet at all (nothing to protect) ----
+    assert fn(TODAY) is None
+
+    seed(ns, [])   # creates sessions.csv (header only)
+    bdir = os.path.join(ns["data_dir"](), "backups")
+
+    # ---- silence: no backups dir/files yet, but sessions.csv exists ----
+    # (backup_if_due hasn't run yet this session — reported, not silent,
+    # since a brand-new install has an empty backups/ by design and that's
+    # a different situation from one that WAS working and stopped; still,
+    # both should be visible on a Data doctor run)
+    assert fn(TODAY) == ("no backup found yet — the weekly automation "
+                         "may not have run")
+
+    os.makedirs(bdir, exist_ok=True)
+
+    # ---- silence: a recent backup (3 days old) — healthy, no line ----
+    open(os.path.join(bdir, "sessions_2026-07-11.csv"), "w").close()
+    assert fn(TODAY) is None
+
+    # ---- silence: right at the edge (10 days old, the buffer) ----
+    open(os.path.join(bdir, "sessions_2026-07-04.csv"), "w").close()
+    assert fn(TODAY) is None      # (2026-07-11 is still newest, 3d old)
+
+    # ---- speaks: newest backup is stale (15 days old) ----
+    for fname in os.listdir(bdir):
+        os.remove(os.path.join(bdir, fname))
+    open(os.path.join(bdir, "sessions_2026-06-29.csv"), "w").close()
+    line = fn(TODAY)
+    assert line == ("last backup: 15 days ago (expected weekly) — the "
+                    "automation may have stopped"), line
+
+    # ---- picks the NEWEST of several backup files, not the oldest ----
+    open(os.path.join(bdir, "sessions_2026-07-08.csv"), "w").close()  # 6d old
+    assert fn(TODAY) is None      # newest (6d) is healthy even though a
+                                  # 15d-old file also sits in backups/
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -972,7 +1015,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("week-ahead", suite_week_ahead),
           ("break-budget", suite_break_budget),
           ("lens-overlap", suite_lens_overlap),
-          ("health-extras", suite_health_extras)]
+          ("health-extras", suite_health_extras),
+          ("backup-integrity", suite_backup_integrity)]
 
 
 def main():

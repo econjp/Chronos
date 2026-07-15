@@ -60,6 +60,22 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.40 (backup integrity check — backlog #63, the safety net
+auditing itself):
+  - #23's sensor health meter covers external INPUT sources going
+    stale (health export, calendar); nothing checked the OUTPUT side —
+    whether the weekly backups/ csv copy (backup_if_due) is actually
+    still current. New backup_integrity_line(): silent when the
+    newest backup is ≤10 days old, else "last backup: 15 days ago
+    (expected weekly) — the automation may have stopped" (or "no
+    backup found yet" if backups/ is empty entirely). Surfaced on the
+    Data doctor window, opportunistic rather than a startup nag —
+    directly on-brand given the 2026-07-11 dual-instance data-loss
+    incident (CLAUDE.md). New "backup-integrity" selftest suite (silent
+    with no csv yet, speaks when backups/ is empty, silent within the
+    10-day buffer, speaks past it, picks the newest of several backup
+    files not the oldest); 23/23 green.
+
 New in v8.39 (break budget v2 — backlog #72, weekday-specific norms):
   - _break_budget_line (v8.34) blended ALL real workdays into one median
     "full-day norm" regardless of weekday. Now buckets real_days by
@@ -1077,6 +1093,41 @@ def backup_if_due():
         return
     shutil.copy2(SESSIONS_CSV,
                  os.path.join(bdir, f"sessions_{today.isoformat()}.csv"))
+
+
+def backup_integrity_line(today=None):
+    """Backlog #63: the safety net auditing itself. #23 (sensor health
+    meter, v8.x) covers external INPUT sources going stale — health
+    export, calendar. Nothing checked the OUTPUT side: is the weekly
+    backups/ csv copy (backup_if_due, above) actually still current.
+    One line, silent when healthy, surfaced opportunistically on the
+    Data doctor run rather than as a startup nag — a >10-day buffer
+    over the 7-day cadence so a user who opens the app every week or
+    two never sees it, only someone whose backups have genuinely
+    stopped (the kind of check that's cheap until the day it isn't —
+    see the 2026-07-11 dual-instance data-loss incident)."""
+    today = today or dt.date.today()
+    if not os.path.exists(SESSIONS_CSV):
+        return None
+    bdir = os.path.join(data_dir(), "backups")
+    newest = None
+    try:
+        names = os.listdir(bdir)
+    except OSError:
+        names = []
+    for fn in names:
+        try:
+            d = dt.date.fromisoformat(fn[9:19])
+        except (ValueError, IndexError):
+            continue
+        newest = d if newest is None else max(newest, d)
+    if newest is None:
+        return "no backup found yet — the weekly automation may not have run"
+    age = (today - newest).days
+    if age <= 10:
+        return None
+    return (f"last backup: {age} days ago (expected weekly) — the "
+            "automation may have stopped")
 
 
 # ---------------- health csv import (best effort) ----------------
@@ -7845,6 +7896,9 @@ class App(tk.Tk):
 
         def render():
             lines, rename, junk, dups = self._doctor_scan()
+            backup_line = backup_integrity_line()
+            if backup_line:
+                lines = [backup_line, ""] + lines
             txt.config(state="normal")
             txt.delete("1.0", "end")
             txt.insert("1.0", "\n".join(lines))
