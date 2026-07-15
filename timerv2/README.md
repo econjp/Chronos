@@ -4,6 +4,18 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### What's actually on your mind (v8.29)
+
+A new Insight reads the diary text itself — not your tracked task labels,
+the actual prose you've been writing the whole time. It compares word
+frequency over the last 30 days against the 90 days before, and names
+whatever is genuinely trending: *"words appearing more lately:
+'apartment' (0→14 mentions, last 30d vs prior 90d) — what's actually on
+your mind, separate from your tracked tasks."* Every structural line
+(SIGNAL/AVOID/ENERGY/METRICS/timer lines) is excluded — only what you
+actually typed counts. No new logging required; this was sitting in your
+day files the whole time.
+
 ### Daylight (v8.28)
 
 The only data source in the app that needs no export file, no typed

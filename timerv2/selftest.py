@@ -38,9 +38,11 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_recommend_now", "_deep_window", "_hour_quality", "_energy_place",
         "_last_context", "_break_insight", "_pull_level", "_reentry_opener",
         "_procrastination_insight", "_metrics_from_text", "_day_metrics",
-        "_metrics_insight", "_daylight_h", "_daylight_insight"}
+        "_metrics_insight", "_daylight_h", "_daylight_insight",
+        "_diary_word_counts", "_word_drift_insight"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
-CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE"}
+CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
+               "_LINE_TAG_RULES", "_WORD_RE", "_WORD_STOPWORDS"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -557,6 +559,56 @@ def suite_daylight():
     assert "energy: 2.0/5 dark vs 4.0/5 light" in out[1], out
 
 
+def suite_word_drift():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    d = _mk(D, today=dt.date(2026, 7, 13),
+            diary_path=lambda dd: os.path.join(tmp, dd.isoformat() + ".txt"))
+
+    # ---- _diary_word_counts: structural lines excluded, stopwords out ----
+    # (a date well outside either window the drift sub-test below uses,
+    # so the two sub-tests' files in the same tmp dir can't cross-count)
+    p = os.path.join(tmp, "2020-01-01.txt")
+    with open(p, "w", encoding="utf-8") as f:
+        f.write("=== Wednesday 01.01.2020 ===\n"
+                "SIGNAL: apartment, thesis\n"
+                "METRICS: water=6\n"
+                "Start;2020-01-01;09:00:00;0;0;0\n"
+                "--- Task: thesis: ch4\n"
+                "wrote about the apartment search downtown quietly\n"
+                "TODO:\n- call landlord about apartment\n")
+    counts, total = D._diary_word_counts(d, dt.date(2020, 1, 1), dt.date(2020, 1, 1))
+    # only the free-prose line and the TODO bullet's own text count — the
+    # ===/SIGNAL/METRICS/Start/Task/"TODO:" header lines contribute nothing
+    assert counts.get("apartment") == 2, counts     # once per surviving line
+    assert "about" not in counts, counts             # stopword
+    assert "thesis" not in counts, counts    # only appeared inside skipped lines
+    assert total == 8, (counts, total)
+
+    # ---- word-drift insight: a real recent-only word beats steady filler ----
+    # today=2026-07-13, default windows: recent=[06-14..07-13], prior=
+    # [03-16..06-13] — both file batches must fall inside their own window
+    filler = "thesis chapter regression models economics dataset variable estimate"
+    prior_days = [dt.date(2026, 4, 1) + dt.timedelta(days=i) for i in range(10)]
+    recent_days = [dt.date(2026, 6, 20) + dt.timedelta(days=i) for i in range(10)]
+    for pd in prior_days:
+        with open(os.path.join(tmp, pd.isoformat() + ".txt"), "w",
+                  encoding="utf-8") as f:
+            f.write(filler + "\n")
+    for rd in recent_days:
+        with open(os.path.join(tmp, rd.isoformat() + ".txt"), "w",
+                  encoding="utf-8") as f:
+            f.write(filler + " apartment moving apartment search\n")
+    out = D._word_drift_insight(d)
+    assert out and "'apartment'" in out[0], out
+    assert "(0→20 mentions, last 30d vs prior 90d)" in out[0], out
+
+    # ---- silence gate: too little total volume either side ----
+    d2 = _mk(D, today=dt.date(2099, 1, 1),
+             diary_path=lambda dd: os.path.join(tmp, dd.isoformat() + ".txt"))
+    assert D._word_drift_insight(d2) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -568,7 +620,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("procrastination", suite_procrastination),
           ("metrics", suite_metrics),
           ("health-parse", suite_health_parse),
-          ("daylight", suite_daylight)]
+          ("daylight", suite_daylight),
+          ("word-drift", suite_word_drift)]
 
 
 def main():

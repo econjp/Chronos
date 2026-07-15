@@ -60,6 +60,26 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.29 (word drift — the diary's own free text, unlocked at last):
+  - a new insight reads what you actually WROTE, not just your tracked
+    task labels: _diary_word_counts tokenizes free-typed diary text
+    (skipping every structural line via the same _LINE_TAG_RULES the
+    syntax highlighter uses — no SIGNAL/METRICS/TODO/timer line ever
+    counts), and _word_drift_insight compares normalised word frequency
+    over the last 30 days against the 90 before that, naming the word
+    with the sharpest real increase: "words appearing more lately:
+    'apartment' (0→14 mentions, last 30d vs prior 90d) — what's
+    actually on your mind, separate from your tracked tasks." No new
+    source needed — the diary text has been fully collected the whole
+    time, this is the first thing to actually read it as itself.
+  - fix, found while building this: METRICS:/TODAY: lines (v8.27/v8.16)
+    were never added to _LINE_TAG_RULES, so they rendered as plain
+    diary text instead of bold like SIGNAL/AVOID/ENERGY — fixed, and
+    it's also what made this feature's line-skipping correct from day
+    one instead of double-counting those lines as prose.
+  - selftest suite 16 (structural-line exclusion, stopwords, the real
+    drift-detection case, the volume-gate silence case).
+
 New in v8.28 (daylight — a data source that needs no export file at all):
   - Tools > "Daylight location (latitude)…" — a single latitude (no
     address, no network, no API key) powers day_length_hours(), a
@@ -2389,8 +2409,9 @@ class App(tk.Tk):
         (re.compile(r"^(Start|Stop|Reset);"), "raw_event"),
         (re.compile(r"^=== (THEME|END THEME)"), "theme_block"),
         (re.compile(r"^==="), "day_header"),
-        (re.compile(r"^(SIGNAL:|AVOID:|ENERGY:|TODO|SOMEDAY:|WEEK REVIEW|"
-                    r"plan today:|focus order today)"), "meta_header"),
+        (re.compile(r"^(SIGNAL:|AVOID:|ENERGY:|METRICS:|TODAY:|TODO|"
+                    r"SOMEDAY:|WEEK REVIEW|plan today:|focus order today)"),
+         "meta_header"),
         (re.compile(r"⚠|^!!!"), "warn_line"),
         (re.compile(r"^---"), "struct"),
     ]
@@ -5722,6 +5743,94 @@ class App(tk.Tk):
                        f"{sum(hi_en) / len(hi_en):.1f}/5 light")
         return out
 
+    # ----- word-frequency drift (the diary's own free text, unlocked) -----
+    #
+    # Every other insight reads the STRUCTURED data (csv minutes, SIGNAL
+    # keywords, ENERGY numbers). The diary's free-typed prose is fully
+    # collected too and has been the whole time — just never analysed on
+    # its own terms. This doesn't need a new source; it needs someone to
+    # actually read what's already there.
+
+    _WORD_RE = re.compile(r"[^\W\d_]{4,}")
+    _WORD_STOPWORDS = {
+        # English function words — cuts obvious noise, not linguistically
+        # exhaustive on purpose (see the module's stdlib-only rule: no NLP
+        # library, just a short hand list).
+        "the", "and", "that", "this", "with", "from", "have", "were", "was",
+        "been", "being", "will", "would", "could", "should", "about",
+        "into", "over", "after", "before", "just", "also", "very", "really",
+        "still", "already", "today", "yesterday", "tomorrow", "week",
+        "month", "these", "those", "they", "them", "their", "your", "our",
+        # Finnish function words — the diary is bilingual (see README's own
+        # example break notes: "käv", "puhelin", "jt viestei")
+        "että", "koska", "mutta", "myös", "vielä", "tänään", "huomenna",
+        "eilen", "tämä", "nämä", "hänen", "heidän", "minun", "sinun",
+    }
+
+    def _diary_word_counts(self, lo, hi):
+        """Lowercased word counts (letters only, len>=4, stopwords out)
+        across free-typed diary text in [lo, hi] inclusive — skips every
+        structural line via the same `_LINE_TAG_RULES` classifier the
+        syntax highlighter uses, so only what you actually wrote counts,
+        never a SIGNAL/METRICS/TODO/timer line."""
+        skip = [p for p, _ in self._LINE_TAG_RULES]
+        counts, total = {}, 0
+        d = lo
+        while d <= hi:
+            try:
+                with open(self.diary_path(d), encoding="utf-8") as f:
+                    text = f.read()
+            except OSError:
+                d += dt.timedelta(days=1)
+                continue
+            for line in text.splitlines():
+                s = line.strip()
+                if not s or any(p.search(s) for p in skip):
+                    continue
+                for w in self._WORD_RE.findall(s.lower()):
+                    if w in self._WORD_STOPWORDS:
+                        continue
+                    counts[w] = counts.get(w, 0) + 1
+                    total += 1
+            d += dt.timedelta(days=1)
+        return counts, total
+
+    def _word_drift_insight(self, recent_days=30, prior_days=90):
+        """What's actually occupying your mind lately, separate from your
+        tracked task labels — the word with the sharpest real increase in
+        the last `recent_days` vs the `prior_days` before that. Compares
+        NORMALISED share (count / window total) so different window
+        lengths don't skew it. Needs real volume both sides (>=30 words
+        each) and a real jump (>=3 recent mentions, and either new or
+        >=3x its prior share) — a single passing mention never qualifies."""
+        recent_hi = self.today
+        recent_lo = recent_hi - dt.timedelta(days=recent_days - 1)
+        prior_hi = recent_lo - dt.timedelta(days=1)
+        prior_lo = prior_hi - dt.timedelta(days=prior_days - 1)
+        rec_counts, rec_total = self._diary_word_counts(recent_lo, recent_hi)
+        pri_counts, pri_total = self._diary_word_counts(prior_lo, prior_hi)
+        if rec_total < 30 or pri_total < 30:
+            return []
+        best = None    # (score, word, rec_n, pri_n)
+        for w, rn in rec_counts.items():
+            if rn < 3:
+                continue
+            rec_pct = rn / rec_total
+            pn = pri_counts.get(w, 0)
+            pri_pct = pn / pri_total
+            if not (pn == 0 or rec_pct >= 3 * pri_pct):
+                continue
+            score = rec_pct - pri_pct
+            if best is None or score > best[0]:
+                best = (score, w, rn, pn)
+        if not best:
+            return []
+        _score, word, rn, pn = best
+        return [f"words appearing more lately: '{word}' ({pn}→{rn} "
+                f"mentions, last {recent_days}d vs prior {prior_days}d) — "
+                "what's actually on your mind, separate from your tracked "
+                "tasks"]
+
     def _life_day(self, d, signal=True):
         """Everything the app knows about one date, merged into ONE dict —
         the unit every consolidated view consumes: timer minutes from the
@@ -6710,6 +6819,7 @@ class App(tk.Tk):
         out += self._mood_insight()
         out += self._metrics_insight()
         out += self._daylight_insight()
+        out += self._word_drift_insight()
         out += self._best_weeks_lines()
         out += self._trajectory_lines()
         return out

@@ -840,6 +840,25 @@ purpose; the *walls* are the major thing, and they're now named.
   the free stuff now, even when the payoff is literally seasons away.
   selftest suite 15 (formula reference points, off-by-default, all three
   silence gates, the positive-fire case); 15/15 green.
+- **v8.29** (word drift — Pillar B/Memory, the diary's own text finally
+  read as itself, DONE). `_diary_word_counts(lo, hi)` tokenizes free-
+  typed diary text (unicode word chars, len≥4, small EN+FI stopword
+  list), skipping every structural line via the SAME `_LINE_TAG_RULES`
+  the syntax highlighter already uses — no double-reading of SIGNAL/
+  METRICS/TODO/timer lines as if they were prose. `_word_drift_insight`
+  compares normalised frequency over the last 30 days vs the prior 90,
+  naming the word with the sharpest real increase (n≥3 recent mentions,
+  either brand-new or ≥3x its prior share; ≥30 total words each side or
+  silent). No new source — the diary text has always been fully
+  captured, this is the first view to read it on its own terms rather
+  than only mining it for TODO/SOMEDAY bullets. Real bug fixed en route:
+  `METRICS:`/`TODAY:` lines (v8.27/v8.16) were missing from
+  `_LINE_TAG_RULES` and rendered as plain unstyled text instead of bold
+  like their siblings — also would have polluted this feature's word
+  counts had it not been caught first. selftest suite 16 (exclusion
+  correctness incl. TODO-bullet-text-counts-but-TODO-header-doesn't,
+  stopwords, the drift-detection case with hand-verified arithmetic, the
+  volume-gate silence case); 16/16 green.
 
 ## BACKLOG (priority order — continue here)
 
@@ -1728,12 +1747,12 @@ purpose; the *walls* are the major thing, and they're now named.
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
 harness (v8.x): lifts pure functions out of the app via ast (no tkinter/
-ctypes import, never touches the real data dir) and runs 15 suites
+ctypes import, never touches the real data dir) and runs 16 suites
 covering projection, trajectory, outlook, alignment, review synthesis,
 anomaly watch, recommend-now, energy placement, last-context, break-pull,
-reentry, procrastination, metrics, the widened health parser and
-daylight. Exit 0 = green. Add a suite there in the same commit as any
-new pure-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
+reentry, procrastination, metrics, the widened health parser, daylight
+and word drift. Exit 0 = green. Add a suite there in the same commit as
+any new pure-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
 first-hour/thrash/shallow-work/graveyard/mood/usage-meter/best-weeks/
 reallocation batch) were verified by hand per their own commit messages
 and never got selftest suites added — a real gap, not a judgment call;
