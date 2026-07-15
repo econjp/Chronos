@@ -950,6 +950,17 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.39** (break budget v2 — backlog #72, DONE, weekday-specific
+  norms). `_break_budget_line` (v8.34) now buckets `real_days` by
+  `dt.date.weekday()`: uses today's own weekday's median once it has
+  its own n≥10 ("full-day norm ~50m (Mons)"), matching the weekday-
+  aware capacity table (`_capacity`, v5.8) the rest of the app already
+  assumes; falls back to the old all-days blend when a specific
+  weekday doesn't have its own n≥10 yet. Existing "break-budget"
+  selftest suite extended with a per-weekday-engaged case (10 Mondays
+  at 50m vs 10 Tuesdays at 10m, weekday median wins) and a fallback
+  case (9 Tuesdays stays under n≥10, blend applies, no weekday tag);
+  22/22 green (no new suite — an existing one grew).
 - **v8.38** (lag correlation #4 — backlog #70, DONE). A fourth check
   joins `_lag_insight`: `_shallow_threshold`/`_day_shallow_frac` factored
   out of `_shallow_work_lines` (v8.19) so the same shallow-block logic
@@ -1958,8 +1969,12 @@ purpose; the *walls* are the major thing, and they're now named.
     which already takes an arbitrary query string — no change to the
     ranking logic at all, just a shortcut to populate the entry.
 
-72. **Break budget v2 — weekday-specific norms (ANALYSIS, extends
-    v8.34).** `_break_budget_line` currently blends ALL real workdays
+72. ~~**Break budget v2 — weekday-specific norms.**~~ — DONE v8.39.
+    `_break_budget_line` buckets `real_days` by weekday and uses
+    today's own weekday's median once it has its own n≥10, falling
+    back to the all-days blend otherwise. Original design note kept
+    below for reference.
+    (ANALYSIS, extends v8.34). `_break_budget_line` currently blends ALL real workdays
     into one median "full-day norm" regardless of weekday — but Friday
     afternoons and Tuesday mornings plausibly have genuinely different
     real break patterns, and blending them into one number is less

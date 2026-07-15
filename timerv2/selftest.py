@@ -844,6 +844,46 @@ def suite_break_budget():
     seed(ns, rows[:6])     # only the 3 early days survive
     assert D._break_budget_line(d, 60, 11) is None
 
+    # ---- v2 (backlog #72): weekday-specific norm once today's weekday
+    # has its own n>=10, overriding the all-days blend ----
+    D2, ns2 = fresh()
+    TODAY2 = dt.date(2026, 4, 20)          # a Monday
+    assert TODAY2.weekday() == 0, TODAY2.weekday()
+    mondays = [TODAY2 - dt.timedelta(weeks=i) for i in range(1, 11)]   # 10 Mondays
+    tuesdays = [TODAY2 - dt.timedelta(weeks=i) + dt.timedelta(days=1)
+                for i in range(1, 11)]                                 # 10 Tuesdays
+    rows2 = []
+    for x in mondays:
+        rows2 += work_break(x.isoformat(), 50, 20)    # Mondays: big breaks
+    for x in tuesdays:
+        rows2 += work_break(x.isoformat(), 10, 20)    # Tuesdays: small breaks
+    rows2 += [["2026-04-20", "break", "08:00", "08:45", "45", "", ""]]  # today
+    seed(ns2, rows2)
+    d2 = _mk(D2, today=TODAY2)
+    line2 = D2._break_budget_line(d2, 90, 11)
+    assert line2 is not None, line2
+    # 10 Mondays >= n>=10 -> weekday-specific median (50m), not the
+    # all-days blend (median of [50]*10 + [10]*10 = 30m)
+    assert "full-day norm ~50m (Mons)" in line2, line2
+
+    # ---- v2 fallback: today's weekday doesn't have its own n>=10 yet ----
+    d3 = _mk(D2, today=dt.date(2026, 4, 21))   # a Tuesday
+    wednesdays = [TODAY2 - dt.timedelta(weeks=i) + dt.timedelta(days=2)
+                  for i in range(1, 11)]                               # 10 Wednesdays
+    rows3 = []
+    for x in mondays:
+        rows3 += work_break(x.isoformat(), 50, 20)         # 10 Mondays: big breaks
+    for x in tuesdays[:9]:
+        rows3 += work_break(x.isoformat(), 10, 20)         # only 9 Tuesdays: n<10
+    for x in wednesdays:
+        rows3 += work_break(x.isoformat(), 10, 20)         # 10 Wednesdays: small breaks
+    seed(ns2, rows3)
+    line3 = D2._break_budget_line(d3, 90, 11)
+    assert line3 is not None, line3
+    assert "(Tues)" not in line3, line3     # 9 Tuesdays < n>=10 -> no per-weekday tag
+    # all-days blend: 29 values = ten 50s + nineteen 10s -> median (index 14) = 10m
+    assert "full-day norm ~10m" in line3, line3
+
 
 def suite_lens_overlap():
     D, ns = fresh()

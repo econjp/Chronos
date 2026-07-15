@@ -24,7 +24,7 @@ keyword collision that never fired — `'run'/'training' both match Body
 (goal) and Fitness (domain) — 5.0h counted toward both in the last 30d`.
 Silent when everything's genuinely disjoint.
 
-### Break budget (v8.34)
+### Break budget (v8.34, weekday-specific in v8.39)
 
 The totals line gains one more segment — a reframe, not a verdict. Instead
 of judging each break, it learns a daily **allowance** from your own good
@@ -32,6 +32,13 @@ days: `breaks so far 45m · your typical by this hour 0m · full-day norm
 ~90m`. Budgets change behaviour where per-event nagging (the pull-back,
 the doomscroll insight) doesn't reach — a number to plan around, not
 another scold.
+
+v8.39 makes the norm weekday-aware: once *today's own weekday* has enough
+history of its own (10+ of that specific weekday), the norm switches from
+an all-days blend to that weekday's median — `full-day norm ~50m (Mons)`
+— since Friday afternoons and Tuesday mornings plausibly run genuinely
+different real break patterns. Falls back to the old all-days blend until
+a given weekday has its own history.
 
 ### Metrics shorthand (v8.33)
 

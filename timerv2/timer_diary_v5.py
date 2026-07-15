@@ -60,6 +60,20 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.39 (break budget v2 — backlog #72, weekday-specific norms):
+  - _break_budget_line (v8.34) blended ALL real workdays into one median
+    "full-day norm" regardless of weekday. Now buckets real_days by
+    dt.date.weekday() and uses TODAY's own weekday's median when there's
+    enough history for it specifically (n≥10) — "full-day norm ~50m
+    (Mons)" instead of a blend that quietly mixes Friday-afternoon and
+    Tuesday-morning break patterns. Falls back to the all-days blend
+    when a specific weekday doesn't have its own n≥10 yet (most users
+    won't, at first — the gate degrades per-weekday, not to silence),
+    same as the plain "full-day norm ~Xm" from before. Matches the
+    weekday-aware capacity table (_capacity, v5.8) the rest of the app
+    already assumes. Existing "break-budget" selftest suite extended
+    with a per-weekday-engaged case and a fallback case.
+
 New in v8.38 (lag correlation #4 — backlog #70, fragmentation carries over):
   - a fourth check joins _lag_insight: does yesterday's task-switching
     predict a SHALLOWER today, not just a scattered yesterday (#16 is
@@ -6784,12 +6798,20 @@ class App(tk.Tk):
         return []
 
     def _break_budget_line(self, days=60, now_hour=None):
-        """Backlog #33: a daily ALLOWANCE learned from your own good days
-        — a reframe, not a verdict on any one break. Per-event judgment
-        (the pull-back, the doomscroll insight above) doesn't reach
-        every situation; a budget changes behaviour where nagging fails,
-        and it's a genuine number to plan around rather than a scold.
-        Needs n>=10 real workdays in history to speak."""
+        """Backlog #33 (+ v2 weekday split, #72): a daily ALLOWANCE
+        learned from your own good days — a reframe, not a verdict on
+        any one break. The full-day norm uses TODAY's own weekday when
+        there's enough history for it specifically (n>=10) — Friday
+        afternoons and Tuesday mornings plausibly have genuinely
+        different real break patterns, matching the weekday-aware
+        capacity table (`_capacity`, v5.8) the rest of the app already
+        assumes — falling back to the all-days blend otherwise (most
+        users won't have 10+ of one specific weekday at first; the
+        honesty gate degrades per-weekday, not to silence). Per-event
+        judgment (the pull-back, the doomscroll insight above) doesn't
+        reach every situation; a budget changes behaviour where nagging
+        fails. Needs n>=10 real workdays in history (any weekday) to
+        speak at all."""
         now_hour = dt.datetime.now().hour if now_hour is None else now_hour
         cutoff = (self.today - dt.timedelta(days=days)).isoformat()
         today_iso = self.today.isoformat()
@@ -6798,7 +6820,11 @@ class App(tk.Tk):
                     if cutoff <= iso < today_iso and rec["work"] >= 3 * 60}
         if len(real_days) < 10:
             return None
-        norms = sorted(idx[iso]["brk"] for iso in real_days)
+        weekday_days = {iso for iso in real_days if
+                        dt.date.fromisoformat(iso).weekday() == self.today.weekday()}
+        per_weekday = len(weekday_days) >= 10
+        norm_pool = weekday_days if per_weekday else real_days
+        norms = sorted(idx[iso]["brk"] for iso in norm_pool)
         norm = norms[len(norms) // 2]
         cum_by_day = dict.fromkeys(real_days, 0)
         for r in read_rows():
@@ -6811,8 +6837,10 @@ class App(tk.Tk):
                 continue
         typical = sorted(cum_by_day.values())[len(cum_by_day) // 2]
         today_brk = idx.get(today_iso, {"brk": 0})["brk"]
+        norm_label = (f"~{norm}m ({self.today:%a}s)" if per_weekday
+                     else f"~{norm}m")
         return (f"breaks so far {today_brk}m · your typical by this hour "
-               f"{typical}m · full-day norm ~{norm}m")
+               f"{typical}m · full-day norm {norm_label}")
 
     _DECAY_BUCKETS = [(0, 30), (30, 45), (45, 60), (60, 75), (75, 999)]
 
