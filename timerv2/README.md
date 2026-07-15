@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Lens overlap check (v8.35)
+
+Every percentage this app has ever shown you — alignment shares, signal
+%, goal minutes — quietly assumes your SIGNAL/AVOID/goals/domains/
+deadlines keywords are disjoint. Nothing ever checked. **View → Lens
+overlap check** audits it: finds every pair of declared lenses that
+actually matched the *same real tracked minutes*, not just a coincidental
+keyword collision that never fired — `'run'/'training' both match Body
+(goal) and Fitness (domain) — 5.0h counted toward both in the last 30d`.
+Silent when everything's genuinely disjoint.
+
 ### Break budget (v8.34)
 
 The totals line gains one more segment — a reframe, not a verdict. Instead

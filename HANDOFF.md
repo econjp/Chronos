@@ -918,6 +918,20 @@ purpose; the *walls* are the major thing, and they're now named.
   `read_rows()` scan there. selftest suite 20 specifically constructed
   to catch the zero-fill omission (asserts the correct 0m, which a naive
   implementation would instead compute as 200m); 20/20 green.
+- **v8.35** (lens overlap check — backlog #48, DONE). `_lens_registry`
+  gathers every declared goal/domain/scoped-deadline keyword lens
+  (empty-match deadlines excluded — overlap with "everything" isn't
+  actionable). `_lens_overlap_lines` checks every PAIR for REAL
+  double-counted minutes in the last 30 days — deliberately not just a
+  keyword-string intersection, since two DIFFERENT keywords can each
+  independently match the same task name with zero shared keyword
+  string (tested explicitly: "run" + "training" both matching "morning
+  run training"). View > "Lens overlap check…" is its own window
+  (mirrors Data doctor), not folded into `_insight_lines` — the nested
+  pairs×days×tasks scan doesn't belong in the per-refresh insight path.
+  selftest suite 21 (registry exclusion, the no-shared-string-but-real-
+  overlap case, keyword-collision-that-never-fired stays silent,
+  no-overlap and <2-lenses silence); 21/21 green.
 
 ## BACKLOG (priority order — continue here)
 
@@ -1561,8 +1575,13 @@ purpose; the *walls* are the major thing, and they're now named.
     footer alongside the projection line). Uses `_dl_progress`'s own
     `behind` flag directly rather than re-deriving it.
 
-48. **Lens overlap check (TRUST/HYGIENE — the honesty layer auditing
-    itself).** Nothing currently checks whether two goals/domains/
+48. ~~**Lens overlap check (TRUST/HYGIENE — the honesty layer auditing
+    itself).**~~ — DONE v8.35. `_lens_registry` + `_lens_overlap_lines`
+    + View > "Lens overlap check…" (own window, not folded into
+    `_insight_lines` — an O(pairs × days × tasks) nested scan didn't
+    belong in the per-refresh insight path; deliberately opened on
+    demand like Data doctor). Original design note kept below.
+    Nothing currently checks whether two goals/domains/
     deadlines share keywords. If "run" matches both the Body domain and
     a "GMAT prep" goal by a copy-paste accident, that hour silently
     double-counts toward two different percentages — every honesty-gated
@@ -1834,13 +1853,13 @@ purpose; the *walls* are the major thing, and they're now named.
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
 harness (v8.x): lifts pure functions out of the app via ast (no tkinter/
-ctypes import, never touches the real data dir) and runs 20 suites
+ctypes import, never touches the real data dir) and runs 21 suites
 covering projection, trajectory, outlook, alignment, review synthesis,
 anomaly watch, recommend-now, energy placement, last-context, break-pull,
 reentry, procrastination, metrics, the widened health parser, daylight,
-word drift, the diary ranker, lag correlations, the week-ahead brief and
-the break budget. Exit 0 = green. Add a suite there in the same commit
-as any new pure-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
+word drift, the diary ranker, lag correlations, the week-ahead brief, the
+break budget and lens overlap. Exit 0 = green. Add a suite there in the
+same commit as any new pure-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
 first-hour/thrash/shallow-work/graveyard/mood/usage-meter/best-weeks/
 reallocation batch) were verified by hand per their own commit messages
 and never got selftest suites added — a real gap, not a judgment call;

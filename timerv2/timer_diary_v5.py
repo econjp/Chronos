@@ -60,6 +60,20 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.35 (lens overlap check — backlog #48, the honesty layer audits itself):
+  - View > "Lens overlap check…": every % this app has ever printed
+    (alignment shares, signal%, goal minutes) assumes SIGNAL/AVOID/
+    goals/domains/deadlines are disjoint keyword lenses — nothing ever
+    verified that. Checks every PAIR of declared lenses for REAL
+    double-counted minutes in the last 30 days, not just a coincidental
+    keyword-string collision: "'run'/'training' both match Body (goal)
+    and Fitness (domain) — 5.0h counted toward both in the last 30d."
+    Catches the harder case too — two DIFFERENT keywords each
+    independently matching the same task name, with no shared keyword
+    string at all (the actual reason a naive "do these keyword lists
+    intersect" check wouldn't be enough). Silent when nothing overlaps
+    or fewer than 2 lenses are declared. selftest suite 21.
+
 New in v8.34 (break budget — backlog #33, a reframe instead of a verdict):
   - the totals line gains one more segment, learned from your own good
     days rather than judging any single break: "breaks so far 45m ·
@@ -1838,6 +1852,8 @@ class App(tk.Tk):
                           command=self._tracked("Life alignment", self._alignment_win))
         viewm.add_command(label="Life review — synthesized briefing…",
                           command=self._tracked("Life review", self._life_review_win))
+        viewm.add_command(label="Lens overlap check…",
+                          command=self._tracked("Lens overlap", self._lens_overlap_win))
         viewm.add_command(label="What should I do now?",
                           command=self._tracked("Recommend now", self._show_recommend_now))
         viewm.add_command(label="Health × focus (14 days)",
@@ -2067,6 +2083,90 @@ class App(tk.Tk):
 
     def _domain_minutes(self, dom, lo, hi):
         return matched_minutes(self._match_kws(dom.get("match")), lo, hi)
+
+    # ----- lens overlap check (the honesty layer auditing itself) -----
+    #
+    # Backlog #48. Every honesty-gated % this app prints (alignment
+    # shares, signal%, goal minutes) assumes the declared lenses are
+    # DISJOINT — nothing has ever verified that assumption. A copy-paste
+    # keyword accident between two goals silently double-counts an hour
+    # toward two different percentages, forever, with no one the wiser.
+
+    def _lens_registry(self):
+        """Every declared keyword lens as (category, name, keywords).
+        Deadlines with an empty match ('count all work') are excluded —
+        overlap with 'everything' isn't an actionable finding."""
+        out = []
+        for g in self.goals():
+            kws = self._match_kws(g.get("match"))
+            if kws:
+                out.append(("goal", g["name"], kws))
+        for dom in self.domains():
+            kws = self._match_kws(dom.get("match"))
+            if kws:
+                out.append(("domain", dom["name"], kws))
+        for dl in self.deadlines():
+            kws = self._match_kws(dl.get("match"))
+            if kws:
+                out.append(("deadline", dl["name"], kws))
+        return out
+
+    def _lens_overlap_lines(self, days=30):
+        """Checks every PAIR of declared lenses for REAL double-counted
+        minutes in the last `days` — not just a coincidental keyword-
+        string collision that never actually fired on a real task name
+        (the more useful check the backlog called for: two different
+        keywords can each independently match the same task, e.g. 'run'
+        and 'training' both matching 'morning run training', with no
+        shared keyword string at all). Only pairs with real overlapping
+        time are reported; a keyword string match is cosmetic detail on
+        top of that, not the gate itself."""
+        reg = self._lens_registry()
+        if len(reg) < 2:
+            return []
+        idx = day_index()
+        cutoff = (self.today - dt.timedelta(days=days)).isoformat()
+        recent = {iso: rec for iso, rec in idx.items() if iso >= cutoff}
+        out = []
+        for i in range(len(reg)):
+            cat_a, name_a, kws_a = reg[i]
+            for j in range(i + 1, len(reg)):
+                cat_b, name_b, kws_b = reg[j]
+                if cat_a == cat_b and name_a == name_b:
+                    continue
+                double_min = 0
+                for rec in recent.values():
+                    for t, m in rec["tasks"].items():
+                        if task_matches(t, kws_a) and task_matches(t, kws_b):
+                            double_min += m
+                if double_min <= 0:
+                    continue
+                shared = set(kws_a) & set(kws_b)
+                what = f"'{next(iter(shared))}'" if shared else "overlapping keywords"
+                out.append((double_min, f"{what} matches both {name_a} "
+                           f"({cat_a}) and {name_b} ({cat_b}) — "
+                           f"{double_min / 60:.1f}h counted toward both "
+                           f"in the last {days}d"))
+        out.sort(key=lambda x: -x[0])
+        return [line for _m, line in out[:5]]
+
+    def _lens_overlap_win(self):
+        win = tk.Toplevel(self)
+        win.title("Lens overlap check — the honesty layer auditing itself")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10),
+                      width=86, height=18)
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        lines = self._lens_overlap_lines()
+        if not lines:
+            lines = ["No overlap found — every declared SIGNAL/AVOID/"
+                    "goal/domain/deadline keyword lens matched disjoint "
+                    "tasks over the last 30 days. Every % this app has "
+                    "printed from them is honest.",
+                    "",
+                    "(Checks goals, domains and scoped deadlines against "
+                    "each other; re-run any time you add or edit one.)"]
+        txt.insert("1.0", "\n".join(lines))
+        txt.config(state="disabled")
 
     def _alignment_lines(self, weeks=8):
         """Where your tracked time actually went, by life domain, over the

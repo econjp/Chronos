@@ -43,7 +43,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_diary_rank_days", "_matching_days_text",
         "_lag_workout_line", "_lag_sleep_debt_line", "_day_start_late_map",
         "_lag_evening_start_line", "_lag_insight", "_week_ahead_lines",
-        "_break_budget_line"}
+        "_break_budget_line", "_lens_registry", "_lens_overlap_lines"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -799,6 +799,50 @@ def suite_break_budget():
     assert D._break_budget_line(d, 60, 11) is None
 
 
+def suite_lens_overlap():
+    D, ns = fresh()
+    d = _mk(D, today=dt.date(2026, 7, 13))
+    d._match_kws = lambda spec: [k.strip().lower()
+                                 for k in (spec or "").split(",") if k.strip()]
+
+    # ---- registry: empty-match deadline excluded, others included ----
+    d.goals = lambda: [{"name": "Body", "match": "run, gym"}]
+    d.domains = lambda: [{"name": "Growth", "match": "finnish"}]
+    d.deadlines = lambda: [{"name": "Thesis", "match": "thesis"},
+                          {"name": "Everything", "match": ""}]
+    reg = D._lens_registry(d)
+    names = {n for _c, n, _k in reg}
+    assert names == {"Body", "Growth", "Thesis"}, reg   # "Everything" excluded
+
+    # ---- real double-count via DIFFERENT keywords, no shared string ----
+    days = [dt.date(2026, 6, 1) + dt.timedelta(days=i) for i in range(5)]
+    rows = [row(x.isoformat(), 60, "morning run training") for x in days]
+    seed(ns, rows)
+    d.goals = lambda: [{"name": "Body", "match": "run"}]
+    d.domains = lambda: [{"name": "Fitness", "match": "training"}]
+    d.deadlines = lambda: []
+    out = D._lens_overlap_lines(d, 60)
+    assert out, "same task matched by two disjoint-string keywords must fire"
+    assert "Body" in out[0] and "Fitness" in out[0] and "5.0h" in out[0], out
+
+    # ---- keyword-STRING overlap that never matches a real task -> silent ----
+    d.goals = lambda: [{"name": "A", "match": "unicorn"}]
+    d.domains = lambda: [{"name": "B", "match": "unicorn"}]
+    seed(ns, [row("2026-06-01", 60, "email")])   # no task ever mentions it
+    assert D._lens_overlap_lines(d, 60) == []
+
+    # ---- no real overlap at all ----
+    d.goals = lambda: [{"name": "Body", "match": "run"}]
+    d.domains = lambda: [{"name": "Growth", "match": "finnish"}]
+    seed(ns, [row("2026-06-01", 60, "run"), row("2026-06-02", 60, "finnish")])
+    assert D._lens_overlap_lines(d, 60) == []
+
+    # ---- fewer than 2 declared lenses -> [] ----
+    d.goals = lambda: [{"name": "Body", "match": "run"}]
+    d.domains = lambda: []
+    assert D._lens_overlap_lines(d, 60) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -815,7 +859,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("ask-diary", suite_ask_diary),
           ("lag", suite_lag),
           ("week-ahead", suite_week_ahead),
-          ("break-budget", suite_break_budget)]
+          ("break-budget", suite_break_budget),
+          ("lens-overlap", suite_lens_overlap)]
 
 
 def main():
