@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Ask-your-diary pinned searches (v8.46)
+
+**Search all days** gains a row of pinned-search buttons above the
+results. Click one to re-run that query instantly instead of retyping
+("what did I decide about the advisor situation, again"); **📌 Pin**
+saves whatever's in the query box; right-click a pin to remove it.
+Capped at 5 — a shortlist stays useful, an unbounded list doesn't;
+re-pinning an existing query just re-surfaces it at the front.
+
 ### Weekly experiment engine (v8.45)
 
 A new opt-in line for Monday's header — never inserted automatically,

@@ -60,6 +60,23 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.46 (ask-your-diary pinned searches — backlog #71, a
+recurring lookup becomes one click):
+  - Search all days gains a pinned-search row above the results: click
+    a pin to re-run that query instantly, "📌 Pin" saves the current
+    query box text, right-click a pin to remove it. Settings-backed
+    (`settings["pinned_searches"]`), capped at 5 — re-pinning an
+    existing query re-surfaces it at the front instead of duplicating;
+    pinning past the cap drops the least-recently-used one. New pure
+    `_pinned_after_add`/`_pinned_after_remove` (the list ops, testable
+    without Tk) behind new `_pin_search`/`_unpin_search` App methods.
+    Pure UI addition over `_diary_rank_days` (v8.30) — no change to
+    the ranking logic, just a shortcut to populate the query entry.
+    New "pinned-searches" selftest suite (front-insert on add,
+    re-adding re-surfaces instead of duplicating, the cap drops the
+    OLDEST not the newest, a blank query is a no-op, remove); 29/29
+    green.
+
 New in v8.45 (weekly experiment engine — backlog #20, closing the
 diagnose-then-nothing loop):
   - A new opt-in, in-file convention: typing `EXPERIMENT: no work after
@@ -1053,6 +1070,24 @@ def save_settings(s):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(merged, f)
     os.replace(tmp, SETTINGS_JSON)
+
+
+def _pinned_after_add(pins, query, max_n=5):
+    """Backlog #71: pure list op behind the "pin this search" button —
+    a settings-backed shortlist stays useful capped small; adding an
+    already-pinned query re-surfaces it at the front (most-recently-
+    used) instead of duplicating, and the oldest drops once the list
+    is full."""
+    query = (query or "").strip()
+    if not query:
+        return list(pins)
+    out = [p for p in pins if p != query]
+    out.insert(0, query)
+    return out[:max_n]
+
+
+def _pinned_after_remove(pins, query):
+    return [p for p in pins if p != query]
 
 
 def already_running():
@@ -5216,6 +5251,24 @@ class App(tk.Tk):
         out.sort(key=lambda x: (-x[1], -len(x[2]), -x[0].toordinal()))
         return out
 
+    def _pin_search(self, query):
+        """Backlog #71: save `query` to the settings-backed shortlist
+        surfaced next to the search box — a recurring lookup ("what did
+        I decide about the advisor situation") becomes one click
+        instead of retyping."""
+        pins = _pinned_after_add(self.settings.get("pinned_searches", []),
+                                 query)
+        self.settings["pinned_searches"] = pins
+        save_settings(self.settings)
+        return pins
+
+    def _unpin_search(self, query):
+        pins = _pinned_after_remove(self.settings.get("pinned_searches", []),
+                                    query)
+        self.settings["pinned_searches"] = pins
+        save_settings(self.settings)
+        return pins
+
     def _matching_days_text(self, query, top_n=5, max_lines_per_day=12):
         """The clipboard payload for 'Copy matching days for AI': the top
         N ranked day EXCERPTS (matching lines only, not whole files) with
@@ -5245,8 +5298,34 @@ class App(tk.Tk):
         q = ttk.Entry(bar)
         q.pack(side="left", fill="x", expand=True)
         q.focus_set()
+        pinbar = ttk.Frame(win)
+        pinbar.pack(fill="x", padx=8, pady=(0, 4))
         txt = tk.Text(win, wrap="word", font=("Consolas", 10))
         txt.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+        def render_pins():
+            for w in pinbar.winfo_children():
+                w.destroy()
+            pins = self.settings.get("pinned_searches", [])
+            if not pins:
+                ttk.Label(pinbar, text="no pinned searches yet — Pin "
+                          "saves the current query", foreground="#888888"
+                         ).pack(side="left")
+                return
+            for p in pins:
+                def use(event=None, p=p):
+                    q.delete(0, "end")
+                    q.insert(0, p)
+                    go()
+
+                def unpin(event=None, p=p):
+                    self._unpin_search(p)
+                    render_pins()
+                    self.status.config(text=f"Unpinned '{p}'.")
+
+                btn = ttk.Button(pinbar, text=p, command=use)
+                btn.pack(side="left", padx=(0, 4))
+                btn.bind("<Button-3>", unpin)     # right-click to unpin
 
         def go(event=None):
             txt.config(state="normal")
@@ -5287,10 +5366,21 @@ class App(tk.Tk):
                 text=f"Copied top matching days for '{query}' — paste "
                      "into Claude/whatever, ask your real question.")
 
+        def pin_current():
+            query = q.get().strip()
+            if not query:
+                return
+            self._pin_search(query)
+            render_pins()
+            self.status.config(text=f"Pinned '{query}'.")
+
         ttk.Button(bar, text="Search", command=go).pack(side="left", padx=(6, 0))
         ttk.Button(bar, text="Copy matching days for AI",
                   command=copy_matching).pack(side="left", padx=(6, 0))
+        ttk.Button(bar, text="📌 Pin", command=pin_current).pack(
+            side="left", padx=(6, 0))
         q.bind("<Return>", go)
+        render_pins()
 
     # ----- summaries + trend -----
 

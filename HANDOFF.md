@@ -950,6 +950,18 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.46** (ask-your-diary pinned searches — backlog #71, DONE, a
+  recurring lookup becomes one click). Search all days gains a
+  pinned-search button row: click to re-run, 📌 Pin to save the
+  current query, right-click to remove. New pure
+  `_pinned_after_add`/`_pinned_after_remove` behind `_pin_search`/
+  `_unpin_search`, settings-backed (`settings["pinned_searches"]`),
+  capped at 5 — re-pinning an existing query re-surfaces it at the
+  front, pinning past the cap drops the least-recently-used one. Pure
+  UI addition over `_diary_rank_days` (v8.30), no ranking-logic
+  change. New "pinned-searches" selftest suite (front-insert, re-add
+  re-surfaces not duplicates, cap drops oldest, blank query no-op,
+  remove); 29/29 green (new suite, was 28).
 - **v8.45** (weekly experiment engine — backlog #20, DONE, closing the
   diagnose-then-nothing loop). New opt-in in-file convention:
   `EXPERIMENT: no work after 21:00` typed in Monday's header (never
@@ -2092,7 +2104,12 @@ purpose; the *walls* are the major thing, and they're now named.
     (day, day+1) loop `_lag_workout_line` already demonstrates, not new
     math. Same n≥5/bucket gate as every other lag check.
 
-71. **Ask-your-diary: pinned searches (USABILITY, extends v8.30).** Every
+71. ~~**Ask-your-diary: pinned searches.**~~ — DONE v8.46. New pure
+    `_pinned_after_add`/`_pinned_after_remove` behind `_pin_search`/
+    `_unpin_search`; a pinned-search button row in "Search all days,"
+    settings-backed, capped at 5. Original design note kept below for
+    reference.
+    (USABILITY, extends v8.30).** Every
     search in the "Copy matching days for AI" window (v8.30) is typed
     fresh. A short `settings["pinned_searches"]` list (5ish saved query
     strings — "landlord", "advisor", a project codename) surfaced as

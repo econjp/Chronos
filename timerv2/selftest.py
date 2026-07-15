@@ -31,7 +31,8 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "fmt_sleep", "_time_span_hours", "_add_hours",
        "parse_health_dir", "_parse_any_date", "_dur_minutes", "_num",
        "day_length_hours", "backup_integrity_line",
-       "_free_from_busy", "_deep_capacity_minutes", "_merge_time_intervals"}
+       "_free_from_busy", "_deep_capacity_minutes", "_merge_time_intervals",
+       "_pinned_after_add", "_pinned_after_remove"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -1276,6 +1277,38 @@ def suite_experiment_engine():
     assert D._experiment_review_line(d, monday) is None
 
 
+def suite_pinned_searches():
+    D, ns = fresh()
+    add, remove = ns["_pinned_after_add"], ns["_pinned_after_remove"]
+
+    # ---- adding: newest goes to the front ----
+    pins = add([], "advisor")
+    assert pins == ["advisor"], pins
+    pins = add(pins, "landlord")
+    assert pins == ["landlord", "advisor"], pins
+
+    # ---- re-adding an existing pin re-surfaces it at the front,
+    # doesn't duplicate ----
+    pins = add(pins, "advisor")
+    assert pins == ["advisor", "landlord"], pins
+
+    # ---- capped at 5: the OLDEST drops, not the newest ----
+    pins = ["e", "d", "c", "b", "a"]     # already full, "a" is oldest... no,
+                                         # front = most-recent, so "a" (back)
+                                         # is the LEAST recently used
+    pins = add(pins, "f")
+    assert pins == ["f", "e", "d", "c", "b"], pins   # "a" fell off the end
+
+    # ---- blank query: a no-op, returns a copy unchanged ----
+    same = add(["x", "y"], "   ")
+    assert same == ["x", "y"], same
+
+    # ---- removing ----
+    after = remove(["x", "y", "z"], "y")
+    assert after == ["x", "z"], after
+    assert remove(["x"], "not-there") == ["x"]
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1300,7 +1333,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("meeting-fragmentation", suite_meeting_fragmentation),
           ("year-rhythm", suite_year_rhythm),
           ("energy-forecast", suite_energy_forecast),
-          ("experiment-engine", suite_experiment_engine)]
+          ("experiment-engine", suite_experiment_engine),
+          ("pinned-searches", suite_pinned_searches)]
 
 
 def main():
