@@ -248,7 +248,9 @@ the three-bucket model is already correct and more honest than a blend.
   someday]/goal/source/added), `capacity` (7 floats, Mon..Sun),
   `off_dates`, `sleep_over` ({iso: [bed HH:MM, wake HH:MM]}), `ics_path`,
   `health_dir`, `diary_dir`, `target_min`, `rollover_hour`, `hotkey`,
-  `idle_min`, `float_break`, `nudge`, `asked_autostart`.
+  `idle_min`, `float_break`, `nudge`, `asked_autostart`, `daylight_lat`
+  (v8.28, a single float degrees, absent = source off), `domains`
+  (v8.4), `pull_min` (v8.10).
 - Day-file conventions parsed by code: `SIGNAL: kw, kw` (carries daily,
   seeds from goals if blank), `AVOID: kw, kw` (v8.13, the inverse lens,
   carries daily, no goal-seed), `ENERGY: 1-5` optionally + a mood word
@@ -262,11 +264,13 @@ the three-bucket model is already correct and more honest than a blend.
   exceeded !!!`, session/break lines, `WEEK REVIEW Wnn:` (Mondays),
   `=== THEME: name — HH:MM (Xm) === ... === END THEME ===` (themed
   writing blocks, read back out by Browse Themes — never a second file).
-- The day record (`_life_day`) as of v8.27: `work`/`brk`/`tasks` (csv),
+- The day record (`_life_day`) as of v8.28: `work`/`brk`/`tasks` (csv),
   `signal`/`energy`/`sleep_h` (existing), `workout_min`/`steps`
   (health import), `mindful_min`/`rhr`/`hrv`/`weight_kg` (health import,
   v8.27 — opportunistic, only present if the export CSV has the column),
-  `metrics` (dict from the METRICS line, v8.27), `busy_h`/`capacity_h`
+  `metrics` (dict from the METRICS line, v8.27), `daylight_h` (v8.28,
+  pure computed, present only when `daylight_lat` is set), `busy_h`/
+  `capacity_h`
   (calendar/week-plan). A new source is still always one new key here.
 - **Export life record (JSON)** (File menu) is the canonical portable
   dump: per-day record + diary text + goals + deadlines + capacity.
@@ -822,6 +826,20 @@ purpose; the *walls* are the major thing, and they're now named.
   14/14 green. Landed on a freshly recreated `claude/life-management-
   platform-arch-6s4hrv` branch (the old one had already been merged +
   deleted) — see Git section.
+- **v8.28** (daylight — the first source needing NO export file at all,
+  DONE). `day_length_hours(d, lat_deg)`: a standard declination/hour-
+  angle approximation, pure math, no network/API/dependency — verified
+  against real-world solstice values (Helsinki ~18.6h/5.4h summer/winter,
+  equator flat 12h) within the expected few-minutes error. Tools >
+  "Daylight location (latitude)…" (`_set_daylight_lat`, empty clears it);
+  `_daylight_h`/new `_life_day` key `daylight_h`; `_daylight_insight`
+  compares output/energy on shortest- vs longest-daylight days, gated on
+  a REAL seasonal swing existing in the user's own history (n≥8/side,
+  ≥2h median gap) so it can't manufacture a season out of a few flat
+  weeks. Directly extends the v8.27 "data architecture" answer: capture
+  the free stuff now, even when the payoff is literally seasons away.
+  selftest suite 15 (formula reference points, off-by-default, all three
+  silence gates, the positive-fire case); 15/15 green.
 
 ## BACKLOG (priority order — continue here)
 
@@ -1710,12 +1728,12 @@ purpose; the *walls* are the major thing, and they're now named.
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
 harness (v8.x): lifts pure functions out of the app via ast (no tkinter/
-ctypes import, never touches the real data dir) and runs 14 suites
+ctypes import, never touches the real data dir) and runs 15 suites
 covering projection, trajectory, outlook, alignment, review synthesis,
 anomaly watch, recommend-now, energy placement, last-context, break-pull,
-reentry, procrastination, metrics and the widened health parser. Exit 0
-= green. Add a suite there in the same commit as any new pure-logic
-feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
+reentry, procrastination, metrics, the widened health parser and
+daylight. Exit 0 = green. Add a suite there in the same commit as any
+new pure-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
 first-hour/thrash/shallow-work/graveyard/mood/usage-meter/best-weeks/
 reallocation batch) were verified by hand per their own commit messages
 and never got selftest suites added — a real gap, not a judgment call;

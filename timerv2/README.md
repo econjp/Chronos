@@ -4,6 +4,19 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Daylight (v8.28)
+
+The only data source in the app that needs no export file, no typed
+line, and no network — just a latitude. Tools → **Daylight location**,
+type a number once (60.2 for Helsinki, -33.9 for Sydney), and every day
+now carries its computed hours-of-daylight. Once your own history
+actually spans a real season, an insight compares your shortest-daylight
+days against your longest: *"shortest-daylight days (~6.1h sun, n=11):
+2.3h work avg vs longest (~18.4h sun, n=9): 4.1h — less on the darker
+days · energy: 2.4/5 dark vs 3.8/5 light."* Silent until a real seasonal
+swing exists in your data — the whole point is to start capturing it
+*now*, months before it can say anything.
+
 ### The health-hub pivot (v8.27)
 
 **METRICS** — a new header line, right next to SIGNAL/AVOID/ENERGY: type

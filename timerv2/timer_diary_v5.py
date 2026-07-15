@@ -60,6 +60,20 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.28 (daylight — a data source that needs no export file at all):
+  - Tools > "Daylight location (latitude)…" — a single latitude (no
+    address, no network, no API key) powers day_length_hours(), a
+    standard declination/hour-angle approximation (matches real-world
+    solstice values within the expected few-minutes error). Every other
+    source needs an export file or a typed line; this one is free the
+    moment a latitude is set, because it's pure math over the date. New
+    _life_day key "daylight_h". A new insight compares output/energy on
+    your shortest-daylight days vs your longest — but only once your OWN
+    history spans a real seasonal swing (n≥8 each side, ≥2h median gap),
+    so it stays honestly silent for months and then speaks once the
+    data's actually there. Answers "capture it now, even if the payoff
+    is seasons away" directly. selftest suite 15.
+
 New in v8.27 (the health-hub pivot — a generic metrics line + wider capture):
   - METRICS line: a new "METRICS: " header line, same in-file convention
     as SIGNAL/AVOID/ENERGY — type ANY future personal metric as
@@ -1094,6 +1108,28 @@ def _add_hours(t, hours):
             + dt.timedelta(hours=hours)).time()
 
 
+def day_length_hours(d, lat_deg):
+    """Hours of daylight on date `d` at latitude `lat_deg` — a standard
+    declination/hour-angle approximation (ignores atmospheric refraction
+    and the equation of time, so it's accurate to a handful of minutes,
+    not an ephemeris). Pure math: no network, no API key, no dependency —
+    a source that's free to capture the moment a latitude is set, unlike
+    every other health source which needs an export file to exist first.
+    Clamped to [0, 24] for the polar day/night edge cases."""
+    doy = d.timetuple().tm_yday
+    decl = math.radians(-23.44) * math.cos(math.radians(360 / 365 * (doy + 10)))
+    lat = math.radians(lat_deg)
+    try:
+        cos_h = -math.tan(lat) * math.tan(decl)
+    except ValueError:
+        return 12.0
+    if cos_h <= -1:
+        return 24.0     # polar day
+    if cos_h >= 1:
+        return 0.0       # polar night
+    return 2 * math.degrees(math.acos(cos_h)) / 15
+
+
 def parse_ics_intervals(path, start, end):
     """{date_iso: [(start_time, end_time), ...]} from an exported .ics,
     window [start, end] — merged, sorted time-of-day ranges per day.
@@ -1765,6 +1801,8 @@ class App(tk.Tk):
         toolsm.add_command(label="Goals — the why layer…", command=self._set_goals)
         toolsm.add_command(label="Life domains — the values layer…",
                            command=self._set_domains)
+        toolsm.add_command(label="Daylight location (latitude)…",
+                           command=self._set_daylight_lat)
         toolsm.add_command(label="Idle detection…", command=self._set_idle)
         toolsm.add_command(label="Break pull-back (signal tasks)…",
                            command=self._set_pull)
@@ -5601,6 +5639,89 @@ class App(tk.Tk):
                 pass
         return self._health_data().get(iso, {}).get("sleep_h")
 
+    # ----- daylight (a zero-dependency source: date + latitude, nothing
+    # imported, no export file to configure) -----
+
+    def _daylight_h(self, d):
+        lat = self.settings.get("daylight_lat")
+        return day_length_hours(d, float(lat)) if lat is not None else None
+
+    def _set_daylight_lat(self):
+        """Tools > Daylight location — a latitude, not an address: enough
+        for the day-length math, nothing more precise than that. Empty
+        clears it (unlike askfloat's None-on-cancel, an explicit blank
+        string means 'turn this off', matching the AVOID/METRICS empty-
+        line convention elsewhere)."""
+        cur = self.settings.get("daylight_lat")
+        v = simpledialog.askstring(
+            APP_NAME, "Approximate latitude in degrees — e.g. 60.2 for "
+                      "Helsinki, -33.9 for Sydney (south is negative).\n"
+                      "Used only for a computed daylight-hours source: no "
+                      "lookup, no network, just date + latitude math.\n"
+                      "Empty = off:",
+            initialvalue=(f"{cur:g}" if cur is not None else ""), parent=self)
+        if v is None:
+            return
+        v = v.strip()
+        if not v:
+            self.settings.pop("daylight_lat", None)
+        else:
+            try:
+                lat = float(v.replace(",", "."))
+                if not -90 <= lat <= 90:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror(
+                    APP_NAME, "Latitude must be a number between -90 and 90.",
+                    parent=self)
+                return
+            self.settings["daylight_lat"] = lat
+        save_settings(self.settings)
+
+    def _daylight_insight(self, days=365):
+        """Compares output on your shortest-daylight days vs your longest
+        — but only once your OWN history actually spans a real seasonal
+        swing (median gap >=2h between the two halves) with n>=8 each
+        side, so a few flat weeks near the equator or right after setting
+        the latitude stays silent rather than inventing a 'season' out of
+        noise. The reason to turn this source on well before it can speak:
+        the day it CAN speak needs the history to already exist."""
+        lat = self.settings.get("daylight_lat")
+        if lat is None:
+            return []
+        idx = day_index()
+        cutoff = self.today - dt.timedelta(days=days)
+        pts = []                      # (daylight_h, work_min, energy)
+        d = cutoff
+        while d <= self.today:
+            rec = idx.get(d.isoformat())
+            if rec and rec["work"] > 0:
+                pts.append((day_length_hours(d, float(lat)), rec["work"],
+                           self._day_energy(d)))
+            d += dt.timedelta(days=1)
+        if len(pts) < 16:
+            return []
+        pts.sort(key=lambda x: x[0])
+        half = len(pts) // 2
+        lo, hi = pts[:half], pts[-half:]
+        if len(lo) < 8 or len(hi) < 8:
+            return []
+        lo_med, hi_med = lo[len(lo) // 2][0], hi[len(hi) // 2][0]
+        if hi_med - lo_med < 2.0:
+            return []
+        lo_work = sum(p[1] for p in lo) / len(lo) / 60
+        hi_work = sum(p[1] for p in hi) / len(hi) / 60
+        verb = "less" if lo_work < hi_work else "more"
+        out = [f"shortest-daylight days (~{lo_med:.1f}h sun, n={len(lo)}): "
+              f"{lo_work:.1f}h work avg vs longest (~{hi_med:.1f}h sun, "
+              f"n={len(hi)}): {hi_work:.1f}h — {verb} on the darker days"]
+        lo_en = [p[2] for p in lo if p[2]]
+        hi_en = [p[2] for p in hi if p[2]]
+        if len(lo_en) >= 3 and len(hi_en) >= 3:
+            out.append(f"  energy: {sum(lo_en) / len(lo_en):.1f}/5 dark vs "
+                       f"{sum(hi_en) / len(hi_en):.1f}/5 light")
+        return out
+
     def _life_day(self, d, signal=True):
         """Everything the app knows about one date, merged into ONE dict —
         the unit every consolidated view consumes: timer minutes from the
@@ -5622,6 +5743,7 @@ class App(tk.Tk):
                "hrv": self._health_data().get(iso, {}).get("hrv"),
                "weight_kg": self._health_data().get(iso, {}).get("weight_kg"),
                "metrics": self._day_metrics(d),
+               "daylight_h": self._daylight_h(d),
                "busy_h": self._busy_data().get(iso, 0.0),
                "capacity_h": self._day_capacity(d)}
         return rec
@@ -6587,6 +6709,7 @@ class App(tk.Tk):
         out += self._shallow_work_lines()
         out += self._mood_insight()
         out += self._metrics_insight()
+        out += self._daylight_insight()
         out += self._best_weeks_lines()
         out += self._trajectory_lines()
         return out

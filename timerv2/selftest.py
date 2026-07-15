@@ -29,7 +29,8 @@ SRC = os.path.join(HERE, "timer_diary_v5.py")
 
 TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "fmt_sleep", "_time_span_hours", "_add_hours",
-       "parse_health_dir", "_parse_any_date", "_dur_minutes", "_num"}
+       "parse_health_dir", "_parse_any_date", "_dur_minutes", "_num",
+       "day_length_hours"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -37,7 +38,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_recommend_now", "_deep_window", "_hour_quality", "_energy_place",
         "_last_context", "_break_insight", "_pull_level", "_reentry_opener",
         "_procrastination_insight", "_metrics_from_text", "_day_metrics",
-        "_metrics_insight"}
+        "_metrics_insight", "_daylight_h", "_daylight_insight"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE"}
 
@@ -506,6 +507,56 @@ def suite_health_parse():
     ns["parse_health_dir"](hdir)   # must not raise
 
 
+def suite_daylight():
+    D, ns = fresh()
+
+    # ---- pure formula: reference points (see the sanity check that
+    # motivated this feature — matches real-world day lengths within the
+    # expected few-minutes approximation error) ----
+    dlh = ns["day_length_hours"]
+    assert abs(dlh(dt.date(2026, 3, 20), 0.0) - 12.0) < 0.05      # equinox, equator
+    assert abs(dlh(dt.date(2026, 7, 1), 0.0) - 12.0) < 0.05       # equator, any day
+    summer = dlh(dt.date(2026, 6, 21), 60.2)                      # Helsinki solstices
+    winter = dlh(dt.date(2026, 12, 21), 60.2)
+    assert 17 < summer < 20, summer
+    assert 4 < winter < 8, winter
+    assert summer > winter + 10                                    # a real swing
+
+    # ---- _daylight_h: off by default, reads settings when set ----
+    d = _mk(D, settings={})
+    assert D._daylight_h(d, dt.date(2026, 6, 21)) is None
+    d.settings = {"daylight_lat": 60.2}
+    assert abs(D._daylight_h(d, dt.date(2026, 6, 21)) - summer) < 1e-9
+
+    # ---- insight: no lat -> silent regardless of history ----
+    d2 = _mk(D, today=dt.date(2026, 7, 1), settings={})
+    assert D._daylight_insight(d2) == []
+
+    # ---- insight: lat set but too little history -> silent ----
+    d2.settings = {"daylight_lat": 60.2}
+    d2._day_energy = lambda day=None: None
+    seed(ns, [row("2026-06-25", 60, "x")])
+    assert D._daylight_insight(d2) == []
+
+    # ---- insight: real history but no seasonal swing (20 consecutive
+    # June days) -> silent, not a false 'season' out of noise ----
+    june_days = [dt.date(2026, 6, 1) + dt.timedelta(days=i) for i in range(20)]
+    seed(ns, [row(x.isoformat(), 120, "x") for x in june_days])
+    assert D._daylight_insight(d2) == []
+
+    # ---- insight: a real winter (short-daylight, low-output) vs summer
+    # (long-daylight, high-output) split fires with the right numbers ----
+    dec_days = [dt.date(2025, 12, 1) + dt.timedelta(days=i) for i in range(20)]
+    seed(ns, [row(x.isoformat(), 120, "x") for x in dec_days]     # 2h/day, dark
+         + [row(x.isoformat(), 300, "x") for x in june_days])     # 5h/day, light
+    d2._day_energy = lambda day=None: (
+        2 if day.month == 12 else 4 if day.month == 6 else None)
+    out = D._daylight_insight(d2)
+    assert out and "less on the darker days" in out[0], out
+    assert "2.0h work avg" in out[0] and "5.0h" in out[0], out
+    assert "energy: 2.0/5 dark vs 4.0/5 light" in out[1], out
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -516,7 +567,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("reentry", suite_reentry),
           ("procrastination", suite_procrastination),
           ("metrics", suite_metrics),
-          ("health-parse", suite_health_parse)]
+          ("health-parse", suite_health_parse),
+          ("daylight", suite_daylight)]
 
 
 def main():
