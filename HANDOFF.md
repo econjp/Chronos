@@ -389,8 +389,104 @@ advances a pillar (A/B/C) rather than an isolated nicety. That is the
 answer to "nothing feels major yet": the individual features are small on
 purpose; the *walls* are the major thing, and they're now named.
 
+### Reflection, 2026-07-15 — "many different features, bit scattered"
+
+The owner named a real feeling after two mobile-session pushes landed
+back to back (v8.16–v8.26 here, v8.27–v8.63 from mobile — 85 backlog
+items, v8.64, dozens of Insights lines). Worth answering directly
+rather than just shipping more, since the feeling is legitimate even
+though the underlying architecture is not actually scattered:
+
+**What's NOT scattered — checked, not assumed.** Every one of those
+85 items is still a VIEW or an INSIGHT sitting on top of the same
+handful of primitives: `day_index()` (the day record), `matched_minutes`/
+`task_matches` (the one lens shape SIGNAL/AVOID/goals/domains/deadlines
+all share), `_free_slots`/`_day_schedule_lines` (the scheduler), and
+now `METRICS` (v8.27, the generic capture mechanism). Nothing added in
+either push introduced a second way to do something the app already
+does. Mapped against the three NORTH STAR pillars above, the two
+pushes are legible, not random: v8.16–v8.26 mostly filled in FEEDBACK/
+SELF-KNOWLEDGE gaps (declared short day, mood, best-weeks, thrash);
+v8.27–v8.63 mostly built out MEMORY (word drift, ask-your-diary,
+year rhythm, decision log, time capsule) and closed real FORESIGHT/
+TRUST gaps (planner realism, lens overlap, sensor health, backup
+integrity). The scatter feeling is about SURFACE AREA, not structure.
+
+**What actually IS scattered, and what got fixed this round.** The
+View menu had grown to 22 flat commands with three separators and no
+grouping — a genuine "junk drawer," found and fixed in v8.64 by
+grouping into submenus that mirror the pillars above (Planning /
+Memory / Values), so the menu now reads as the architecture instead
+of hiding it. `_insight_lines()` (Insights tab / Copy-for-AI-review)
+is the one place still genuinely flat — 20+ independent insight
+generators concatenated with no grouping or priority ordering. Not
+fixed this round (a real design question — group by pillar? cap at
+N lines? rank by how unusual/actionable each finding is? — deserves
+its own pass, not a rushed one). Logged as backlog #86.
+
+**The mechanism for what to prune next, going forward: don't guess,
+measure.** v8.24's usage-pattern meter (Tools > "Feature usage…")
+now exists specifically to answer "which of these 85 things are
+actually earning their keep" with real data instead of another
+guess — let it accumulate a few weeks of real counts, then the next
+consolidation pass (menu trimming, Insights grouping, or an honest
+"retire this" decision) should read that data first. This is the
+standing answer to "are we building too much": the backlog stays
+large because saying yes is cheap (small, honest, pure-view bricks);
+what to actively surface or retire should increasingly be decided by
+the owner's own usage, not by continuing to add without ever
+measuring what's already there.
+
 ## Version history (one line each)
 
+- **v8.27–v8.63** (a second mobile-session push, landed 2026-07-15 —
+  37 commits, hand-audited: clean authorship throughout, zero AI
+  trailers, zero OSINT hits, 45/45 selftest suites independently
+  re-verified before landing). The headline architectural move is
+  **v8.27, the health-hub pivot**: a generic `METRICS: key=value` line
+  generalises the SIGNAL/AVOID/ENERGY/mood pattern (a bespoke one-line
+  parser per new axis, eight versions running) into ONE parser for any
+  future fact — meditation minutes, water, caffeine, supplements,
+  anything, no new code per metric. See "Data architecture for the
+  long term" below for the full reasoning. Everything else in this
+  range is a real backlog item closed: daylight (a computed source
+  needing no export file, v8.28), word drift + fade (the diary's own
+  prose finally read as itself, v8.29/v8.37), ask-your-diary +
+  pinned searches (v8.30/v8.46), lag correlations (v8.31/v8.38),
+  week-ahead risk brief (v8.32), break budget + v2 weekday norms
+  (v8.34/v8.39), **lens overlap check (v8.35 — backlog #48, matching
+  the idea proposed here; the mobile session's version catches a
+  sharper case than the original sketch — two DIFFERENT keywords each
+  independently matching one task name, not just a keyword-string
+  collision)**, health-hub view (v8.36), backup integrity (v8.40),
+  running-hot index (v8.41), meeting fragmentation tax (v8.42), year
+  rhythm map (v8.43), energy forecast (v8.44), weekly experiment
+  engine (v8.45), decision log lite (v8.47 — correctly built WITHOUT
+  #9's rejected reopen-counter mechanics), annual theme (v8.48), goal
+  lifetime ledger (v8.49), deadline post-mortem (v8.50) + renegotiation
+  tracker (v8.51), weekly "one less" (v8.52), sensor health meter
+  (v8.53), planner realism factor (v8.54), **screen-lock break
+  detection (v8.55 — the owner's direct, repeated ask: Win+L now
+  triggers the same break-offer dialog idle detection already used,
+  via the `OpenInputDesktop` ctypes trick, fails open, a 30s floor
+  against tap-and-untap noise)**, time capsule (v8.56), commitment-
+  reliability ledger (v8.57), protected time windows (v8.58),
+  milestones inside a deadline (v8.59), waiting-on/blocked tasks
+  (v8.60), cost of yes (v8.61), conversation-ready status export
+  (v8.62), focus signature (v8.63). Landed via the standing policy
+  (individual cherry-pick --no-commit + fresh commit per commit, not a
+  bulk merge) despite already being cleanly authored — the process is
+  about the audit step, not just the end state.
+- **v8.64** (View menu reorganized — the map matches the territory).
+  22 flat commands grouped into submenus mirroring the NORTH STAR's
+  own three pillars: Planning (foresight), Memory (the archive),
+  Values (alignment), plus Writing/Reports for the practical extras.
+  Dashboard/"What should I do now?"/Tasks stay top-level as the
+  highest-frequency entries. Pure reorganization, zero behavior
+  change — verified via a full menu-tree walk that no command was
+  lost, not just a visual check. Direct response to the owner naming
+  the felt "many different features, bit scattered" experience —
+  see the reflection added to NORTH STAR below.
 - **v8.12** (procrastination pattern map — backlog #32). New
   `_procrastination_insight(days=60)`: maximal same-task work runs per
   day (rows sorted by start time); a run ≤10 min followed by a break is a
@@ -2636,6 +2732,24 @@ purpose; the *walls* are the major thing, and they're now named.
     instead (consistency-weighted, at finer hour resolution) — one 2D
     computation feeding two consumers, not two nearly-identical ones
     maintained in parallel.
+
+86. **Group/prioritize `_insight_lines()` (USABILITY — the one
+    genuinely flat surface left, named in the 2026-07-15 reflection
+    above).** 20+ independent insight generators concatenate into one
+    undifferentiated block feeding the Insights tab and Copy-for-AI-
+    review — the mirror image of the View-menu scatter v8.64 just
+    fixed, not yet addressed. Real design questions to resolve before
+    building, not just formatting: (a) group by theme (mirroring the
+    View menu's own Planning/Memory/Values split, or a Time/Health/
+    Money-of-attention split specific to insights) vs (b) rank by how
+    UNUSUAL or ACTIONABLE each finding is this week and show only the
+    top N, pushing the rest behind a "show all" — (b) is more honest
+    to the "don't drown the one thing that matters in nineteen that
+    don't" problem but needs a real severity/actionability score,
+    which doesn't exist yet. Check backlog #56's usage-meter data
+    first if it's accumulated anything by the time this gets picked
+    up — which insights get referenced/acted on in practice should
+    inform the grouping, not a guess.
 
 ## How to verify changes without Windows
 

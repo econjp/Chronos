@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### View menu, reorganized (v8.64)
+
+22 flat commands are now grouped into **Planning**, **Memory**, and
+**Values** — the same three pillars named in HANDOFF.md's NORTH STAR
+section — plus Writing/Reports for the rest. Dashboard, "What should
+I do now?", and Tasks stay top-level. Same commands, same behavior,
+just organized instead of a flat list.
+
 ### Focus signature (v8.63)
 
 Neither the weekday-pattern insight (total hours per weekday) nor

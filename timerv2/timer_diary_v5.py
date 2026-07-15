@@ -60,6 +60,17 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.64 (View menu reorganized — the map matches the territory):
+  - 22 flat View-menu commands grouped into submenus that mirror the
+    NORTH STAR's own three pillars (see HANDOFF.md): Planning
+    (foresight), Memory (the archive), Values (alignment), plus
+    Writing/Reports for the practical extras. Dashboard, "What should
+    I do now?" and Tasks/backlog stay top-level since they're the
+    highest-frequency entries. Pure reorganization — every command is
+    the exact same function, same _tracked() wrapper, nothing moved
+    behavior-wise; verified no menu item was lost via a full menu-tree
+    walk, not just a visual check.
+
 New in v8.63 (focus signature — backlog #53, the shape of a real
 week):
   - The weekday-pattern insight (v7.4) compares total hours per
@@ -2602,54 +2613,73 @@ class App(tk.Tk):
         filem.add_command(label="Exit", command=self._on_close)
         m.add_cascade(label="File", menu=filem)
 
+        # Grouped by the NORTH STAR's own three pillars (see HANDOFF.md)
+        # plus a couple of practical extras — the menu should read as
+        # the architecture, not as a flat 22-year-old junk drawer.
         viewm = tk.Menu(m, tearoff=0)
         viewm.add_command(label="Life dashboard", accelerator="Ctrl+D",
                           command=self._tracked("Dashboard", self._dashboard))
-        viewm.add_command(label="Themed writing…", accelerator="Ctrl+T",
-                          command=self._tracked("Themed writing", self._themed_writing))
-        viewm.add_command(label="Browse themes…",
-                          command=self._tracked("Browse themes", self._browse_themes))
-        viewm.add_separator()
-        viewm.add_command(label="Weekly summary",
-                          command=self._tracked("Weekly summary", lambda: self._summary("week")))
-        viewm.add_command(label="Monthly summary",
-                          command=self._tracked("Monthly summary", lambda: self._summary("month")))
-        viewm.add_command(label="Tasks / backlog…",
-                          command=self._tracked("Tasks/backlog", self._tasks_win))
-        viewm.add_command(label="Week plan / capacity…",
-                          command=self._tracked("Capacity planner", self._capacity_win))
-        viewm.add_separator()
-        viewm.add_command(label="Trend (8 weeks)",
-                          command=self._tracked("Trend", self._trend))
-        viewm.add_command(label="Month heatmap",
-                          command=self._tracked("Heatmap", self._heatmap))
-        viewm.add_command(label="Year rhythm map",
-                          command=self._tracked("Year rhythm", self._year_rhythm_view))
-        viewm.add_command(label="Deadline burn-down",
-                          command=self._tracked("Burn-down", self._burndown))
-        viewm.add_command(label="Outlook — weeks ahead…",
-                          command=self._tracked("Outlook", self._outlook_win))
-        viewm.add_command(label="Life alignment — time vs values…",
-                          command=self._tracked("Life alignment", self._alignment_win))
-        viewm.add_command(label="Life review — synthesized briefing…",
-                          command=self._tracked("Life review", self._life_review_win))
-        viewm.add_command(label="Lens overlap check…",
-                          command=self._tracked("Lens overlap", self._lens_overlap_win))
         viewm.add_command(label="What should I do now?",
                           command=self._tracked("Recommend now", self._show_recommend_now))
+        viewm.add_command(label="Tasks / backlog…",
+                          command=self._tracked("Tasks/backlog", self._tasks_win))
+        viewm.add_separator()
+
+        planm = tk.Menu(viewm, tearoff=0)
+        planm.add_command(label="Week plan / capacity…",
+                          command=self._tracked("Capacity planner", self._capacity_win))
+        planm.add_command(label="Outlook — weeks ahead…",
+                          command=self._tracked("Outlook", self._outlook_win))
+        planm.add_command(label="Deadline burn-down",
+                          command=self._tracked("Burn-down", self._burndown))
+        viewm.add_cascade(label="Planning  (foresight)", menu=planm)
+
+        memm = tk.Menu(viewm, tearoff=0)
+        memm.add_command(label="Trend (8 weeks)",
+                         command=self._tracked("Trend", self._trend))
+        memm.add_command(label="Month heatmap",
+                         command=self._tracked("Heatmap", self._heatmap))
+        memm.add_command(label="Year rhythm map",
+                         command=self._tracked("Year rhythm", self._year_rhythm_view))
+        memm.add_command(label="Search all days…",
+                         command=self._tracked("Search", self._search_diary))
+        memm.add_command(label="Decision log…",
+                         command=self._tracked("Decision log", self._decision_log_view))
+        viewm.add_cascade(label="Memory  (the archive)", menu=memm)
+
+        valm = tk.Menu(viewm, tearoff=0)
+        valm.add_command(label="Life alignment — time vs values…",
+                         command=self._tracked("Life alignment", self._alignment_win))
+        valm.add_command(label="Life review — synthesized briefing…",
+                         command=self._tracked("Life review", self._life_review_win))
+        valm.add_command(label="Lens overlap check…",
+                         command=self._tracked("Lens overlap", self._lens_overlap_win))
+        viewm.add_cascade(label="Values  (alignment)", menu=valm)
+
+        writm = tk.Menu(viewm, tearoff=0)
+        writm.add_command(label="Themed writing…", accelerator="Ctrl+T",
+                          command=self._tracked("Themed writing", self._themed_writing))
+        writm.add_command(label="Browse themes…",
+                          command=self._tracked("Browse themes", self._browse_themes))
+        viewm.add_cascade(label="Writing", menu=writm)
+
         viewm.add_command(label="Health × focus (14 days)",
                           command=self._tracked("Health x focus", self._health_view))
-        viewm.add_command(label="Search all days…",
-                          command=self._tracked("Search", self._search_diary))
-        viewm.add_command(label="Decision log…",
-                          command=self._tracked("Decision log", self._decision_log_view))
         viewm.add_separator()
-        viewm.add_command(label="Copy week for AI review",
-                          command=self._tracked("Copy week AI",
-                                                lambda: self._copy_review("week")))
-        viewm.add_command(label="Copy today for AI review",
-                          command=self._tracked("Copy day AI",
-                                                lambda: self._copy_review("day")))
+
+        repm = tk.Menu(viewm, tearoff=0)
+        repm.add_command(label="Weekly summary",
+                         command=self._tracked("Weekly summary", lambda: self._summary("week")))
+        repm.add_command(label="Monthly summary",
+                         command=self._tracked("Monthly summary", lambda: self._summary("month")))
+        repm.add_command(label="Copy week for AI review",
+                         command=self._tracked("Copy week AI",
+                                               lambda: self._copy_review("week")))
+        repm.add_command(label="Copy today for AI review",
+                         command=self._tracked("Copy day AI",
+                                               lambda: self._copy_review("day")))
+        viewm.add_cascade(label="Reports", menu=repm)
+
         viewm.add_separator()
         viewm.add_command(label="Toggle compact mode", command=self._toggle_compact)
         m.add_cascade(label="View", menu=viewm)
