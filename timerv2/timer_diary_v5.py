@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.47 (decision log lite — backlog #62, "didn't I already think
+this through"):
+  - A new opt-in, purely archival line convention: `DECIDED: apartment —
+    staying another year, rent's still fair`. Deliberately NOT #9's
+    Reopening Guard (reopen counters, typed justification to unlock) —
+    that was explicitly held back as too close to a gating pattern; this
+    is just a searchable record, no counter, no reopening friction, no
+    unlock mechanic. New View > "Decision log…": a read-only list of
+    every `DECIDED:` line across every day file, newest first — a
+    shortcut to browse without typing a query first, same underlying
+    text the existing Search all days already makes findable.
+    `DECIDED:` added to the header syntax-highlight rules alongside
+    SIGNAL/AVOID/ENERGY/METRICS/EXPERIMENT. New pure `_scan_decisions`
+    (file scan, no new data source) + thin `_decision_log_view` Tk
+    layer. New "decision-log" selftest suite (newest-file-first
+    ordering, a false-positive line that merely MENTIONS "decided:"
+    mid-sentence correctly excluded since only line-START counts,
+    silence with none declared); 30/30 green.
+
 New in v8.46 (ask-your-diary pinned searches — backlog #71, a
 recurring lookup becomes one click):
   - Search all days gains a pinned-search row above the results: click
@@ -2141,6 +2160,8 @@ class App(tk.Tk):
                           command=self._tracked("Health x focus", self._health_view))
         viewm.add_command(label="Search all days…",
                           command=self._tracked("Search", self._search_diary))
+        viewm.add_command(label="Decision log…",
+                          command=self._tracked("Decision log", self._decision_log_view))
         viewm.add_separator()
         viewm.add_command(label="Copy week for AI review",
                           command=self._tracked("Copy week AI",
@@ -2854,9 +2875,9 @@ class App(tk.Tk):
         (re.compile(r"^(Start|Stop|Reset);"), "raw_event"),
         (re.compile(r"^=== (THEME|END THEME)"), "theme_block"),
         (re.compile(r"^==="), "day_header"),
-        (re.compile(r"^(SIGNAL:|AVOID:|ENERGY:|METRICS:|EXPERIMENT:|TODAY:|"
-                    r"TODO|SOMEDAY:|WEEK REVIEW|plan today:|"
-                    r"focus order today)"),
+        (re.compile(r"^(SIGNAL:|AVOID:|ENERGY:|METRICS:|EXPERIMENT:|"
+                    r"DECIDED:|TODAY:|TODO|SOMEDAY:|WEEK REVIEW|"
+                    r"plan today:|focus order today)"),
          "meta_header"),
         (re.compile(r"⚠|^!!!"), "warn_line"),
         (re.compile(r"^---"), "struct"),
@@ -4536,6 +4557,53 @@ class App(tk.Tk):
             rec["display"] = max(rec["display"], key=rec["display"].get)
             rec["entries"].sort(key=lambda e: (e[0], e[1]))
         return out
+
+    def _scan_decisions(self):
+        """Backlog #62: every `DECIDED: <topic> — <verdict>` line across
+        every day file, newest first. Purely archival — no counter, no
+        reopening friction, no unlock mechanic (that was #9's Reopening
+        Guard, explicitly rejected as too close to a gating pattern).
+        This just makes "wait, didn't I already think this through"
+        answerable by reading the list back, exactly like Search all
+        days already does for free text — a dedicated ledger is just a
+        shortcut to browse without typing a query first."""
+        out = []
+        try:
+            names = sorted(os.listdir(self.diary_dir()), reverse=True)
+        except OSError:
+            return out
+        for fn in names:
+            if not fn.endswith(".txt"):
+                continue
+            date = fn[:-4]
+            try:
+                with open(os.path.join(self.diary_dir(), fn),
+                          encoding="utf-8") as f:
+                    for line in f:
+                        s = line.strip()
+                        if s.lower().startswith("decided:"):
+                            text = s[len("decided:"):].strip()
+                            if text:
+                                out.append((date, text))
+            except OSError:
+                continue
+        return out
+
+    def _decision_log_view(self):
+        win = tk.Toplevel(self)
+        win.title("Decision log")
+        win.geometry("640x420")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10))
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        decisions = self._scan_decisions()
+        if not decisions:
+            txt.insert("1.0", "No DECIDED: lines yet — type one in any "
+                              "day file, e.g. \"DECIDED: apartment — "
+                              "staying another year, rent's still fair\".")
+        else:
+            for date, text in decisions:
+                txt.insert("end", f"{date}  {text}\n")
+        txt.config(state="disabled")
 
     def _themed_writing(self, event=None):
         """Ctrl+T: pick or type a topic (existing ones autocomplete), then

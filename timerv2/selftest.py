@@ -53,7 +53,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_day_fragmentation_tax", "_meeting_fragmentation_lines",
         "_year_rhythm_grid", "_energy_forecast_line",
         "_experiment_from_file", "_week_metric_totals",
-        "_experiment_review_line"}
+        "_experiment_review_line", "_scan_decisions"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -1309,6 +1309,40 @@ def suite_pinned_searches():
     assert remove(["x"], "not-there") == ["x"]
 
 
+def suite_decision_log():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+
+    def write(day, text):
+        with open(os.path.join(tmp, day + ".txt"), "w",
+                  encoding="utf-8") as f:
+            f.write(text)
+
+    write("2026-07-01", "=== Wednesday 01.07.2026 ===\n"
+                       "SIGNAL: thesis\n"
+                       "DECIDED: apartment — staying another year\n"
+                       "random note that mentions decided: in passing\n")
+    write("2026-07-10", "=== Friday 10.07.2026 ===\n"
+                       "DECIDED: advisor — switching to weekly check-ins\n")
+    write("2026-07-05", "=== Monday 05.07.2026 ===\n"
+                       "no decisions in this one\n")
+    d = _mk(D, diary_dir=lambda: tmp)
+
+    out = D._scan_decisions(d)
+    # newest file first (filename sort, reverse=True), blank/false
+    # positives excluded, only genuine header-line hits counted
+    assert out == [
+        ("2026-07-10", "advisor — switching to weekly check-ins"),
+        ("2026-07-01", "apartment — staying another year"),
+    ], out
+
+    # ---- silence: no DECIDED: lines anywhere ----
+    for fn in os.listdir(tmp):
+        os.remove(os.path.join(tmp, fn))
+    write("2026-07-01", "SIGNAL: thesis\n")
+    assert D._scan_decisions(d) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1334,7 +1368,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("year-rhythm", suite_year_rhythm),
           ("energy-forecast", suite_energy_forecast),
           ("experiment-engine", suite_experiment_engine),
-          ("pinned-searches", suite_pinned_searches)]
+          ("pinned-searches", suite_pinned_searches),
+          ("decision-log", suite_decision_log)]
 
 
 def main():

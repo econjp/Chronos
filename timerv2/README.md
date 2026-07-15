@@ -4,6 +4,16 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Decision log lite (v8.47)
+
+A new archival-only line convention: type `DECIDED: apartment — staying
+another year, rent's still fair` anywhere in a day file. **View →
+Decision log…** lists every one of them across every day file, newest
+first — so "wait, didn't I already think this through" is answerable by
+reading the list, not memory. Deliberately no counter, no reopening
+friction, no unlock mechanic — purely archival, same spirit as Search
+all days.
+
 ### Ask-your-diary pinned searches (v8.46)
 
 **Search all days** gains a row of pinned-search buttons above the

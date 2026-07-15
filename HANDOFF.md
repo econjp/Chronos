@@ -950,6 +950,15 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.47** (decision log lite — backlog #62, DONE, "didn't I already
+  think this through"). New `DECIDED: <topic> — <verdict>` archival
+  line convention + View > "Decision log…" (new pure `_scan_decisions`
+  + thin `_decision_log_view` Tk layer, newest-file-first). No
+  counter, no reopening friction, no unlock mechanic — deliberately
+  NOT #9's rejected Reopening Guard mechanics. `DECIDED:` added to
+  the header syntax-highlight rules. New "decision-log" selftest
+  suite (ordering, a mid-sentence false-positive correctly excluded,
+  silence with none declared); 30/30 green (new suite, was 29).
 - **v8.46** (ask-your-diary pinned searches — backlog #71, DONE, a
   recurring lookup becomes one click). Search all days gains a
   pinned-search button row: click to re-run, 📌 Pin to save the
@@ -1963,7 +1972,13 @@ purpose; the *walls* are the major thing, and they're now named.
     new data source, same shape as TODO carry-over. Emotionally simple
     and, unlike most of this backlog, not diagnostic of anything.
 
-62. **Decision log lite — searchable, NOT the rejected #9 mechanics
+62. ~~**Decision log lite — searchable, NOT the rejected #9
+    mechanics.**~~ — DONE v8.47. New `DECIDED: <topic> — <verdict>`
+    line convention + pure `_scan_decisions` + View > "Decision
+    log…" (read-only, newest first). No counter, no reopening
+    friction, no unlock mechanic — if this ever starts growing
+    enforcement logic, it has become #9 again, stop. Original design
+    note kept below for reference.
     (SELF-KNOWLEDGE).** #9's Reopening Guard (reopen counters, typed
     justification to unlock) was explicitly held back as too close to
     a gating pattern — that verdict stands, this is a different,
