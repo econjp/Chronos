@@ -4,6 +4,18 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Conversation-ready status export (v8.62)
+
+The Life dashboard gains a **Copy status update** button — a different
+audience than Copy-for-AI-review. One short, professionally-toned
+paragraph per scoped deadline, ready to paste into an email to an
+actual supervisor or advisor: `Progress update — Thesis: 12h this week
+(up from 8h last). Currently projected 3d behind pace, landing August
+04. Blocked on: ch5 draft.` Reuses the numbers the app already
+computes, plus the blocked-task field from v8.60 — no new data. This
+one surface is deliberately written in a different register on
+purpose; the rest of the app stays blunt.
+
 ### Cost of yes (v8.61)
 
 Every capacity view only ever looked at deadlines already on the books

@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.62 (conversation-ready status export — backlog #57, a
+deliberately different register):
+  - Copy-for-AI-review is written for feeding an LLM; nothing was
+    written for pasting into an email to an actual supervisor/advisor.
+    New Life dashboard button "Copy status update": one short,
+    professionally-toned paragraph per scoped deadline — "Progress
+    update — Thesis: 12h this week (up from 8h last). Currently
+    projected 3d behind pace, landing August 04. Blocked on: ch5
+    draft." New `_status_update_text`/`_status_update_all`, pure reuse
+    of `_dl_progress`/`_dl_projection`'s own numbers plus v8.60's fresh
+    `blocked_by` field for the blockers line — no new computation, no
+    new data source. Worth being explicit that this ONE surface sounds
+    different on purpose (external-facing register), not a precedent
+    for softening the rest of the app's blunt internal voice. New
+    "status-update" selftest suite (behind-pace phrasing, on-pace
+    phrasing with a blocker pulled in via v8.60's field, silence for
+    an unscoped deadline, `_status_update_all` joining multiple
+    deadlines and skipping unscoped ones); 44/44 green.
+
 New in v8.61 (cost of yes — backlog #52, the capacity math run BEFORE
 you commit, not after):
   - Every capacity view (`_capacity_lines`, `_plan_line`, #47's root
@@ -7056,6 +7075,61 @@ class App(tk.Tk):
                 f"for now would free {cut:.1f}h/day for {name_m} — one way "
                 "to close the gap, not the only one.")
 
+    def _status_update_text(self, dl):
+        """Backlog #57: a DIFFERENT REGISTER on purpose — this is the
+        one surface meant to sound like something you'd paste into an
+        email to an actual supervisor/advisor, not the rest of the
+        app's blunt internal voice. Reuses _dl_progress/_dl_projection's
+        own numbers and v8.60's blocked_by field — no new computation,
+        no new data source. None for an unscoped deadline (total_h) —
+        nothing meaningful to report externally."""
+        try:
+            p = self._dl_progress(dl)
+        except (ValueError, KeyError):
+            return None
+        if not p.get("total_h"):
+            return None
+        mon = self.today - dt.timedelta(days=self.today.weekday())
+        prev_mon = mon - dt.timedelta(days=7)
+        kws = self._match_kws(dl.get("match", ""))
+        if kws:
+            this_week_h = matched_minutes(kws, mon, self.today) / 60
+            last_week_h = matched_minutes(
+                kws, prev_mon, mon - dt.timedelta(days=1)) / 60
+        else:
+            idx = day_index()
+            this_week_h = sum(
+                rec["work"] for iso, rec in idx.items()
+                if mon.isoformat() <= iso <= self.today.isoformat()) / 60
+            last_week_h = sum(
+                rec["work"] for iso, rec in idx.items()
+                if prev_mon.isoformat() <= iso < mon.isoformat()) / 60
+        trend = (f" (up from {last_week_h:.0f}h last)"
+                if this_week_h > last_week_h else
+                f" (down from {last_week_h:.0f}h last)"
+                if this_week_h < last_week_h else "")
+        text = (f"Progress update — {dl['name']}: {this_week_h:.0f}h "
+               f"this week{trend}.")
+        proj = self._dl_projection(dl)
+        if proj:
+            if proj["delta"] <= 0:
+                text += f" On pace to finish by {proj['land']:%B %d}."
+            else:
+                text += (f" Currently projected {proj['delta']}d behind "
+                        f"pace, landing {proj['land']:%B %d}.")
+        blockers = [t["name"] for t in self.settings.get("tasks", [])
+                   if t.get("deadline") == dl["name"] and t.get("blocked_by")]
+        text += (f" Blocked on: {', '.join(blockers)}." if blockers
+                else " No blockers.")
+        return text
+
+    def _status_update_all(self):
+        """All scoped deadlines' status paragraphs, blank-line
+        separated — the clipboard payload for "Copy status update"."""
+        texts = [t for dl in self.deadlines()
+                for t in [self._status_update_text(dl)] if t]
+        return "\n\n".join(texts)
+
     def _outlook_lines(self):
         """Forward simulation across ALL scoped deadlines at REAL pace —
         the complement to _capacity_lines (which compares abstract
@@ -8313,7 +8387,21 @@ class App(tk.Tk):
                 "seeing, what should next week look like?")
             self.status.config(text="Dashboard copied — paste into Claude.")
 
+        def copy_status_update():
+            text = self._status_update_all()
+            if not text:
+                self.status.config(
+                    text="No scoped deadlines to report on yet.")
+                return
+            self.clipboard_clear()
+            self.clipboard_append(text)
+            self.status.config(
+                text="Status update copied — paste into an email to your "
+                    "supervisor/advisor.")
+
         ttk.Button(bar, text="Copy for AI review", command=copy).pack(side="left")
+        ttk.Button(bar, text="Copy status update",
+                  command=copy_status_update).pack(side="left", padx=6)
         ttk.Button(bar, text="Refresh", command=render).pack(side="left", padx=6)
 
         ttk.Label(hub, text="Detail views:", foreground="#777777").pack(side="left")

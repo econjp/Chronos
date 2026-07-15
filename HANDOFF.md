@@ -950,6 +950,19 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.62** (conversation-ready status export — backlog #57, DONE, a
+  deliberately different register). New `_status_update_text`/
+  `_status_update_all` + Life dashboard "Copy status update" button:
+  "Progress update — Thesis: 12h this week (up from 8h last).
+  Currently projected 3d behind pace, landing August 04. Blocked on:
+  ch5 draft." Pure reuse of `_dl_progress`/`_dl_projection`'s own
+  numbers plus v8.60's fresh `blocked_by` field for the blockers
+  sentence. Explicitly the one surface meant to sound different on
+  purpose (external-facing), not a precedent for softening the rest
+  of the app's blunt voice. New "status-update" selftest suite
+  (behind-pace/on-pace phrasing, a blocker pulled in, silence for
+  unscoped, `_status_update_all` joining and skipping); 44/44 green
+  (new suite, was 43).
 - **v8.61** (cost of yes — backlog #52, DONE, capacity math run BEFORE
   you commit). New `_cost_of_yes_line(hypothetical, existing)`: the
   exact aggregate-slack math `_capacity_lines` already runs for real
@@ -2159,7 +2172,13 @@ purpose; the *walls* are the major thing, and they're now named.
     command, not just a count; left as a possible refinement, not
     built.
 
-57. **Conversation-ready status export (USABILITY — a different
+57. ~~**Conversation-ready status export.**~~ — DONE v8.62. New
+    `_status_update_text`/`_status_update_all` + a "Copy status
+    update" button in the Life dashboard. Also pulls in v8.60's fresh
+    `blocked_by` field for the blockers sentence, a connection the
+    original note couldn't have anticipated since #44 didn't exist
+    yet. Original design note kept below for reference.
+    (USABILITY — a different
     audience than #14/Copy-for-AI-review).** Copy-for-AI-review is
     written for feeding an LLM; nothing is written for pasting into an
     email to an actual supervisor/advisor. A "Copy status update"

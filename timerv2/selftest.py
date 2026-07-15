@@ -61,7 +61,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_due_capsules", "_capsule_lines", "_commit_from_text",
         "_commitment_reliability", "_commitment_reliability_line",
         "_protected_intervals", "_milestone_progress_line",
-        "_waiting_on_lines", "_cost_of_yes_line",
+        "_waiting_on_lines", "_cost_of_yes_line", "_status_update_text",
+        "_status_update_all",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -2013,6 +2014,64 @@ def suite_cost_of_yes():
         d3, {"name": "X", "date": "not-a-date", "total_h": 5}, []) is None
 
 
+def suite_status_update():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 7, 15)      # Wednesday, week-of-Monday 07-13
+    dl = {"name": "Thesis", "match": "thesis", "date": "2026-08-01",
+         "total_h": 40}
+
+    rows = []
+    for iso, m in [("2026-07-07", 120), ("2026-07-08", 120),
+                  ("2026-07-09", 120), ("2026-07-10", 120)]:   # 8h last week
+        rows.append([iso, "work", "09:00", "11:00", str(m),
+                    "thesis: writing", ""])
+    for iso, m in [("2026-07-13", 240), ("2026-07-14", 240),
+                  ("2026-07-15", 240)]:                        # 12h this week
+        rows.append([iso, "work", "09:00", "13:00", str(m),
+                    "thesis: writing", ""])
+    seed(ns, rows)
+
+    # ---- behind pace, no blockers ----
+    d = _mk(D, today=TODAY, settings={},
+            _dl_progress=lambda dl: {"total_h": 40, "due": dt.date(2026, 8, 1)},
+            _dl_projection=lambda dl: {"delta": 3, "land": dt.date(2026, 8, 4)})
+    text = D._status_update_text(d, dl)
+    assert text == ("Progress update — Thesis: 12h this week (up from 8h "
+                    "last). Currently projected 3d behind pace, landing "
+                    "August 04. No blockers."), text
+
+    # ---- on pace, with a blocker linked via v8.60's blocked_by ----
+    d2 = _mk(D, today=TODAY, settings={"tasks": [
+                {"name": "ch5 draft", "deadline": "Thesis",
+                 "blocked_by": "advisor reply"},
+                {"name": "unrelated", "deadline": "Other"}]},
+            _dl_progress=lambda dl: {"total_h": 40, "due": dt.date(2026, 8, 1)},
+            _dl_projection=lambda dl: {"delta": 0, "land": dt.date(2026, 8, 1)})
+    text2 = D._status_update_text(d2, dl)
+    assert text2 == ("Progress update — Thesis: 12h this week (up from 8h "
+                     "last). On pace to finish by August 01. Blocked on: "
+                     "ch5 draft."), text2
+
+    # ---- silence: unscoped deadline (no total_h) ----
+    d3 = _mk(D, today=TODAY, settings={}, _dl_progress=lambda dl: {})
+    assert D._status_update_text(d3, {"name": "X"}) is None
+
+    # ---- _status_update_all: joins scoped deadlines, skips unscoped ----
+    d4 = _mk(D, today=TODAY, settings={"tasks": [
+                {"name": "ch5 draft", "deadline": "Thesis",
+                 "blocked_by": "advisor reply"}]},
+            deadlines=lambda: [
+                {"name": "Thesis", "match": "thesis", "date": "2026-08-01",
+                 "total_h": 40},
+                {"name": "Unscoped", "match": "x", "date": "2026-09-01"}],
+            _dl_progress=lambda dl: ({"total_h": 40, "due": dt.date(2026, 8, 1)}
+                                     if dl["name"] == "Thesis" else {}),
+            _dl_projection=lambda dl: {"delta": 0, "land": dt.date(2026, 8, 1)})
+    combined = D._status_update_all(d4)
+    assert combined == text2, combined     # only Thesis, Unscoped skipped
+    assert combined.count("Progress update") == 1, combined
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2052,7 +2111,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("protected-windows", suite_protected_windows),
           ("milestones", suite_milestones),
           ("waiting-on", suite_waiting_on),
-          ("cost-of-yes", suite_cost_of_yes)]
+          ("cost-of-yes", suite_cost_of_yes),
+          ("status-update", suite_status_update)]
 
 
 def main():
