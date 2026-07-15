@@ -2751,6 +2751,61 @@ measuring what's already there.
     up — which insights get referenced/acted on in practice should
     inform the grouping, not a guess.
 
+87. **Coverage map — are we actually using what we already have
+    (TRUST — the data-completeness answer, made checkable instead of
+    just argued).** The 2026-07-14 "data architecture" section makes
+    the case that regret is cheap because parsers can be widened
+    retroactively; nothing lets the owner actually SEE the gap between
+    what a source COULD offer and what's currently read. One view:
+    per source (health export, .ics, METRICS keys actually used in
+    the last 90 days) — for health, list any CSV column present in
+    the real export file that `parse_health_dir` doesn't currently
+    read (a schema diff, not a guess); for METRICS, list which keys
+    have actually been typed vs. sitting unused as an idea. Turns
+    "hope we're catching everything" from a feeling into a checklist
+    that's either empty (reassuring) or actionable (a specific column
+    to widen the parser for). Complements #23/sensor-health (which
+    checks a source hasn't gone STALE) from the opposite angle — this
+    checks a live source isn't being read INCOMPLETELY.
+
+88. **Catch-up digest — "since you last opened this" (USABILITY —
+    the growing-surface-area answer for return visits).** With 85+
+    views/insights now built, a dashboard opened after a gap currently
+    shows the same static snapshot as always — nothing frames what's
+    NEW since the owner last actually looked. One line at the top of
+    the dashboard, using #56's usage-counter timestamps (would need
+    upgrading from a count to a count+last-seen pair — noted as a
+    dependency, not built yet): "since you last opened this (12 days
+    ago): Thesis moved to behind-pace, a new best week happened, 2
+    fresh anomalies." Turns a big static feature surface into
+    something that reads like catching up, not re-deriving everything
+    from scratch every time.
+
+89. **In-app "what's new" viewer (USABILITY — dirt cheap, directly
+    on point).** The docstring at the top of `timer_diary_v5.py`
+    already has a perfectly-structured "New in vX.Y (...)" block per
+    version, written every single time — nobody currently reads it
+    except whoever opens the source file. Tools > "What's new…":
+    parse the last 5-10 "New in vX.Y" blocks straight out of the
+    module docstring (already-written text, zero new authoring) into
+    a scrolled window. The single cheapest, most direct answer to "I
+    have a lot of features and don't fully remember what's in here
+    anymore" — no new data, no new writing, just surfacing text that
+    already exists every time a version ships.
+
+90. **Backlog graveyard sweep — the hygiene pattern applied to itself
+    (PROCESS, not code).** #43 sweeps Task-library items untouched 60+
+    days; this backlog itself has grown to 90 items in a handful of
+    sessions and will keep growing. Not an app feature (HANDOFF.md
+    isn't data the running app reads) — a standing convention for
+    future sessions instead: periodically (say, every +20 items, or
+    whenever a session opens this file to add new ideas) scan for OPEN
+    items proposed 60+ days ago that never got picked up, and ask
+    explicitly whether they're still wanted, same as #43 asks about
+    task-library items. Keeps the backlog itself from becoming exactly
+    the kind of untrustworthy pile #43 was written to prevent
+    elsewhere in the app.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
