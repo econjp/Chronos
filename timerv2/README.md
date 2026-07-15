@@ -4,6 +4,19 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Waiting-on / blocked tasks (v8.60)
+
+Real work often depends on someone else, not just your own control.
+Tasks window → right-click a row → **Set blocked by…** (free text —
+"waiting on advisor reply"). Blocked items stop showing up in the
+re-entry-ramp suggestion and both "uncommitted hours → pick from Task
+library" lines — the planner stops suggesting things you structurally
+can't do yet — and get a ⛔ marker inline so they don't just vanish. The
+Life dashboard's **Deadlines & Goals** tab gains a new **WAITING ON:**
+section listing them with their blocker. No due-date logic, no
+reminders to chase the blocker — that's someone else's problem to
+solve, not the app's to nag about.
+
 ### Milestones inside a deadline (v8.59)
 
 `total_h` measures effort, not progress — 30h logged on a 60h scope can

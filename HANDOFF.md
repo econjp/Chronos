@@ -950,6 +950,19 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.60** (waiting-on / blocked tasks — backlog #44, DONE, external
+  dependencies the planner can't see). New `blocked_by` task-library
+  field (Tasks window right-click > "Set blocked by…", free text,
+  same popup shape as Set goal/Set deadline). Filtered out of
+  `_reentry_opener`'s candidates and both "uncommitted hours → pick
+  from Task library" lines. New `_waiting_on_lines`, a new "WAITING
+  ON:" section in the dashboard's "Deadlines & Goals" tab. Blocked
+  rows get a ⛔ marker + reason inline in the Tasks window, tagged
+  red. Corrected the original note's claim: `_recommend_now`/
+  `_focus_items` don't actually read the task library (deadline-
+  scoped only), so no filtering was needed there. New "waiting-on"
+  selftest suite; existing "reentry" suite extended with a blocked-
+  item case; 42/42 green (new suite, was 41).
 - **v8.59** (milestones inside a deadline — backlog #36, DONE,
   content not just hours). Deadlines gain an optional "Milestones"
   field in the existing edit dialog: `ch4 [15h]*, ch5 [20h], revisions
@@ -1934,7 +1947,16 @@ purpose; the *walls* are the major thing, and they're now named.
     (`_graveyard_lines`). "Untouched" approximated by ADDED date, not a
     true last-touched signal — see the version-history note.
 
-44. **Waiting-on / blocked tasks (PLANNING — external dependencies).**
+44. ~~**Waiting-on / blocked tasks.**~~ — DONE v8.60. New `blocked_by`
+    task-library field (Tasks window right-click > "Set blocked by…")
+    + `_waiting_on_lines` (new "WAITING ON:" dashboard section).
+    Filtered out of `_reentry_opener` and both "uncommitted hours →
+    pick from Task library" lines. `_recommend_now`/`_focus_items`
+    turned out NOT to read the task library at all (they're deadline-
+    scoped) — the original note's claim there didn't match the actual
+    code, so nothing needed filtering there. Original design note
+    kept below for reference.
+    (PLANNING — external dependencies).**
     Everything the planner knows about is under the owner's own control;
     real work often isn't ("can't touch ch4 until the supervisor replies
     on ch3"). Task-library items gain an optional `blocked_by: <task

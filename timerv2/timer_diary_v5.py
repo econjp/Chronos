@@ -60,6 +60,26 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.60 (waiting-on / blocked tasks — backlog #44, external
+dependencies the planner can't see):
+  - Everything the planner knew about was under the owner's own control;
+    real work often isn't ("can't touch ch4 until the supervisor
+    replies"). Task-library items gain an optional `blocked_by` field —
+    Tasks window right-click > "Set blocked by…" (free text, same
+    popup shape as Set goal/Set deadline). Blocked items are now
+    excluded from `_reentry_opener`'s re-entry-ramp candidates and both
+    "uncommitted hours → pick from Task library" suggestion lines — the
+    planner stops suggesting things you structurally can't do yet. New
+    `_waiting_on_lines` surfaces them separately (Life dashboard's
+    "Deadlines & Goals" tab, a new "WAITING ON:" section) so they don't
+    just vanish. In the Tasks window itself, blocked rows get a ⛔
+    marker and the blocker reason inline, tagged in red. No due-date
+    logic, no reminders to chase the blocker — that's someone else's
+    problem to solve, not the app's to nag about. New "waiting-on"
+    selftest suite (formatting, silence with nothing blocked, silence
+    with no tasks); existing "reentry" suite extended with a blocked-
+    item exclusion case; 42/42 green.
+
 New in v8.59 (milestones inside a deadline — backlog #36, content not
 just hours):
   - `total_h` measures effort, not progress — 30h logged on a 60h scope
@@ -4109,16 +4129,36 @@ class App(tk.Tk):
 
     RAMP_BREAK_SECS = 30 * 60   # after this long away, offer an opener
 
+    def _waiting_on_lines(self):
+        """Backlog #44: blocked task-library items — set via the Tasks
+        window's right-click "Set blocked by…" — don't just vanish once
+        filtered out of the planner's suggestions elsewhere; they move
+        to a visibly different bucket instead. No due-date logic, no
+        reminders to chase the blocker — that's someone else's problem
+        to solve, not the app's to nag about."""
+        blocked = [t for t in self.settings.get("tasks", [])
+                  if t.get("blocked_by")]
+        if not blocked:
+            return []
+        lines = ["WAITING ON:"]
+        for t in blocked:
+            lines.append(f"  {t['name']} — blocked by: {t['blocked_by']}")
+        return lines
+
     def _reentry_opener(self, task):
         """The smallest concrete opener for restarting after a long break
         — activation energy is the real enemy, so hand over a 10-minute
         piece instead of the mountain. Preference order: task-library item
         related to the active task (smallest estimate first), then the
         smallest signal-priority item, then any smallest-estimate item,
-        else today's first TODO bullet. Returns a short string or None."""
+        else today's first TODO bullet. Returns a short string or None.
+        Blocked items (backlog #44) are excluded — the planner shouldn't
+        suggest resuming something structurally not doable yet."""
         t = (task or "").lower()
         cands = []
         for item in self.settings.get("tasks", []):
+            if item.get("blocked_by"):
+                continue
             try:
                 est = float(item.get("est_h") or 0)
             except (TypeError, ValueError):
@@ -4920,7 +4960,8 @@ class App(tk.Tk):
         slack = self._day_capacity(self.today) - sum(x[2] for x in items)
         if slack > 0.3:
             signal_tasks = [tsk["name"] for tsk in self.settings.get("tasks", [])
-                            if tsk.get("priority") == "signal"]
+                            if tsk.get("priority") == "signal"
+                            and not tsk.get("blocked_by")]
             line = f"  {len(items) + 1}. ({slack:.1f}h uncommitted"
             line += (f" — pick from Task library: {', '.join(signal_tasks[:3])})"
                      if signal_tasks else " — pick from Task library)")
@@ -4973,7 +5014,8 @@ class App(tk.Tk):
         if leftover >= 0.25:
             biggest = max(slots, key=lambda se: _time_span_hours(*se))
             signal_tasks = [tsk["name"] for tsk in self.settings.get("tasks", [])
-                            if tsk.get("priority") == "signal"]
+                            if tsk.get("priority") == "signal"
+                            and not tsk.get("blocked_by")]
             line = (f"  {biggest[0]:%H:%M}-{biggest[1]:%H:%M} uncommitted "
                     f"({leftover:.1f}h free today total)")
             if signal_tasks:
@@ -7065,6 +7107,7 @@ class App(tk.Tk):
         tree.pack(fill="both", expand=True, padx=8, pady=(8, 4))
         tree.tag_configure("signal", foreground="#2e8b2e")
         tree.tag_configure("someday", foreground="#999999")
+        tree.tag_configure("blocked", foreground="#a03030")
 
         def task_actual_h(name, added):
             t, tot = name.strip().lower(), 0
@@ -7094,8 +7137,11 @@ class App(tk.Tk):
             for i, t in enumerate(self.settings.get("tasks", [])):
                 pri = t.get("priority", "normal")
                 est = t.get("est_h")
-                tree.insert("", "end", iid=str(i), tags=(pri,), values=(
-                    self._PRI_ICON.get(pri, "○"), t["name"],
+                tag = "blocked" if t.get("blocked_by") else pri
+                name = (f"⛔ {t['name']} (blocked by: {t['blocked_by']})"
+                       if t.get("blocked_by") else t["name"])
+                tree.insert("", "end", iid=str(i), tags=(tag,), values=(
+                    self._PRI_ICON.get(pri, "○"), name,
                     f"{est:g}h" if est else "—",
                     f"{task_actual_h(t['name'], t['added']):.2f}h",
                     t.get("goal") or "—", t.get("deadline") or "—",
@@ -7218,11 +7264,28 @@ class App(tk.Tk):
 
             ttk.Button(pop, text="OK", command=ok).grid(row=1, column=0, pady=(0, 8))
 
+        def set_blocked_by():
+            i = picked()
+            if i is None:
+                return
+            cur = self.settings["tasks"][i].get("blocked_by") or ""
+            v = simpledialog.askstring(
+                APP_NAME, "Blocked by (task name or free text — empty "
+                          "clears it). Backlog #44: excluded from Task "
+                          "library suggestions until cleared.",
+                initialvalue=cur, parent=win)
+            if v is None:
+                return
+            self.settings["tasks"][i]["blocked_by"] = v.strip() or None
+            save_settings(self.settings)
+            refresh(keep_selection=[str(i)])
+
         menu = tk.Menu(tree, tearoff=0)
         menu.add_command(label="Set goal…", command=lambda: set_link(
             "goal", [g["name"] for g in self.goals()]))
         menu.add_command(label="Set deadline…", command=lambda: set_link(
             "deadline", [d["name"] for d in self.deadlines()]))
+        menu.add_command(label="Set blocked by…", command=set_blocked_by)
 
         def right_click(event):
             row = tree.identify_row(event.y)
@@ -8136,7 +8199,7 @@ class App(tk.Tk):
                 txt.config(state="disabled")
 
             fill(txt_today, ("TODAY", "THIS WEEK", "LIFE BALANCE"))
-            fill(txt_goals, ("GOALS", "DEADLINES"))
+            fill(txt_goals, ("GOALS", "DEADLINES", "WAITING ON"))
             fill(txt_insights, ("INSIGHTS",))
 
         def copy():
@@ -8222,6 +8285,10 @@ class App(tk.Tk):
             top = sorted(tasks.items(), key=lambda x: -x[1])[:6]
             lines.append("  top: " + " · ".join(
                 f"{k} {m / 60:.1f}h" for k, m in top))
+
+        waiting = self._waiting_on_lines()
+        if waiting:
+            lines += [""] + waiting
 
         gs = self.goals()
         if gs:

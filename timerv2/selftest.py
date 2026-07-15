@@ -61,6 +61,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_due_capsules", "_capsule_lines", "_commit_from_text",
         "_commitment_reliability", "_commitment_reliability_line",
         "_protected_intervals", "_milestone_progress_line",
+        "_waiting_on_lines",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -427,6 +428,18 @@ def suite_reentry():
     assert D._reentry_opener(d, "thesis: ch4") == "'thesis: fix table 3' (0.2h)"
     # unrelated active task: signal-priority item beats a smaller other
     assert D._reentry_opener(d, "banana") == "'thesis: fix table 3' (0.2h)"
+    # backlog #44: a blocked item is excluded from the candidate pool
+    # entirely, even though it would otherwise win
+    d.settings = {"tasks": [
+        {"name": "thesis: fix table 3", "est_h": 0.2, "priority": "signal",
+         "blocked_by": "advisor reply"},
+        {"name": "thesis: rewrite ch5", "est_h": 3},
+        {"name": "email sweep", "est_h": 0.1}]}
+    assert D._reentry_opener(d, "banana") == "'email sweep' (0.1h)"
+    d.settings = {"tasks": [
+        {"name": "thesis: fix table 3", "est_h": 0.2, "priority": "signal"},
+        {"name": "thesis: rewrite ch5", "est_h": 3},
+        {"name": "email sweep", "est_h": 0.1}]}
     # no estimated items -> today's first TODO bullet (machine lines skipped)
     d.settings = {"tasks": []}
     assert D._reentry_opener(d, "x") == "'call landlord'"
@@ -1933,6 +1946,30 @@ def suite_milestones():
         d, {"name": "X", "match": "x", "milestones": ""}) is None
 
 
+def suite_waiting_on():
+    D, ns = fresh()
+
+    d = _mk(D, settings={"tasks": [
+        {"name": "ch4 draft", "blocked_by": "advisor reply"},
+        {"name": "email sweep"},
+        {"name": "ch5 draft", "blocked_by": "landlord response"},
+    ]})
+    out = D._waiting_on_lines(d)
+    assert out == [
+        "WAITING ON:",
+        "  ch4 draft — blocked by: advisor reply",
+        "  ch5 draft — blocked by: landlord response",
+    ], out
+
+    # ---- silence: nothing blocked ----
+    d2 = _mk(D, settings={"tasks": [{"name": "email sweep"}]})
+    assert D._waiting_on_lines(d2) == []
+
+    # ---- silence: no tasks at all ----
+    d3 = _mk(D, settings={})
+    assert D._waiting_on_lines(d3) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1970,7 +2007,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("time-capsule", suite_time_capsule),
           ("commitment-reliability", suite_commitment_reliability),
           ("protected-windows", suite_protected_windows),
-          ("milestones", suite_milestones)]
+          ("milestones", suite_milestones),
+          ("waiting-on", suite_waiting_on)]
 
 
 def main():
