@@ -60,6 +60,30 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.55 (screen-lock break detection — Windows+L should trigger a
+break, direct owner request):
+  - The idle-minutes detector (`idle_seconds`/`_watch_idle`, long-
+    standing) only catches genuine keyboard/mouse idleness — a
+    deliberate Win+L lock shorter than `idle_min` (default 10m) never
+    crossed that threshold, so a quick coffee-break lock never got
+    offered as a break at all. New `is_locked()`: the OpenInputDesktop
+    ctypes trick (stdlib only, no pywin32) — the call fails when the
+    interactive desktop isn't reachable, which is exactly what happens
+    while locked. New `_watch_lock`, called from `_tick()` right next
+    to `_watch_idle`: on unlock, reuses the EXISTING
+    `_offer_idle_break` retro-split dialog directly — one mechanism,
+    two triggers, no new UI. A `MIN_LOG_SECS` (30s) floor so an
+    accidental tap-and-untap doesn't pop a dialog for a 2-second gap.
+    Gated on `idle_min` being on at all (0 = away-detection off covers
+    this too) but deliberately NOT on meeting-mode's `idle_off_until`
+    — that suppresses ambiguous no-input time during a call, but an
+    actual lock is unambiguous even mid-meeting. UNTESTED by the
+    selftest harness, matching the existing `idle_seconds`/
+    `_watch_idle` precedent (this is a live-Windows-only interaction
+    this Linux dev environment cannot exercise) — please confirm on
+    your actual machine that locking and unlocking now offers the
+    break dialog.
+
 New in v8.54 (planner realism factor — backlog #25, the schedule
 audits itself):
   - v8.0 writes a suggested schedule every morning; nothing ever
@@ -1845,6 +1869,27 @@ def idle_seconds():
         return 0.0
 
 
+def is_locked():
+    """Best-effort Windows workstation-lock detector — the
+    OpenInputDesktop trick: the call fails (returns a NULL handle)
+    when the interactive desktop isn't reachable, which is exactly
+    what happens while the workstation is locked (or a secure desktop
+    like a UAC prompt is up). stdlib ctypes only, no pywin32. Fail-open
+    like idle_seconds() (any error -> "not locked") so a detection
+    glitch never blocks normal tracking — this is a well-known
+    community technique, not something this Linux dev environment can
+    verify against a live Windows session, so confirm it actually
+    fires on your machine before relying on it."""
+    try:
+        h = ctypes.windll.user32.OpenInputDesktop(0, False, 0)
+        if h:
+            ctypes.windll.user32.CloseDesktop(h)
+            return False
+        return True
+    except Exception:
+        return False
+
+
 # ---------------- global hotkey ----------------
 
 # label -> (modifier flags, virtual-key code); MOD_ALT=1 CTRL=2 SHIFT=4
@@ -1984,6 +2029,7 @@ class App(tk.Tk):
         self.break_start = None
         self.session_started = None
         self.idle_since = None         # datetime when idle gap began
+        self.lock_since = None         # datetime when the workstation locked
         self.prompting = False
         self.compact = False
         self.active_task = ""          # task the current work interval logs to
@@ -3736,6 +3782,7 @@ class App(tk.Tk):
             self.title(title)
             self._check_time_box(task_tot)
             self._watch_idle()
+            self._watch_lock()
         elif self.state == "break":
             bsecs = int((dt.datetime.now() - self.break_start).total_seconds())
             self.clock.config(text=f"☕ {hms_padded(bsecs)}", foreground="")
@@ -3965,6 +4012,29 @@ class App(tk.Tk):
         elif self.idle_since and idle < 15:
             gone_since, self.idle_since = self.idle_since, None
             self._offer_idle_break(gone_since)
+
+    def _watch_lock(self):
+        """Windows+L should trigger a break — the idle-minutes detector
+        above only catches genuine keyboard/mouse idleness, and misses
+        a deliberate screen lock shorter than idle_min (a quick 3-min
+        lock to grab coffee is still a break, unlike 3 minutes of just
+        reading the screen without touching anything). Detected via
+        is_locked() (best-effort, see its own docstring); reuses the
+        exact same retro-split offer _watch_idle already shows on
+        return — one mechanism, two triggers. Gated on idle_min being
+        on at all (0 = "away detection off" already covers this too,
+        one master switch) but NOT on meeting-mode's idle_off_until —
+        that suppresses ambiguous no-input time during a call, but an
+        actual lock is unambiguous even mid-meeting."""
+        if not int(self.settings.get("idle_min", 10)) or self.prompting:
+            return
+        locked = is_locked()
+        if locked and self.lock_since is None:
+            self.lock_since = dt.datetime.now()
+        elif not locked and self.lock_since:
+            gone_since, self.lock_since = self.lock_since, None
+            if (dt.datetime.now() - gone_since).total_seconds() >= MIN_LOG_SECS:
+                self._offer_idle_break(gone_since)
 
     def _offer_idle_break(self, gone_since):
         self.prompting = True

@@ -4,6 +4,20 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Screen-lock break detection (v8.55)
+
+Windows+L now triggers a break offer directly, not just eventually
+through idle detection. Locking is a deliberate step-away with no
+minimum duration worth waiting on — a quick 3-minute lock to grab
+coffee never crossed the idle-minutes threshold before, so it never
+got offered as a break at all. Unlocking now pops the same "log it as
+a break?" dialog the idle-minutes detector already used, immediately,
+for locks of 30 seconds or more. Turns off along with idle detection
+(`idle_min` = 0); unaffected by Meeting mode, since an actual lock is
+unambiguous even mid-call. **Uses a best-effort Windows API trick this
+dev environment couldn't test live — please confirm on your machine
+that locking and unlocking pops the dialog as expected.**
+
 ### Planner realism factor (v8.54)
 
 The morning schedule (v8.0) writes a suggested time-blocked plan every

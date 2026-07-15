@@ -950,6 +950,19 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.55** (screen-lock break detection — backlog #81, DONE, direct
+  owner request). New `is_locked()`: OpenInputDesktop ctypes trick
+  (stdlib only, no pywin32) — fails when the interactive desktop
+  isn't reachable, i.e. while locked. New `_watch_lock`, called from
+  `_tick` next to `_watch_idle`: on unlock, reuses the EXISTING
+  `_offer_idle_break` dialog directly (no new UI), with a 30s
+  (`MIN_LOG_SECS`) floor against an accidental tap-and-untap. Gated
+  on `idle_min` being on at all, deliberately NOT on meeting-mode's
+  `idle_off_until` (a lock is unambiguous even mid-call). UNTESTED by
+  the selftest harness — same category as the pre-existing idle-
+  detection code, a live-Windows-only interaction; needs the owner to
+  confirm on their real machine. No new suite (nothing testable
+  without live Windows); still 37/37 green, no regressions.
 - **v8.54** (planner realism factor — backlog #25, DONE, the schedule
   audits itself). New `_planned_hours_from_file`: reads a past day's
   own written schedule block back out of its file (same in-file
@@ -2401,6 +2414,26 @@ purpose; the *walls* are the major thing, and they're now named.
     `_day_metrics`), no new source, no new UI to configure which
     habits to track — whatever key appears becomes trackable the
     moment it's typed, same zero-config spirit as METRICS itself.
+
+81. ~~**Screen-lock break detection — Windows+L should trigger a
+    break.**~~ — DONE v8.55. Direct owner request (2026-07-15): "very
+    often forget to log a break cuz using windows+L shortcut for
+    locking screen." New `is_locked()` (OpenInputDesktop ctypes trick,
+    stdlib only) + `_watch_lock` (called from `_tick`, reuses the
+    EXISTING `_offer_idle_break` retro-split dialog on unlock — no new
+    UI). No idle_min threshold wait — a lock is deliberate regardless
+    of duration, just a 30s (`MIN_LOG_SECS`) floor against an
+    accidental tap-and-untap. Deliberately NOT suppressed by meeting-
+    mode's `idle_off_until` (that's for ambiguous no-input time during
+    a call; an actual lock is unambiguous even mid-meeting).
+    **UNTESTED by the selftest harness** — same category as the
+    pre-existing `idle_seconds`/`_watch_idle` idle detection, a live-
+    Windows-only interaction this Linux dev environment cannot
+    exercise. Needs manual confirmation on the owner's real machine
+    that locking and unlocking actually pops the break-offer dialog;
+    if `OpenInputDesktop`'s exact access-rights argument turns out to
+    need tuning on their Windows version, that's the first thing to
+    check.
 
 ## How to verify changes without Windows
 
