@@ -40,7 +40,9 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_procrastination_insight", "_metrics_from_text", "_day_metrics",
         "_metrics_insight", "_daylight_h", "_daylight_insight",
         "_diary_word_counts", "_word_drift_insight",
-        "_diary_rank_days", "_matching_days_text"}
+        "_diary_rank_days", "_matching_days_text",
+        "_lag_workout_line", "_lag_sleep_debt_line", "_day_start_late_map",
+        "_lag_evening_start_line", "_lag_insight"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "_LINE_TAG_RULES", "_WORD_RE", "_WORD_STOPWORDS"}
@@ -646,6 +648,70 @@ def suite_ask_diary():
     assert D._matching_days_text(d, "nothingmatchesthis") is None
 
 
+def suite_lag():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 6, 15)     # cutoff (today-90) = 2026-03-17
+
+    # ---- workout day -> next-day output ----
+    wo_days = [dt.date(2026, 4, 1) + dt.timedelta(days=i) for i in range(10)]
+    now_days = [dt.date(2026, 5, 1) + dt.timedelta(days=i) for i in range(10)]
+    rows = ([row((d + dt.timedelta(days=1)).isoformat(), 300, "x") for d in wo_days]
+           + [row((d + dt.timedelta(days=1)).isoformat(), 60, "x") for d in now_days])
+    seed(ns, rows)
+    d = _mk(D, today=TODAY)
+    wo_set = {x.isoformat() for x in wo_days}
+    d._health_data = lambda: {iso: {"workout_min": 30} for iso in wo_set}
+    line = D._lag_workout_line(d, 90)
+    assert line and "5.0h of work vs 1.0h" in line and "productivity tool" in line, line
+
+    # ---- short-sleep night -> the day AFTER that (not same-day) ----
+    seed(ns, rows)     # same next-day work pattern, reused for this sub-test
+    # now_days' next-day work was seeded low (60m) -> make THOSE the
+    # short-sleep nights, so short_next collects the low values (a=1.0h)
+    # and wo_days (next-day work 300m) become the full-sleep nights (b=5.0h)
+    short_set = {x.isoformat() for x in now_days}
+    d._sleep_h = lambda iso: 5.5 if iso in short_set else 7.5
+    line2 = D._lag_sleep_debt_line(d, 90)
+    assert line2 and "1.0h" in line2 and "5.0h" in line2, line2
+    assert "doesn't clear in one day" in line2, line2
+
+    # ---- late-evening work -> next morning's first-session start time ----
+    late_days = [dt.date(2026, 4, 1) + dt.timedelta(days=i) for i in range(5)]
+    normal_days = [dt.date(2026, 5, 1) + dt.timedelta(days=i) for i in range(5)]
+    rows2 = []
+    for x in late_days:
+        rows2.append(row(x.isoformat(), 30, "x"))
+        rows2[-1][2] = "21:30"                                    # late start
+        nxt = x + dt.timedelta(days=1)
+        rows2.append(row(nxt.isoformat(), 30, "x"))
+        rows2[-1][2] = "10:00"                                     # slow next morning
+    for x in normal_days:
+        rows2.append(row(x.isoformat(), 30, "x"))
+        rows2[-1][2] = "09:00"
+        nxt = x + dt.timedelta(days=1)
+        rows2.append(row(nxt.isoformat(), 30, "x"))
+        rows2[-1][2] = "07:00"                                     # early next morning
+    seed(ns, rows2)
+    line3 = D._lag_evening_start_line(d, 90)
+    assert line3 and "10:00" in line3 and "07:00" in line3, line3
+    assert "later" in line3, line3
+
+    # ---- composition: all three fire, in order, none crash on missing data ----
+    seed(ns, rows2)
+    out = D._lag_insight(d, 90)
+    assert len(out) >= 1 and any("10:00" in x for x in out), out
+
+    # ---- silence: too few pairs on one side ----
+    seed(ns, [row("2026-06-01", 60, "x")])
+    d2 = _mk(D, today=dt.date(2026, 6, 2))
+    d2._health_data = lambda: {}
+    d2._sleep_h = lambda iso: None
+    assert D._lag_workout_line(d2, 90) is None
+    assert D._lag_sleep_debt_line(d2, 90) is None
+    assert D._lag_evening_start_line(d2, 90) is None
+    assert D._lag_insight(d2, 90) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -659,7 +725,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("health-parse", suite_health_parse),
           ("daylight", suite_daylight),
           ("word-drift", suite_word_drift),
-          ("ask-diary", suite_ask_diary)]
+          ("ask-diary", suite_ask_diary),
+          ("lag", suite_lag)]
 
 
 def main():

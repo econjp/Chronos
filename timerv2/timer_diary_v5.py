@@ -60,6 +60,17 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.31 (lag correlations — backlog #22, what today does to tomorrow):
+  - every insight so far correlates SAME-DAY pairs. Three new checks use
+    the new loop shape instead — (day, day+1) — same honesty gates
+    (n≥5/bucket, a real swing required): workout day -> next-day output
+    ("the day after a workout you average 5.0h vs 1.0h — the gym looks
+    like a productivity tool, not a cost"); short-sleep NIGHT -> the day
+    AFTER that, not just the same day ("sleep debt doesn't clear in one
+    day"); working past 21:00 -> next morning's first-session start time
+    ("mornings after… you start 1.8h later on average"). All three
+    compose into _lag_insight, hooked into Insights. selftest suite 18.
+
 New in v8.30 (ask your diary — backlog #14, ranked multi-term search):
   - Search all days gains a second button, "Copy matching days for AI",
     next to the existing literal single-term search (kept as-is,
@@ -5929,6 +5940,119 @@ class App(tk.Tk):
                 "what's actually on your mind, separate from your tracked "
                 "tasks"]
 
+    # ----- lag correlations: what TODAY does to TOMORROW -----
+    #
+    # Every insight so far correlates same-day pairs. This is the new loop
+    # shape: (day, day+1). Same honesty gates (n>=5/bucket, a real swing),
+    # just one day offset — backlog #22.
+
+    def _lag_workout_line(self, days=90):
+        idx = day_index()
+        cutoff = self.today - dt.timedelta(days=days)
+        wo_next, no_wo_next = [], []
+        d = cutoff
+        while d < self.today:
+            nxt = d + dt.timedelta(days=1)
+            rec_next = idx.get(nxt.isoformat())
+            if rec_next and rec_next["work"] > 0:
+                wo = self._health_data().get(d.isoformat(), {}).get("workout_min")
+                (wo_next if wo and wo >= 10 else no_wo_next).append(rec_next["work"])
+            d += dt.timedelta(days=1)
+        if len(wo_next) < 5 or len(no_wo_next) < 5:
+            return None
+        a = sum(wo_next) / len(wo_next) / 60
+        b = sum(no_wo_next) / len(no_wo_next) / 60
+        if abs(a - b) < 0.3:
+            return None
+        verb = ("a productivity tool, not a cost" if a > b else
+               "worth the recovery trade, even so")
+        return (f"the day after a workout you average {a:.1f}h of work vs "
+               f"{b:.1f}h after a non-workout day (n={len(wo_next)} vs "
+               f"{len(no_wo_next)}) — the gym looks like {verb}")
+
+    def _lag_sleep_debt_line(self, days=90):
+        """Not the existing same-day sleep-vs-output check — this pairs
+        last night's sleep with the day AFTER that, testing whether a
+        short-sleep night still costs you once the immediate day is over."""
+        idx = day_index()
+        cutoff = self.today - dt.timedelta(days=days)
+        short_next, full_next = [], []
+        d = cutoff
+        while d < self.today:
+            nxt = d + dt.timedelta(days=1)
+            rec_next = idx.get(nxt.isoformat())
+            sl = self._sleep_h(d.isoformat())
+            if rec_next and rec_next["work"] > 0 and sl:
+                (short_next if sl < 7 else full_next).append(rec_next["work"])
+            d += dt.timedelta(days=1)
+        if len(short_next) < 5 or len(full_next) < 5:
+            return None
+        a = sum(short_next) / len(short_next) / 60
+        b = sum(full_next) / len(full_next) / 60
+        if abs(a - b) < 0.3:
+            return None
+        if a < b:
+            return (f"the day AFTER a short-sleep night (<7h), output "
+                    f"averages {a:.1f}h vs {b:.1f}h after a full night "
+                    f"(n={len(short_next)} vs {len(full_next)}) — sleep "
+                    "debt doesn't clear in one day")
+        return (f"output the day after a short-sleep night averages "
+               f"{a:.1f}h vs {b:.1f}h after a full one (n={len(short_next)} "
+               f"vs {len(full_next)}) — no lingering cost detected yet")
+
+    def _day_start_late_map(self, cutoff_iso):
+        """One pass over read_rows(): {iso: {'first': min-since-midnight
+        of the day's first work row, 'late': any work row started >=21:00}}
+        — the shared per-day scan both directions of the evening-work lag
+        check need, computed once rather than once per bucket."""
+        out = {}
+        for r in read_rows():
+            if r[1] == "break" or r[0] < cutoff_iso:
+                continue
+            try:
+                h, m = map(int, r[2].split(":")[:2])
+            except (ValueError, IndexError):
+                continue
+            mins = h * 60 + m
+            rec = out.setdefault(r[0], {"first": mins, "late": False})
+            rec["first"] = min(rec["first"], mins)
+            if h >= 21:
+                rec["late"] = True
+        return out
+
+    def _lag_evening_start_line(self, days=90):
+        cutoff = self.today - dt.timedelta(days=days)
+        m = self._day_start_late_map(cutoff.isoformat())
+        late_next, normal_next = [], []
+        d = cutoff
+        while d < self.today:
+            nxt = d + dt.timedelta(days=1)
+            info_d, info_next = m.get(d.isoformat()), m.get(nxt.isoformat())
+            if info_d and info_next:
+                (late_next if info_d["late"] else normal_next).append(
+                    info_next["first"])
+            d += dt.timedelta(days=1)
+        if len(late_next) < 5 or len(normal_next) < 5:
+            return None
+        a, b = sum(late_next) / len(late_next), sum(normal_next) / len(normal_next)
+        if abs(a - b) < 15:
+            return None
+
+        def fmt(mins):
+            return f"{int(mins) // 60:02d}:{int(mins) % 60:02d}"
+        verb = "later" if a > b else "earlier"
+        return (f"mornings after working past 21:00 you start {fmt(a)} on "
+               f"average vs {fmt(b)} otherwise (n={len(late_next)} vs "
+               f"{len(normal_next)}) — {abs(a - b) / 60:.1f}h {verb}")
+
+    def _lag_insight(self, days=90):
+        """Time-LAGGED correlations — what today does to tomorrow, the new
+        loop shape (day, day+1) instead of every other insight's same-day
+        pairing. Same honesty gates throughout each sub-check."""
+        return [ln for ln in (self._lag_workout_line(days),
+                              self._lag_sleep_debt_line(days),
+                              self._lag_evening_start_line(days)) if ln]
+
     def _life_day(self, d, signal=True):
         """Everything the app knows about one date, merged into ONE dict —
         the unit every consolidated view consumes: timer minutes from the
@@ -6918,6 +7042,7 @@ class App(tk.Tk):
         out += self._metrics_insight()
         out += self._daylight_insight()
         out += self._word_drift_insight()
+        out += self._lag_insight()
         out += self._best_weeks_lines()
         out += self._trajectory_lines()
         return out

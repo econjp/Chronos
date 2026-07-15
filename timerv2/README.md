@@ -4,6 +4,22 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### What today does to tomorrow (v8.31)
+
+Every insight so far compares things on the SAME day. Three new checks
+look a day ahead instead — the Insights now include whichever of these
+clear a real, honest threshold:
+
+- *"the day after a workout you average 5.0h of work vs 1.0h after a
+  non-workout day — the gym looks like a productivity tool, not a cost"*
+- *"the day AFTER a short-sleep night (<7h), output averages 1.0h vs
+  5.0h after a full night — sleep debt doesn't clear in one day"*
+- *"mornings after working past 21:00 you start 1.8h later on average"*
+
+Same honesty gates as everywhere else (real sample sizes, a real swing) —
+just a new question: not "does X correlate with today," but "does X
+still cost you tomorrow."
+
 ### Ask your diary (v8.30)
 
 **Search all days** now has a second button: **Copy matching days for

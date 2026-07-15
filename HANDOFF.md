@@ -870,6 +870,18 @@ purpose; the *walls* are the major thing, and they're now named.
   nothing removed or replaced. selftest suite 17 (breadth beats raw hit
   count, no-match/empty-query cases, clipboard text ordering); 17/17
   green.
+- **v8.31** (lag correlations — backlog #22, DONE). Every insight before
+  this correlates SAME-DAY pairs; three new checks use (day, day+1)
+  instead, same n≥5/bucket + real-swing gates: `_lag_workout_line`
+  (workout day → next day's output, via `_health_data`'s workout_min),
+  `_lag_sleep_debt_line` (a short-sleep NIGHT → the day AFTER that, a
+  genuinely different pairing from the existing same-day sleep-vs-output
+  check, not a duplicate of it), `_lag_evening_start_line` (work past
+  21:00 → next morning's first-session start time, via a new shared
+  single-pass `_day_start_late_map` over `read_rows()`). All three
+  compose into `_lag_insight`, hooked into Insights. selftest suite 18
+  (each sub-check's positive-fire case with hand-traced arithmetic,
+  full silence-gate coverage); 18/18 green.
 
 ## BACKLOG (priority order — continue here)
 
@@ -1257,7 +1269,11 @@ purpose; the *walls* are the major thing, and they're now named.
     `_busy_data`'s parse window to cover the recent past on master
     (check — the branch widened it once; master's window may differ).
 
-22. **Lag correlations — "what today does to tomorrow" (ANALYSIS).**
+22. ~~**Lag correlations — "what today does to tomorrow" (ANALYSIS).**~~
+    — DONE v8.31: `_lag_workout_line`/`_lag_sleep_debt_line`/
+    `_lag_evening_start_line` (+ `_day_start_late_map` for the shared
+    per-day scan) compose into `_lag_insight`. Original design note kept
+    below for reference.
     Every current insight correlates same-day pairs. The new dimension is
     TIME-LAGGED: workout day → next-day output/energy; short sleep →
     NEXT-day output (sleep debt lands late); late-evening work (tracked
@@ -1762,12 +1778,12 @@ purpose; the *walls* are the major thing, and they're now named.
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
 harness (v8.x): lifts pure functions out of the app via ast (no tkinter/
-ctypes import, never touches the real data dir) and runs 17 suites
+ctypes import, never touches the real data dir) and runs 18 suites
 covering projection, trajectory, outlook, alignment, review synthesis,
 anomaly watch, recommend-now, energy placement, last-context, break-pull,
 reentry, procrastination, metrics, the widened health parser, daylight,
-word drift and the diary ranker. Exit 0 = green. Add a suite there in the
-same commit as any new pure-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
+word drift, the diary ranker and lag correlations. Exit 0 = green. Add a
+suite there in the same commit as any new pure-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
 first-hour/thrash/shallow-work/graveyard/mood/usage-meter/best-weeks/
 reallocation batch) were verified by hand per their own commit messages
 and never got selftest suites added — a real gap, not a judgment call;
