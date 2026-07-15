@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Time capsule (v8.56)
+
+On-this-day looks back one year automatically. Now you can deliberately
+seal a note for a future date too — type `CAPSULE: 2026-08-15 |
+message` anywhere in a day's file, and once today reaches that date,
+the header surfaces it: `a note from 45 days ago: message`. A pure text
+convention, same "read the day files back" spirit as TODO carry-over —
+no new window, no reminders to set up.
+
 ### Screen-lock break detection (v8.55)
 
 Windows+L now triggers a break offer directly, not just eventually

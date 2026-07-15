@@ -950,6 +950,17 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.56** (time capsule — backlog #61, DONE, the forward-looking
+  counterpart to on-this-day). New `_due_capsules`: scans every day
+  file for a `CAPSULE: YYYY-MM-DD | message` line whose date equals
+  today (a same-day self-reference is excluded — a file can't be "the
+  past" relative to itself); `_capsule_lines` formats the days-ago
+  phrasing. Hooked into `_new_day_header` next to on-this-day.
+  `CAPSULE:` added to the header syntax-highlight rules. New
+  "time-capsule" selftest suite (two capsules due the same day from
+  different files in chronological order, a different-date capsule
+  excluded, a malformed no-pipe line safely ignored, the same-day
+  edge case, full silence); 38/38 green (new suite, was 37).
 - **v8.55** (screen-lock break detection — backlog #81, DONE, direct
   owner request). New `is_locked()`: OpenInputDesktop ctypes trick
   (stdlib only, no pywin32) — fails when the interactive desktop
@@ -2109,7 +2120,11 @@ purpose; the *walls* are the major thing, and they're now named.
       of `read_rows()` and the lens functions — no path back to the
       real settings.json or sessions.csv at all in v1.
 
-61. **Time capsule — the forward counterpart to on-this-day (MEMORY).**
+61. ~~**Time capsule — the forward counterpart to on-this-day.**~~ —
+    DONE v8.56. New `_due_capsules`/`_capsule_lines`, hooked into
+    `_new_day_header` next to the on-this-day line. Original design
+    note kept below for reference.
+    (MEMORY).**
     #12 (done) looks backward one year automatically. Nothing lets the
     owner deliberately seal a message for a FUTURE date — write
     yourself something today that only surfaces on a milestone day

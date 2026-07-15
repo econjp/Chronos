@@ -60,6 +60,24 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.56 (time capsule — backlog #61, the forward-looking
+counterpart to on-this-day):
+  - On-this-day (v8.12) looks back one year, automatically. Nothing let
+    you deliberately seal a note for a FUTURE date until now: type
+    `CAPSULE: 2026-08-15 | message` in any day's file, and once today
+    matches that target date, the header surfaces it: "a note from 45
+    days ago: message." Pure text convention — new `_due_capsules`
+    scans every day file for a `CAPSULE:` line whose date equals
+    today (a day can't reference itself, so a same-day capsule is
+    silently excluded), `_capsule_lines` formats the days-ago phrasing;
+    no new data source, same "read the day files back" shape as TODO
+    carry-over. `CAPSULE:` added to the header syntax-highlight rules.
+    New "time-capsule" selftest suite (two capsules due the same day
+    from different files, chronologically ordered; a capsule targeting
+    a different date excluded; a malformed line with no pipe safely
+    ignored; the same-day self-reference edge case; full silence);
+    38/38 green.
+
 New in v8.55 (screen-lock break detection — Windows+L should trigger a
 break, direct owner request):
   - The idle-minutes detector (`idle_seconds`/`_watch_idle`, long-
@@ -3189,7 +3207,7 @@ class App(tk.Tk):
         (re.compile(r"^=== (THEME|END THEME)"), "theme_block"),
         (re.compile(r"^==="), "day_header"),
         (re.compile(r"^(SIGNAL:|AVOID:|YEAR:|ENERGY:|METRICS:|EXPERIMENT:|"
-                    r"DECIDED:|TODAY:|TODO|SOMEDAY:|WEEK REVIEW|"
+                    r"DECIDED:|CAPSULE:|TODAY:|TODO|SOMEDAY:|WEEK REVIEW|"
                     r"plan today:|focus order today)"),
          "meta_header"),
         (re.compile(r"⚠|^!!!"), "warn_line"),
@@ -4469,6 +4487,7 @@ class App(tk.Tk):
         otd = self._on_this_day_line()
         if otd:
             parts.append(otd)
+        parts += self._capsule_lines()
         pm = self._run_deadline_postmortems()
         if pm:
             parts += ["", *pm]
@@ -4503,6 +4522,54 @@ class App(tk.Tk):
         except OSError:
             pass
         return "\n".join(parts)
+
+    _CAPSULE_RE = re.compile(r"^CAPSULE:\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(.+)$",
+                             re.I | re.M)
+
+    def _due_capsules(self):
+        """Backlog #61: the forward-looking counterpart to on-this-day
+        (below — that one looks back one year, automatically; this one
+        is a deliberate seal for a FUTURE date the owner picks). A
+        `CAPSULE: 2026-08-15 | message` line written on any past day,
+        surfaced once today matches that target date. Pure text
+        convention — a scan across day files for a CAPSULE: line whose
+        date equals today, no new data source, same "read the day
+        files back" shape as TODO carry-over. Returns [(written_iso,
+        message), ...]."""
+        out = []
+        try:
+            names = sorted(os.listdir(self.diary_dir()))
+        except OSError:
+            return out
+        today_iso = self.today.isoformat()
+        for fn in names:
+            if not fn.endswith(".txt"):
+                continue
+            written_iso = fn[:-4]
+            try:
+                dt.date.fromisoformat(written_iso)
+            except ValueError:
+                continue
+            if written_iso >= today_iso:
+                continue
+            try:
+                with open(os.path.join(self.diary_dir(), fn),
+                          encoding="utf-8") as f:
+                    text = f.read()
+            except OSError:
+                continue
+            for target, msg in self._CAPSULE_RE.findall(text):
+                if target == today_iso and msg.strip():
+                    out.append((written_iso, msg.strip()))
+        return out
+
+    def _capsule_lines(self):
+        caps = self._due_capsules()
+        lines = []
+        for written_iso, msg in caps:
+            days = (self.today - dt.date.fromisoformat(written_iso)).days
+            lines.append(f"a note from {days} days ago: {msg}")
+        return lines
 
     def _on_this_day_line(self):
         """One year ago today, if a day file exists — the "keeps the

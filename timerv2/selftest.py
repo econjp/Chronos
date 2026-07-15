@@ -58,6 +58,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_experiment_from_file", "_week_metric_totals",
         "_experiment_review_line", "_scan_decisions",
         "_carry_year", "_on_this_day_line", "_lifetime_ledger_line",
+        "_due_capsules", "_capsule_lines",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -65,7 +66,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
-               "_WORD_STOPWORDS", "_DECAY_BUCKETS"}
+               "_WORD_STOPWORDS", "_DECAY_BUCKETS", "_CAPSULE_RE"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -1775,6 +1776,48 @@ def suite_planner_realism():
     assert D._planner_realism_factor(d2, 60) is None
 
 
+def suite_time_capsule():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    TODAY = dt.date(2026, 8, 15)
+
+    def write(day, body):
+        with open(os.path.join(tmp, day + ".txt"), "w",
+                  encoding="utf-8") as f:
+            f.write(body)
+
+    # written 45 days before today, due today
+    write("2026-07-01", "=== Wednesday 01.07.2026 ===\nSIGNAL: thesis\n"
+                       "CAPSULE: 2026-08-15 | message A\n")
+    # a second capsule due today from a different day
+    write("2026-08-01", "CAPSULE: 2026-08-15 | message B\n")
+    # due on a DIFFERENT date -> excluded
+    write("2026-07-10", "CAPSULE: 2026-09-01 | message C\n")
+    # malformed (no pipe) -> regex never matches, safely ignored
+    write("2026-07-15", "CAPSULE: 2026-08-15 no pipe here\n")
+    d = _mk(D, today=TODAY, diary_dir=lambda: tmp)
+
+    caps = D._due_capsules(d)
+    assert caps == [("2026-07-01", "message A"),
+                    ("2026-08-01", "message B")], caps
+
+    lines = D._capsule_lines(d)
+    assert lines == ["a note from 45 days ago: message A",
+                     "a note from 14 days ago: message B"], lines
+
+    # ---- silence: nothing due today ----
+    for fn in os.listdir(tmp):
+        os.remove(os.path.join(tmp, fn))
+    write("2026-07-10", "CAPSULE: 2026-09-01 | message C\n")
+    assert D._due_capsules(d) == []
+    assert D._capsule_lines(d) == []
+
+    # ---- a capsule can't reference itself: written today, due today
+    # is excluded (today's own file isn't "the past" yet) ----
+    write("2026-08-15", "CAPSULE: 2026-08-15 | same-day\n")
+    assert D._due_capsules(d) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1808,7 +1851,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("deadline-renegotiation", suite_deadline_renegotiation),
           ("one-less", suite_one_less),
           ("sensor-health", suite_sensor_health),
-          ("planner-realism", suite_planner_realism)]
+          ("planner-realism", suite_planner_realism),
+          ("time-capsule", suite_time_capsule)]
 
 
 def main():
