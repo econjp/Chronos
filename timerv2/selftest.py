@@ -42,7 +42,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_diary_word_counts", "_word_drift_insight",
         "_diary_rank_days", "_matching_days_text",
         "_lag_workout_line", "_lag_sleep_debt_line", "_day_start_late_map",
-        "_lag_evening_start_line", "_lag_insight", "_week_ahead_lines"}
+        "_lag_evening_start_line", "_lag_insight", "_week_ahead_lines",
+        "_break_budget_line"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -760,6 +761,44 @@ def suite_week_ahead():
     assert D._week_ahead_lines(d) == []
 
 
+def suite_break_budget():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 4, 20)
+
+    def work_break(iso, brk_min, brk_hour):
+        # end time is a placeholder — _break_budget_line only reads the
+        # break's start hour (field 2) and minutes (field 4)
+        return [[iso, "work", "09:00", "12:00", "180", "x", ""],
+                [iso, "break", f"{brk_hour:02d}:00", "23:59",
+                 str(brk_min), "", ""]]
+
+    rows = []
+    early_days = [dt.date(2026, 4, 1) + dt.timedelta(days=i) for i in range(3)]
+    late_days = [dt.date(2026, 4, 4) + dt.timedelta(days=i) for i in range(12)]
+    for x in early_days:
+        rows += work_break(x.isoformat(), 200, 9)      # big break, EARLY (09:00)
+    for x in late_days:
+        rows += work_break(x.isoformat(), 10, 15)      # small break, LATE (15:00)
+    rows += [["2026-04-20", "break", "08:00", "08:45", "45", "", ""]]  # today
+    seed(ns, rows)
+
+    d = _mk(D, today=TODAY)
+    line = D._break_budget_line(d, 60, 11)   # now_hour=11: before the 15:00 breaks
+    assert line is not None, line
+    assert "breaks so far 45m" in line, line
+    # full-day norm: median of ALL 15 days' totals ([200]*3 + [10]*12) = 10
+    assert "full-day norm ~10m" in line, line
+    # typical-by-11am: the 12 late-break days have accrued NOTHING yet by
+    # 11am (their break is at 15:00) and must count as 0, not be absent —
+    # median of ([0]*12 + [200]*3) = 0. Getting this right is the actual
+    # point of the test: omitting the zero days would wrongly give 200.
+    assert "your typical by this hour 0m" in line, line
+
+    # ---- silence: not enough real-workday history ----
+    seed(ns, rows[:6])     # only the 3 early days survive
+    assert D._break_budget_line(d, 60, 11) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -775,7 +814,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("word-drift", suite_word_drift),
           ("ask-diary", suite_ask_diary),
           ("lag", suite_lag),
-          ("week-ahead", suite_week_ahead)]
+          ("week-ahead", suite_week_ahead),
+          ("break-budget", suite_break_budget)]
 
 
 def main():

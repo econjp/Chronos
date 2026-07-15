@@ -905,6 +905,19 @@ purpose; the *walls* are the major thing, and they're now named.
   line, bare-word-only line, invalid-bare-token-skipped); existing
   key=value/key:val cases unchanged, no regression; 19/19 green (no new
   suite — an existing one grew).
+- **v8.34** (break budget — backlog #33, DONE). `_break_budget_line`
+  learns the full-day break norm as the MEDIAN break-total across real
+  workdays (work ≥3h, n≥10 required) and "typical by this hour" as the
+  median CUMULATIVE break minutes those same days had by the current
+  hour — days with no break yet by that hour correctly count as zero
+  (`dict.fromkeys(real_days, 0)` pre-fill) rather than being silently
+  absent from the median, which would skew it toward only the days that
+  happened to break early. Wired into `_refresh_totals`'s totals line as
+  one more segment; confirmed that function is event-driven (toggle/
+  switch/reset/day-roll) not a per-second tick before adding another
+  `read_rows()` scan there. selftest suite 20 specifically constructed
+  to catch the zero-fill omission (asserts the correct 0m, which a naive
+  implementation would instead compute as 200m); 20/20 green.
 
 ## BACKLOG (priority order — continue here)
 
@@ -1403,7 +1416,12 @@ purpose; the *walls* are the major thing, and they're now named.
     counting a flee-into-another-task (switch within 10 min) as a softer
     second bounce type — currently only flee-into-break counts.
 
-33. **Break budget (FEEDBACK — reframe, not police).** Instead of judging
+33. ~~**Break budget (FEEDBACK — reframe, not police).**~~ — DONE v8.34.
+    `_break_budget_line`, wired into the totals line (`_refresh_totals`),
+    which is event-driven (toggle/switch/reset/day-roll), not a per-
+    second tick — confirmed before adding another `read_rows()` scan
+    there. Original design note kept below for reference.
+    Instead of judging
     each break, a daily allowance learned from your own good days: "breaks
     so far 74m · your typical by this hour 55m · full-day norm ~90m". One
     status-bar/totals-line segment. Budgets change behaviour where
@@ -1816,13 +1834,13 @@ purpose; the *walls* are the major thing, and they're now named.
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
 harness (v8.x): lifts pure functions out of the app via ast (no tkinter/
-ctypes import, never touches the real data dir) and runs 19 suites
+ctypes import, never touches the real data dir) and runs 20 suites
 covering projection, trajectory, outlook, alignment, review synthesis,
 anomaly watch, recommend-now, energy placement, last-context, break-pull,
 reentry, procrastination, metrics, the widened health parser, daylight,
-word drift, the diary ranker, lag correlations and the week-ahead brief.
-Exit 0 = green. Add a suite there in the same commit as any new pure-
-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
+word drift, the diary ranker, lag correlations, the week-ahead brief and
+the break budget. Exit 0 = green. Add a suite there in the same commit
+as any new pure-logic feature. NOTE: v8.13–v8.26 (the AVOID/root-cause/decay-curve/short-day/
 first-hour/thrash/shallow-work/graveyard/mood/usage-meter/best-weeks/
 reallocation batch) were verified by hand per their own commit messages
 and never got selftest suites added — a real gap, not a judgment call;

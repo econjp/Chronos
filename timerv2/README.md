@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Break budget (v8.34)
+
+The totals line gains one more segment — a reframe, not a verdict. Instead
+of judging each break, it learns a daily **allowance** from your own good
+days: `breaks so far 45m · your typical by this hour 0m · full-day norm
+~90m`. Budgets change behaviour where per-event nagging (the pull-back,
+the doomscroll insight) doesn't reach — a number to plan around, not
+another scold.
+
 ### Metrics shorthand (v8.33)
 
 The METRICS line used to require `key=value` for everything. Now a bare

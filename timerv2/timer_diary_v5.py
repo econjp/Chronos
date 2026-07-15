@@ -60,6 +60,21 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.34 (break budget — backlog #33, a reframe instead of a verdict):
+  - the totals line gains one more segment, learned from your own good
+    days rather than judging any single break: "breaks so far 45m ·
+    your typical by this hour 0m · full-day norm ~10m". Per-event
+    judgment (the pull-back, the doomscroll insight) doesn't reach every
+    situation; a budget changes behaviour where nagging fails — a
+    number to plan around, never a scold. _break_budget_line learns the
+    full-day norm as the median break total across real workdays (work
+    ≥3h), and "typical by this hour" as the median CUMULATIVE break
+    minutes those same days had accrued by the current hour — days that
+    hadn't taken a break yet by that hour correctly count as zero rather
+    than being silently absent from the median (the actual bug this
+    took care to avoid, and what the test specifically catches). Needs
+    n≥10 real workdays in history to speak. selftest suite 20.
+
 New in v8.33 (metrics shorthand — backlog #66, lower friction for habits):
   - the METRICS line (v8.27) required "key=value" for everything; a bare
     word with no "=" now implicitly logs word=1 — "METRICS: meditation,
@@ -3345,6 +3360,9 @@ class App(tk.Tk):
                                      before=self.timeline)
         elif self.target_bar.winfo_ismapped():
             self.target_bar.pack_forget()
+        budget = self._break_budget_line()
+        if budget:
+            text += "   |   " + budget
         self.diary_lbl.config(text=text)
 
     # ----- day timeline (00-24 bar) -----
@@ -6507,6 +6525,37 @@ class App(tk.Tk):
                     f"{sa:.0f}m ({len(scroll)}) — the doomscroll tax, "
                     "measured at block level"]
         return []
+
+    def _break_budget_line(self, days=60, now_hour=None):
+        """Backlog #33: a daily ALLOWANCE learned from your own good days
+        — a reframe, not a verdict on any one break. Per-event judgment
+        (the pull-back, the doomscroll insight above) doesn't reach
+        every situation; a budget changes behaviour where nagging fails,
+        and it's a genuine number to plan around rather than a scold.
+        Needs n>=10 real workdays in history to speak."""
+        now_hour = dt.datetime.now().hour if now_hour is None else now_hour
+        cutoff = (self.today - dt.timedelta(days=days)).isoformat()
+        today_iso = self.today.isoformat()
+        idx = day_index()
+        real_days = {iso for iso, rec in idx.items()
+                    if cutoff <= iso < today_iso and rec["work"] >= 3 * 60}
+        if len(real_days) < 10:
+            return None
+        norms = sorted(idx[iso]["brk"] for iso in real_days)
+        norm = norms[len(norms) // 2]
+        cum_by_day = dict.fromkeys(real_days, 0)
+        for r in read_rows():
+            if r[1] != "break" or r[0] not in real_days:
+                continue
+            try:
+                h = int(r[2].split(":")[0]) % 24
+                cum_by_day[r[0]] += int(r[4]) if h <= now_hour else 0
+            except (ValueError, IndexError):
+                continue
+        typical = sorted(cum_by_day.values())[len(cum_by_day) // 2]
+        today_brk = idx.get(today_iso, {"brk": 0})["brk"]
+        return (f"breaks so far {today_brk}m · your typical by this hour "
+               f"{typical}m · full-day norm ~{norm}m")
 
     _DECAY_BUCKETS = [(0, 30), (30, 45), (45, 60), (60, 75), (75, 999)]
 
