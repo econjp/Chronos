@@ -182,9 +182,27 @@ already holds SIGNAL/AVOID/ENERGY next to free-typed diary text; METRICS
 takes the same slot for meditation, water, caffeine, supplements, cold
 exposure, anything — one line, no second app, no new settings dialog.
 RHR/HRV/weight now ride along from the same health-export folder already
-configured. What's still open (see backlog #65-68): a dedicated health
-view surfacing the newly-captured metrics as more than one header line,
-and a readiness-style insight once real HRV/RHR history accumulates.
+configured, and DONE as of v8.36: `_health_extras_lines` surfaces all of
+it (mindful/RHR/HRV/weight/daylight) as more than one header line. Still
+open: a readiness-style insight once real HRV/RHR history accumulates
+(backlog #68) — deliberately gated on real data existing first.
+
+**2026-07-14 follow-up session, answering "are we REALLY collecting all
+the data we could."** Two moves, both shipped the same session: (1) a
+brand-new SOURCE that needs no export file and no typed line at all —
+**daylight** (v8.28, `day_length_hours`, pure astronomical math from a
+latitude) — proof that "more data to capture" doesn't only mean widening
+existing importers, it can mean noticing a computable fact was never
+being asked for. (2) **word drift** (v8.29) — the realisation that the
+diary's free-typed prose had been FULLY collected the whole time and
+never read as itself, only mined for TODO/SOMEDAY bullets; the "we forgot
+to capture X" anxiety sometimes resolves to "we captured it, we just
+never looked." Both directions matter for the same question: before
+building a new importer, check whether the fact is (a) already sitting in
+a file nobody's parsing fully yet, (b) computable for free from data
+already known (date, latitude, a diary line), or (c) genuinely something
+that has to be typed — METRICS makes (c) nearly free too, so the honest
+remaining gap is narrower than it feels.
 
 ## Design rules (non-negotiable, learned over many iterations)
 
@@ -1869,6 +1887,57 @@ purpose; the *walls* are the major thing, and they're now named.
     insights. Explicitly NOT a training-load app clone — one honest
     line, same restraint as the rest of the co-pilot surfaces, never a
     gate on what the schedule allows.
+
+69. **Word drift v2 — what you've stopped writing about (MEMORY, the
+    other direction of v8.29).** `_word_drift_insight` only ever reports
+    words trending UP. The DECREASE direction is at least as telling —
+    a topic that was frequent and went quiet (a person, a worry, a
+    plan) often matters more than a new one appearing. Same
+    `_diary_word_counts` machinery, same two windows, just the opposite
+    score sign: candidates where `pri_pct` was real and `rec_pct` has
+    collapsed toward zero (symmetric gate: pn≥3 in the OLD window,
+    rec_pct ≤ pri_pct/3 or literally zero now). Report separately from
+    the existing increase line, not merged into one — "up" and "down"
+    are different kinds of noticing and shouldn't compete for the same
+    slot. Reuses everything v8.29 built; this is a second scoring pass
+    over data already gathered, not a new source.
+
+70. **Lag correlation #4 — yesterday's fragmentation → today's shallow
+    work (ANALYSIS, extends v8.31's new loop shape).** v8.18's task-
+    thrash meter and v8.19's shallow-work ratio both exist as SAME-day
+    checks; v8.31 proved the (day, day+1) lag shape is cheap to add
+    once the loop exists. Natural fourth pairing: does a high-switch day
+    predict a shallower NEXT day (more of the following day's signal
+    hours landing in sub-20-minute blocks)? Reuses `_day_switches`
+    (v8.18) for the bucket split and the block-length classification
+    already in `_shallow_work_lines` (v8.19) for the next-day measure —
+    genuinely just wiring two existing measurements through the
+    (day, day+1) loop `_lag_workout_line` already demonstrates, not new
+    math. Same n≥5/bucket gate as every other lag check.
+
+71. **Ask-your-diary: pinned searches (USABILITY, extends v8.30).** Every
+    search in the "Copy matching days for AI" window (v8.30) is typed
+    fresh. A short `settings["pinned_searches"]` list (5ish saved query
+    strings — "landlord", "advisor", a project codename) surfaced as
+    buttons/a dropdown next to the query box turns a recurring lookup
+    ("what did I decide about the advisor situation, again") into one
+    click instead of retyping. Pure UI addition over `_diary_rank_days`,
+    which already takes an arbitrary query string — no change to the
+    ranking logic at all, just a shortcut to populate the entry.
+
+72. **Break budget v2 — weekday-specific norms (ANALYSIS, extends
+    v8.34).** `_break_budget_line` currently blends ALL real workdays
+    into one median "full-day norm" regardless of weekday — but Friday
+    afternoons and Tuesday mornings plausibly have genuinely different
+    real break patterns, and blending them into one number is less
+    honest than the weekday-aware capacity table (`_capacity()`, per-
+    weekday since v5.8) the rest of the app already assumes. Bucket
+    `real_days` by `dt.date.fromisoformat(iso).weekday()` before taking
+    the median, falling back to the all-days blend when a specific
+    weekday doesn't have its own n≥10 yet (most users won't, at first —
+    the honesty gate should degrade per-weekday, not go silent
+    entirely). Same shape as the existing function, one more grouping
+    key.
 
 ## How to verify changes without Windows
 
