@@ -950,6 +950,16 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.48** (annual theme — backlog #64, DONE, the year-scale sibling
+  of SIGNAL/AVOID). New `YEAR: <theme>` header line, new `_carry_year`
+  (same shape as `_carry_avoid`, v8.13), auto-carried into every day
+  file. The on-this-day (one-year-back) line now surfaces that year's
+  theme when one was set: "· that year's theme: 'finish the thesis'
+  — still true?" `YEAR:` added to the header syntax-highlight rules.
+  #15's year-in-review reference deferred (doesn't exist yet). New
+  "annual-theme" selftest suite (carry-forward, blank when unset, the
+  on-this-day callback with/without a theme, silence with no file);
+  31/31 green (new suite, was 30).
 - **v8.47** (decision log lite — backlog #62, DONE, "didn't I already
   think this through"). New `DECIDED: <topic> — <verdict>` archival
   line convention + View > "Decision log…" (new pure `_scan_decisions`
@@ -2006,7 +2016,13 @@ purpose; the *walls* are the major thing, and they're now named.
     2026-07-11 dual-instance data-loss incident (CLAUDE.md) — the kind
     of check that's cheap until the day it isn't.
 
-64. **Annual theme (PLANNING/VALUES — the year-scale sibling of
+64. ~~**Annual theme.**~~ — DONE v8.48. New `YEAR: <theme>` line, new
+    `_carry_year` (same shape as `_carry_avoid`), auto-carried into
+    every day; the on-this-day line now surfaces that year's theme
+    when one was set. #15's year-in-review still doesn't exist so
+    that reference is deferred. Original design note kept below for
+    reference.
+    (PLANNING/VALUES — the year-scale sibling of
     SIGNAL/AVOID).** SIGNAL declares today's focus; AVOID (v8.13) is a
     standing declaration; nothing declares at the YEAR scale. A
     `YEAR: <theme>` line, set once and carried (same carry-forward

@@ -32,7 +32,7 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "parse_health_dir", "_parse_any_date", "_dur_minutes", "_num",
        "day_length_hours", "backup_integrity_line",
        "_free_from_busy", "_deep_capacity_minutes", "_merge_time_intervals",
-       "_pinned_after_add", "_pinned_after_remove"}
+       "_pinned_after_add", "_pinned_after_remove", "day_totals"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -53,7 +53,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_day_fragmentation_tax", "_meeting_fragmentation_lines",
         "_year_rhythm_grid", "_energy_forecast_line",
         "_experiment_from_file", "_week_metric_totals",
-        "_experiment_review_line", "_scan_decisions"}
+        "_experiment_review_line", "_scan_decisions",
+        "_carry_year", "_on_this_day_line"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -1343,6 +1344,58 @@ def suite_decision_log():
     assert D._scan_decisions(d) == []
 
 
+def suite_annual_theme():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    TODAY = dt.date(2026, 7, 15)
+    yday = TODAY - dt.timedelta(days=1)
+    last_year = dt.date(2025, 7, 15)
+
+    def write(day, text):
+        with open(os.path.join(tmp, day.isoformat() + ".txt"), "w",
+                  encoding="utf-8") as f:
+            f.write(text)
+
+    d = _mk(D, today=TODAY,
+            diary_path=lambda dd: os.path.join(tmp, dd.isoformat() + ".txt"))
+
+    # ---- _carry_year: carries yesterday's YEAR: line forward ----
+    write(yday, "=== Tuesday 14.07.2026 ===\nSIGNAL: thesis\n"
+               "YEAR: finish the thesis\n")
+    assert D._carry_year(d) == "finish the thesis"
+
+    # ---- _carry_year: no YEAR: line yesterday -> blank, no fallback ----
+    write(yday, "=== Tuesday 14.07.2026 ===\nSIGNAL: thesis\n")
+    assert D._carry_year(d) == ""
+
+    # ---- _carry_year: no file at all yesterday -> blank ----
+    os.remove(os.path.join(tmp, yday.isoformat() + ".txt"))
+    assert D._carry_year(d) == ""
+
+    # ---- _on_this_day_line: work + snippet + a YEAR: theme, all three ----
+    seed(ns, [["2025-07-15", "work", "09:00", "10:30", "90", "thesis", ""]])
+    write(last_year, "=== Tuesday 15.07.2025 ===\nYEAR: finish the thesis\n"
+                    "SIGNAL: thesis\n"
+                    "felt good about the outline today\n")
+    line = D._on_this_day_line(d)
+    assert line is not None, line
+    assert line.startswith("on this day, 2025: 1h30m work — "), line
+    assert "felt good about the outline today" in line, line
+    assert ("that year's theme: 'finish the thesis' — still true?"
+           in line), line
+
+    # ---- _on_this_day_line: no YEAR: line last year -> no theme suffix ----
+    write(last_year, "=== Tuesday 15.07.2025 ===\nSIGNAL: thesis\n"
+                    "felt good about the outline today\n")
+    line2 = D._on_this_day_line(d)
+    assert line2 is not None and "theme" not in line2, line2
+
+    # ---- silence: no file for last year at all ----
+    os.remove(os.path.join(tmp, last_year.isoformat() + ".txt"))
+    seed(ns, [])
+    assert D._on_this_day_line(d) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1369,7 +1422,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("energy-forecast", suite_energy_forecast),
           ("experiment-engine", suite_experiment_engine),
           ("pinned-searches", suite_pinned_searches),
-          ("decision-log", suite_decision_log)]
+          ("decision-log", suite_decision_log),
+          ("annual-theme", suite_annual_theme)]
 
 
 def main():

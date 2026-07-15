@@ -60,6 +60,22 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.48 (annual theme — backlog #64, the year-scale sibling of
+SIGNAL/AVOID):
+  - A new `YEAR: <theme>` header line, auto-carried into every day file
+    exactly like AVOID (v8.13) — set once, edited whenever the theme
+    genuinely changes, silent (blank) until then. New `_carry_year`
+    (same shape as `_carry_avoid`). The on-this-day line (backward-
+    looking one year, existing) now also surfaces that year's theme
+    when it was set: "on this day, 2025: 1h30m work — felt good about
+    the outline today · that year's theme: 'finish the thesis' — still
+    true?" `YEAR:` added to the header syntax-highlight rules so it's
+    excluded from the on-this-day snippet search the same way SIGNAL/
+    AVOID/etc already are. New "annual-theme" selftest suite
+    (carry-forward, blank when unset, the on-this-day theme callback
+    with/without a YEAR: line last year, silence with no file at all);
+    31/31 green.
+
 New in v8.47 (decision log lite — backlog #62, "didn't I already think
 this through"):
   - A new opt-in, purely archival line convention: `DECIDED: apartment —
@@ -1974,6 +1990,23 @@ class App(tk.Tk):
             pass
         return ""
 
+    def _carry_year(self):
+        """Backlog #64: yesterday's YEAR: line text (original case), or
+        '' — the year-scale sibling of SIGNAL/AVOID: a standing
+        declaration one size up, same carry-forward shape as AVOID
+        (v8.13). Set once, edited whenever the theme genuinely
+        changes, silently carried into every day after that."""
+        try:
+            with open(self.diary_path(self.today - dt.timedelta(days=1)),
+                      encoding="utf-8") as f:
+                for line in f:
+                    s = line.strip()
+                    if s.lower().startswith("year:"):
+                        return s[5:].strip()
+        except OSError:
+            pass
+        return ""
+
     def _declared_cap_h(self, day):
         """Backlog #37: an honest 'TODAY: 4h' (or 'TODAY: sick', no
         number) typed into `day`'s own file — compassionate realism for
@@ -2875,7 +2908,7 @@ class App(tk.Tk):
         (re.compile(r"^(Start|Stop|Reset);"), "raw_event"),
         (re.compile(r"^=== (THEME|END THEME)"), "theme_block"),
         (re.compile(r"^==="), "day_header"),
-        (re.compile(r"^(SIGNAL:|AVOID:|ENERGY:|METRICS:|EXPERIMENT:|"
+        (re.compile(r"^(SIGNAL:|AVOID:|YEAR:|ENERGY:|METRICS:|EXPERIMENT:|"
                     r"DECIDED:|TODAY:|TODO|SOMEDAY:|WEEK REVIEW|"
                     r"plan today:|focus order today)"),
          "meta_header"),
@@ -4003,6 +4036,7 @@ class App(tk.Tk):
             parts += self._graveyard_lines()
         parts.append(f"SIGNAL: {self._carry_signal()}")
         parts.append(f"AVOID: {self._carry_avoid()}")
+        parts.append(f"YEAR: {self._carry_year()}")
         parts.append("ENERGY: ")   # 1-5, optionally + a mood word ("3 anxious")
         parts.append("METRICS: ")  # anything else: meditation=10, water=6…
         todos = self._carry_todos(yday)
@@ -4050,6 +4084,16 @@ class App(tk.Tk):
                 line += " — "
         if snippet:
             line += snippet[:140] + ("…" if len(snippet) > 140 else "")
+        theme = None
+        for ln in text.splitlines():
+            s = ln.strip()
+            if s.lower().startswith("year:"):
+                t = s[5:].strip()
+                if t:
+                    theme = t
+                break
+        if theme:
+            line += f" · that year's theme: '{theme}' — still true?"
         return line
 
     def _plan_line(self):

@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Annual theme (v8.48)
+
+A new `YEAR: <theme>` header line — the year-scale sibling of SIGNAL/
+AVOID. Set it once and it's auto-carried into every day after that,
+exactly like AVOID already is; edit it whenever the theme genuinely
+changes. The existing "on this day" callback (one year back) now
+surfaces it too: `on this day, 2025: 1h30m work — felt good about the
+outline today · that year's theme: 'finish the thesis' — still true?`
+
 ### Decision log lite (v8.47)
 
 A new archival-only line convention: type `DECIDED: apartment — staying
