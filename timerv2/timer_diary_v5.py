@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.43 (year rhythm map — backlog #26, the year's shape at a
+glance):
+  - View > "Year rhythm map": a new canvas, 52 columns (Monday-start
+    weeks) × 24 rows (hour of day), each cell shaded by tracked
+    minutes in that hour that week — mirrors `_heatmap`'s canvas code
+    but at year scale and by TIME OF DAY, not by day total. Where
+    `_heatmap` shows how MUCH per day, this shows WHEN: bedtime drift
+    eras, morning-discipline phases, an exam-sprint block, the dead
+    summer, all visible as one picture. Both work and break rows count
+    (this is about when you're at the desk at all, not deep-work
+    minutes — `_heatmap` already covers that). New pure
+    `_year_rhythm_grid(weeks=52)` returns {(week_idx, hour): minutes};
+    `_year_rhythm_view` is the thin Tk canvas layer over it, same
+    split as every other view in this app. New "year-rhythm" selftest
+    suite (two rows landing in the same cell sum instead of
+    overwriting, a break row counts, the oldest in-window week lands
+    right at the edge, a day one day outside the window is excluded,
+    a future date is excluded); 26/26 green.
+
 New in v8.42 (meeting fragmentation tax — backlog #21, meetings cost
 more than their duration):
   - The existing meeting-load insight only ever counted HOURS busy.
@@ -2023,6 +2042,8 @@ class App(tk.Tk):
                           command=self._tracked("Trend", self._trend))
         viewm.add_command(label="Month heatmap",
                           command=self._tracked("Heatmap", self._heatmap))
+        viewm.add_command(label="Year rhythm map",
+                          command=self._tracked("Year rhythm", self._year_rhythm_view))
         viewm.add_command(label="Deadline burn-down",
                           command=self._tracked("Burn-down", self._burndown))
         viewm.add_command(label="Outlook — weeks ahead…",
@@ -6207,6 +6228,74 @@ class App(tk.Tk):
         cv.create_text(pad, H - 12, anchor="w", font=("Segoe UI", 8),
                        fill="#666666",
                        text="shade steps: 0 · <2h · <4h · <6h · <8h · 8h+")
+
+    # ----- year rhythm map -----
+
+    def _year_rhythm_grid(self, weeks=52):
+        """Backlog #26: tracked minutes bucketed by (week, hour) across
+        the last `weeks` Monday-start calendar weeks (same week
+        convention as _heatmap) — the year's SHAPE at a glance instead
+        of _heatmap's per-day total: bedtime drift eras, morning-
+        discipline phases, the exam-sprint block, the dead summer. Both
+        work and break rows count (this is about when you're at the
+        desk AT ALL, not deep-work minutes — _heatmap already covers
+        that). Returns {(week_idx, hour): minutes}; week_idx 0 is the
+        week containing today, weeks-1 the oldest week shown."""
+        this_mon = self.today - dt.timedelta(days=self.today.weekday())
+        start_mon = this_mon - dt.timedelta(weeks=weeks - 1)
+        start_iso = start_mon.isoformat()
+        grid = {}
+        for r in read_rows():
+            if r[0] < start_iso:
+                continue
+            try:
+                d = dt.date.fromisoformat(r[0])
+                h = int(r[2].split(":")[0]) % 24
+                m = int(r[4])
+            except (ValueError, IndexError):
+                continue
+            if d > self.today:
+                continue
+            week_idx = (this_mon - (d - dt.timedelta(days=d.weekday()))).days // 7
+            if 0 <= week_idx < weeks:
+                key = (week_idx, h)
+                grid[key] = grid.get(key, 0) + m
+        return grid
+
+    def _year_rhythm_view(self):
+        grid = self._year_rhythm_grid()
+        weeks, cell, pad = 52, 10, 40
+        W, H = pad * 2 + weeks * cell, pad + 24 * cell + 30
+        win = tk.Toplevel(self)
+        win.title("Year rhythm — 52 weeks × hour of day")
+        cv = tk.Canvas(win, width=W, height=H, background="white",
+                       highlightthickness=0)
+        cv.pack(padx=8, pady=8)
+        this_mon = self.today - dt.timedelta(days=self.today.weekday())
+        seen_month = None
+        for w in range(weeks):
+            week_start = this_mon - dt.timedelta(weeks=weeks - 1 - w)
+            for h in range(24):
+                mins = grid.get((weeks - 1 - w, h), 0)
+                shade = next(i for i, lim in
+                             enumerate((1, 60, 150, 240, 330, 99999))
+                             if mins < lim)
+                x, y = pad + w * cell, pad + h * cell
+                cv.create_rectangle(x, y, x + cell - 1, y + cell - 1,
+                                    fill=self.HEAT[shade], outline="")
+            if week_start.strftime("%b") != seen_month:
+                seen_month = week_start.strftime("%b")
+                cv.create_text(pad + w * cell, pad - 8, text=seen_month,
+                               anchor="w", font=("Segoe UI", 7),
+                               fill="#666666")
+        for h in (0, 6, 12, 18, 23):
+            cv.create_text(pad - 6, pad + h * cell + cell / 2 - 1,
+                           text=f"{h:02d}", anchor="e",
+                           font=("Segoe UI", 7), fill="#888888")
+        cv.create_text(pad, H - 12, anchor="w", font=("Segoe UI", 8),
+                       fill="#666666",
+                       text="shade = tracked minutes that hour, that week — "
+                            "0 · <1h · <2.5h · <4h · <5.5h · 5.5h+")
 
     # ----- the life record + dashboard (the consolidation) -----
 

@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Year rhythm map (v8.43)
+
+**View → Year rhythm map**: 52 columns (weeks) × 24 rows (hour of day),
+each cell shaded by tracked minutes in that hour, that week. The existing
+month heatmap shows how MUCH per day; this shows WHEN, at year scale —
+bedtime drift eras, morning-discipline phases, an exam-sprint block, the
+dead summer, all visible as one picture. Both work and break time count,
+since this is about when you're at the desk at all.
+
 ### Meeting fragmentation tax (v8.42)
 
 The meeting-load insight only ever counted busy hours. This prices what

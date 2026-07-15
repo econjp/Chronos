@@ -950,6 +950,18 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.43** (year rhythm map — backlog #26, DONE, the year's shape at
+  a glance). View > "Year rhythm map": a 52-week × 24-hour canvas,
+  each cell shaded by tracked minutes in that hour that week — where
+  `_heatmap` shows how MUCH per day, this shows WHEN, at year scale.
+  New pure `_year_rhythm_grid(weeks=52)` returns {(week_idx, hour):
+  minutes} (Monday-start weeks, same convention as `_heatmap`; both
+  work and break rows count); `_year_rhythm_view` is the thin Tk
+  canvas layer mirroring `_heatmap`'s drawing code. New "year-rhythm"
+  selftest suite (same-cell summing across different days, a break
+  row counting, the oldest in-window week landing right at the edge,
+  a one-day-outside-window exclusion, a future-date exclusion);
+  26/26 green (new suite, was 25).
 - **v8.42** (meeting fragmentation tax — backlog #21, DONE, meetings
   cost more than their duration). New `_meeting_fragmentation_lines`/
   `_day_fragmentation_tax`: for each meeting on each of the last 7
@@ -1494,7 +1506,12 @@ purpose; the *walls* are the major thing, and they're now named.
     the user (the guardrail): it grades the PLANNER's realism, not the
     person, and only changes how much the planner dares to schedule.
 
-26. **Year rhythm map (VISUAL MEMORY).** The heatmap shows how MUCH per
+26. ~~**Year rhythm map.**~~ — DONE v8.43. New pure
+    `_year_rhythm_grid(weeks=52)` ({(week_idx, hour): minutes}) +
+    `_year_rhythm_view` canvas, View menu. Mirrors `_heatmap`'s canvas
+    code at year scale, by time-of-day instead of day-total. Original
+    design note kept below for reference.
+    (VISUAL MEMORY).** The heatmap shows how MUCH per
     day; nothing shows WHEN at year scale. One canvas: 52 columns (weeks)
     × 24 rows (hour of day), each cell shaded by tracked minutes in that
     hour that week — your year's shape at a glance: bedtime drift eras,

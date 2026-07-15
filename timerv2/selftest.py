@@ -49,7 +49,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_decay_cycle", "_lag_fragmentation_line",
         "_break_budget_line", "_lens_registry", "_lens_overlap_lines",
         "_health_extras_lines", "_running_hot_line",
-        "_day_fragmentation_tax", "_meeting_fragmentation_lines"}
+        "_day_fragmentation_tax", "_meeting_fragmentation_lines",
+        "_year_rhythm_grid"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -1124,6 +1125,33 @@ def suite_meeting_fragmentation():
     assert D._meeting_fragmentation_lines(d) == []      # only 0.3h left
 
 
+def suite_year_rhythm():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 7, 15)      # a Wednesday, week-of-Monday 07-13
+    assert TODAY.weekday() == 2, TODAY.weekday()
+
+    rows = [
+        # week 0 (containing today): two rows in the SAME (week, hour)
+        # cell, on different days — must sum, not overwrite
+        ["2026-07-15", "work", "09:05", "09:25", "20", "x", ""],
+        ["2026-07-13", "work", "09:40", "10:05", "25", "y", ""],
+        # week 1 (one week back): a BREAK row — breaks count here,
+        # unlike _heatmap which skips them
+        ["2026-07-06", "break", "14:00", "14:50", "50", "", ""],
+        # week 3 (the oldest week in a weeks=4 window): right at the edge
+        ["2026-06-22", "work", "08:00", "08:15", "15", "z", ""],
+        # one day OUTSIDE the weeks=4 window: must be excluded entirely
+        ["2026-06-21", "work", "08:00", "08:15", "999", "old", ""],
+        # a future date: must be excluded (never counted, not just
+        # clamped)
+        ["2026-07-20", "work", "09:00", "09:15", "999", "future", ""],
+    ]
+    seed(ns, rows)
+    d = _mk(D, today=TODAY)
+    grid = D._year_rhythm_grid(d, 4)
+    assert grid == {(0, 9): 45, (1, 14): 50, (3, 8): 15}, grid
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1145,7 +1173,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("health-extras", suite_health_extras),
           ("backup-integrity", suite_backup_integrity),
           ("running-hot", suite_running_hot),
-          ("meeting-fragmentation", suite_meeting_fragmentation)]
+          ("meeting-fragmentation", suite_meeting_fragmentation),
+          ("year-rhythm", suite_year_rhythm)]
 
 
 def main():
