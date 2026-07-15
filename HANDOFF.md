@@ -950,6 +950,24 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.59** (milestones inside a deadline — backlog #36, DONE,
+  content not just hours). Deadlines gain an optional "Milestones"
+  field in the existing edit dialog: `ch4 [15h]*, ch5 [20h], revisions
+  [10h]` (same `[Nh]` bracket convention the task time-box already
+  uses, trailing `*` = done). New module-level `_parse_milestones`
+  (pure) + `_milestone_progress_line`, surfaced in the dashboard's
+  "Deadlines & Goals" tab — "ch4 done, ch5 at 60% of its hours,
+  revisions at 0% of its hours." Hours accrue in milestone order: the
+  current (first not-done) milestone gets credit for whatever matched
+  hours haven't already been claimed by earlier done ones. A proxy,
+  not a real per-milestone tracker — but honest, since it never
+  claims more than the deadline's own real matched total. Scoped down
+  from the original note: burn-down/projection and a per-milestone
+  estimate factor NOT wired in, dashboard line only. New "milestones"
+  selftest suite (parsing incl. the done-marker and malformed text, a
+  hand-verified scenario landing exactly on the design's own "ch5 at
+  60%" example, silence with no milestones field); 41/41 green (new
+  suite, was 40).
 - **v8.58** (protected time windows — backlog #50, DONE, the
   scheduler's missing exclusion zone). New Tools > "Protected time
   windows…" (grid dialog, same pattern as Goals/Deadlines): named
@@ -1846,7 +1864,15 @@ purpose; the *walls* are the major thing, and they're now named.
     one twice in a row. Improvement by removal — the most underrated
     productivity move and almost never what software suggests.
 
-36. **Milestones inside a deadline (PLANNING — content, not just hours).**
+36. ~~**Milestones inside a deadline.**~~ — DONE v8.59. New
+    `_parse_milestones` (pure, `[Nh]`/`*` convention) +
+    `_milestone_progress_line`, an optional "Milestones" column in
+    the deadline edit dialog, surfaced in the dashboard next to the
+    lifetime ledger/renegotiation lines. Burn-down/projection and a
+    per-milestone estimate factor NOT wired in — scoped down to the
+    dashboard line only, the highest-value slice. Original design
+    note kept below for reference.
+    (PLANNING — content, not just hours).**
     `total_h` measures effort, not progress: 30h logged on a 60h scope
     can be 70% done or 20% done. Optional milestone list per deadline
     ("ch4 [15h], ch5 [20h], revisions [10h]" — same [Nh] convention),

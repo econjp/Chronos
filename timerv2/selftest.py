@@ -35,7 +35,7 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "_free_from_busy", "_deep_capacity_minutes", "_merge_time_intervals",
        "_pinned_after_add", "_pinned_after_remove", "day_totals",
        "load_settings", "save_settings", "_deadline_revisions_after_save",
-       "_pick_one_less"}
+       "_pick_one_less", "_parse_milestones"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -60,7 +60,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_carry_year", "_on_this_day_line", "_lifetime_ledger_line",
         "_due_capsules", "_capsule_lines", "_commit_from_text",
         "_commitment_reliability", "_commitment_reliability_line",
-        "_protected_intervals",
+        "_protected_intervals", "_milestone_progress_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -1900,6 +1900,39 @@ def suite_protected_windows():
     assert D._protected_intervals(d3) == []
 
 
+def suite_milestones():
+    D, ns = fresh()
+
+    # ---- _parse_milestones: parsing ----
+    ms = ns["_parse_milestones"]("ch4 [15h]*, ch5 [20h], revisions [10h]")
+    assert ms == [
+        {"name": "ch4", "h": 15.0, "done": True},
+        {"name": "ch5", "h": 20.0, "done": False},
+        {"name": "revisions", "h": 10.0, "done": False},
+    ], ms
+    assert ns["_parse_milestones"]("") == []
+    assert ns["_parse_milestones"]("just text, no brackets") == []
+
+    # ---- _milestone_progress_line: hours accrue in milestone order ----
+    TODAY = dt.date(2026, 8, 15)
+    dl = {"name": "Thesis", "match": "thesis", "start": "2026-01-01",
+         "milestones": "ch4 [15h]*, ch5 [20h], revisions [10h]"}
+    # 27h matched total: 15h already covers the DONE ch4, leaving 12h
+    # credited to ch5 (the first not-done milestone) -> 12/20 = 60%;
+    # revisions gets no credit yet (35h would be needed to reach it)
+    seed(ns, [["2026-03-01", "work", "09:00", "18:00", "1620",
+              "thesis: writing", ""]])
+    d = _mk(D, today=TODAY)
+    line = D._milestone_progress_line(d, dl)
+    assert line == ("  milestones: ch4 done, ch5 at 60% of its hours, "
+                    "revisions at 0% of its hours"), line
+
+    # ---- silence: no milestones field ----
+    assert D._milestone_progress_line(d, {"name": "X", "match": "x"}) is None
+    assert D._milestone_progress_line(
+        d, {"name": "X", "match": "x", "milestones": ""}) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1936,7 +1969,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("planner-realism", suite_planner_realism),
           ("time-capsule", suite_time_capsule),
           ("commitment-reliability", suite_commitment_reliability),
-          ("protected-windows", suite_protected_windows)]
+          ("protected-windows", suite_protected_windows),
+          ("milestones", suite_milestones)]
 
 
 def main():

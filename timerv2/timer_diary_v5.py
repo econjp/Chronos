@@ -60,6 +60,29 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.59 (milestones inside a deadline — backlog #36, content not
+just hours):
+  - `total_h` measures effort, not progress — 30h logged on a 60h scope
+    can be 70% done or 20% done depending on WHAT got done. Deadlines
+    gain an optional "Milestones" field in the existing edit dialog:
+    `ch4 [15h]*, ch5 [20h], revisions [10h]` — same `[Nh]` bracket
+    convention the task time-box already uses, a trailing `*` marks a
+    milestone done. New module-level `_parse_milestones` (pure) +
+    `_milestone_progress_line`, surfaced in the dashboard's "Deadlines
+    & Goals" tab: "ch4 done, ch5 at 60% of its hours, revisions at 0%
+    of its hours." Hours accrue in milestone ORDER — the current
+    (first not-done) milestone gets credit for whatever matched hours
+    haven't already been claimed by earlier done ones; later
+    milestones stay at 0% until the ones ahead of them are checked
+    off. A proxy, not a real per-milestone tracker (there's no
+    mechanism to tag which tracked minutes belong to which milestone)
+    — but an honest one, since it never claims more than the
+    deadline's own real matched total. New "milestones" selftest suite
+    (parsing including the done-marker and malformed text, a hand-
+    verified 3-milestone scenario landing exactly on the design's own
+    "ch5 at 60%" example, silence with no milestones field); 41/41
+    green.
+
 New in v8.58 (protected time windows — backlog #50, the scheduler's
 missing exclusion zone):
   - `_work_window` (v7.9) sets one daily envelope the scheduler is
@@ -1364,6 +1387,22 @@ def _pick_one_less(candidates, last_key):
     return next((c for c in candidates if c[0] != last_key), candidates[0])
 
 
+def _parse_milestones(spec):
+    """Backlog #36: 'ch4 [15h]*, ch5 [20h]' -> [{"name": "ch4", "h":
+    15.0, "done": True}, {"name": "ch5", "h": 20.0, "done": False}].
+    Same [Nh] bracket convention the task time-box already uses; a
+    trailing * right after the bracket marks a milestone done — same
+    idea as a '--- Done:' line, just inline. Malformed or empty text
+    yields an empty list, never an error (this field is optional)."""
+    out = []
+    for m in re.finditer(r"([^,\[\]]+?)\s*\[([0-9.]+)h\](\*)?", spec or ""):
+        name = m.group(1).strip()
+        if name:
+            out.append({"name": name, "h": float(m.group(2)),
+                       "done": bool(m.group(3))})
+    return out
+
+
 def already_running():
     """Single-instance guard via a named Windows mutex. Two instances
     logging to different folders is how diary text gets lost."""
@@ -2608,8 +2647,10 @@ class App(tk.Tk):
         win.resizable(False, False)
         win.grab_set()
         cols = ("Name (empty = off)", "Start (opt)", "Due (YYYY-MM-DD)",
-                "Total h (opt)", "h/week (opt)", "Tasks containing", "Goal (opt)")
-        keys = ("name", "start", "date", "total_h", "target_h", "match", "goal")
+                "Total h (opt)", "h/week (opt)", "Tasks containing",
+                "Goal (opt)", "Milestones (opt, 'ch4 [15h]*, ch5 [20h]')")
+        keys = ("name", "start", "date", "total_h", "target_h", "match",
+               "goal", "milestones")
         for c, lbl in enumerate(cols):
             ttk.Label(win, text=lbl).grid(row=0, column=c, padx=4, pady=(8, 2))
         cur = self.deadlines()
@@ -2624,7 +2665,8 @@ class App(tk.Tk):
                                      values=goal_names)
                     e.set(d.get("goal") or "")
                 else:
-                    e = ttk.Entry(win, width=13 if c in (0, 5) else 10)
+                    e = ttk.Entry(win, width=24 if key == "milestones"
+                                  else 13 if c in (0, 5) else 10)
                     v = d.get(key, "")
                     e.insert(0, str(v) if v else "")
                 e.grid(row=i + 1, column=c, padx=4, pady=2)
@@ -2652,7 +2694,8 @@ class App(tk.Tk):
                 out.append({"name": vals["name"], "start": vals["start"],
                             "date": vals["date"], "total_h": total,
                             "target_h": target, "match": vals["match"],
-                            "goal": vals["goal"] or None})
+                            "goal": vals["goal"] or None,
+                            "milestones": vals["milestones"]})
             out = _deadline_revisions_after_save(
                 cur, out, dt.date.today().isoformat())
             self.settings["deadlines"] = out
@@ -2662,7 +2705,7 @@ class App(tk.Tk):
             win.destroy()
 
         ttk.Button(win, text="Save", command=save).grid(
-            row=5, column=6, sticky="e", padx=4, pady=8)
+            row=5, column=7, sticky="e", padx=4, pady=8)
 
     def _goal_why(self, name):
         """The one-line 'why' text for a linked goal, or ''."""
@@ -2757,6 +2800,48 @@ class App(tk.Tk):
         if extra:
             line += " — " + ", ".join(extra)
         return line
+
+    def _milestone_progress_line(self, dl):
+        """Backlog #36: total_h measures effort, not progress — 30h
+        logged on a 60h scope can be 70% done or 20% done depending on
+        WHAT got done. When a deadline has a milestone breakdown
+        (`_parse_milestones`), speak in content instead: "ch4 done,
+        ch5 at 60% of its hours." Hours accrue in milestone order — the
+        current (first not-done) milestone gets credit for whatever
+        matched hours haven't already been claimed by earlier, DONE
+        milestones; later not-done milestones stay at 0% until the
+        ones ahead of them are checked off. A proxy, not a real per-
+        milestone tracker (there's no mechanism to tag which tracked
+        minutes belong to which milestone) — but an honest one, since
+        it never claims more than the deadline's own real total."""
+        milestones = _parse_milestones(dl.get("milestones", ""))
+        if not milestones:
+            return None
+        kws = self._match_kws(dl.get("match", ""))
+        start = None
+        if dl.get("start"):
+            try:
+                start = dt.date.fromisoformat(dl["start"])
+            except ValueError:
+                pass
+        lo = start or dt.date.min
+        if kws:
+            done_total_h = matched_minutes(kws, lo, self.today) / 60
+        else:
+            idx = day_index()
+            lo_iso, hi_iso = lo.isoformat(), self.today.isoformat()
+            done_total_h = sum(rec["work"] for iso, rec in idx.items()
+                              if lo_iso <= iso <= hi_iso) / 60
+        cum_declared, parts = 0.0, []
+        for m in milestones:
+            if m["done"]:
+                parts.append(f"{m['name']} done")
+            else:
+                credit = max(0.0, done_total_h - cum_declared)
+                pct = min(100, round(100 * credit / m["h"])) if m["h"] else 0
+                parts.append(f"{m['name']} at {pct}% of its hours")
+            cum_declared += m["h"]
+        return "  milestones: " + ", ".join(parts)
 
     def _set_goals(self):
         """Deadlines answer 'when'; goals answer WHY the hours happen.
@@ -8229,6 +8314,9 @@ class App(tk.Tk):
                 reneg = self._deadline_renegotiation_line(dl)
                 if reneg:
                     lines.append(f"    {reneg}")
+                milestones = self._milestone_progress_line(dl)
+                if milestones:
+                    lines.append(f"  {milestones}")
             lines += [" " + s for s in self._capacity_lines()]
 
         lines += ["", "INSIGHTS — your last 60 days, cross-referenced"]

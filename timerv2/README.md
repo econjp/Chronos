@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Milestones inside a deadline (v8.59)
+
+`total_h` measures effort, not progress — 30h logged on a 60h scope can
+be 70% done or 20% done depending on WHAT got done. Deadlines gain an
+optional **Milestones** field in the existing edit dialog: `ch4 [15h]*,
+ch5 [20h], revisions [10h]` — same `[Nh]` bracket convention the task
+time-box already uses; a trailing `*` marks one done. The dashboard's
+**Deadlines & Goals** tab then speaks in content instead of just hours:
+`ch4 done, ch5 at 60% of its hours, revisions at 0% of its hours`.
+Hours accrue in milestone order, so the current one gets credit first.
+
 ### Protected time windows (v8.58)
 
 **Tools → Protected time windows…**: name daily-recurring windows the
