@@ -950,6 +950,19 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.54** (planner realism factor — backlog #25, DONE, the schedule
+  audits itself). New `_planned_hours_from_file`: reads a past day's
+  own written schedule block back out of its file (same in-file
+  convention trick `_estimate_factor` uses), excluding the
+  "uncommitted" free-time line. New `_planner_realism_factor`: median
+  (actual/planned, capped at 1.0) over the last 60 scheduled days,
+  n>=5 gate. `_day_schedule_lines` now scales each item's needed
+  hours by that ratio before placing blocks and prints the density in
+  the schedule header. No compliance tracking of the person — grades
+  the planner only. New "planner-realism" selftest suite (placement-
+  line parsing correctly excludes the uncommitted line, a hand-
+  verified 6-day median with one overshoot day capped at 1.0, silence
+  below the n>=5 gate); 37/37 green (new suite, was 36).
 - **v8.53** (sensor health meter — backlog #23, DONE, the platform
   watching its own instruments). New `_sensor_health_lines`, a new
   section at the top of the Data doctor window: per source (sleep
@@ -1645,7 +1658,15 @@ purpose; the *walls* are the major thing, and they're now named.
     All from existing day-record keys; n-gated; anti-nagging guardrail
     applies (stated once, never repeated daily unless the score worsens).
 
-25. **Planner realism factor — the schedule audits itself (PLANNING).**
+25. ~~**Planner realism factor — the schedule audits itself.**~~ —
+    DONE v8.54. New `_planned_hours_from_file` (parses a past day's
+    written schedule block back out, same trick as
+    `_estimate_factor`) + `_planner_realism_factor` (median survival
+    ratio, capped at 1.0, n≥5 gate). `_day_schedule_lines` scales
+    each item's needed hours by the ratio before placing blocks and
+    prints the density in the schedule header. Original design note
+    kept below for reference.
+    (PLANNING).**
     v8.0/v8.8 write a suggested schedule every morning; nothing ever
     checks what became of it. Reconcile each past day's written schedule
     block (parse it back out of the day file — same in-file convention

@@ -60,7 +60,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_carry_year", "_on_this_day_line", "_lifetime_ledger_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
-        "_one_less_candidates", "_one_less_line", "_sensor_health_lines"}
+        "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
+        "_planned_hours_from_file", "_planner_realism_factor"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -1707,6 +1708,73 @@ def suite_sensor_health():
     assert not any("your normal" in ln for ln in lines3), lines3
 
 
+def suite_planner_realism():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    TODAY = dt.date(2026, 7, 15)
+
+    def write(day, body):
+        with open(os.path.join(tmp, day + ".txt"), "w",
+                  encoding="utf-8") as f:
+            f.write(body)
+
+    d = _mk(D, today=TODAY,
+            diary_path=lambda dd: os.path.join(tmp, dd.isoformat() + ".txt"))
+
+    # ---- _planned_hours_from_file: sums placement lines, excludes
+    # the "uncommitted" free-time line ----
+    write("2026-07-14",
+         "suggested schedule today:\n"
+         "  09:00-11:00 Thesis (2.0h)\n"
+         "  14:00-17:00 uncommitted (3.0h free today total)\n")
+    assert D._planned_hours_from_file(d, "2026-07-14") == 2.0
+
+    # ---- silence: no schedule block in the file at all ----
+    write("2026-07-13", "SIGNAL: thesis\njust a normal day\n")
+    assert D._planned_hours_from_file(d, "2026-07-13") is None
+
+    # ---- silence: no file for that date ----
+    assert D._planned_hours_from_file(d, "2026-01-01") is None
+
+    # ---- _planner_realism_factor: 6 days, hand-verified median ----
+    # (planned, actual) -> ratio, capped at 1.0 for overshoot
+    days = [
+        ("2026-07-14", 2.0, 1.0),   # 0.5
+        ("2026-07-13", 4.0, 4.0),   # 1.0
+        ("2026-07-12", 2.0, 3.0),   # 1.5 -> capped 1.0
+        ("2026-07-11", 5.0, 2.5),   # 0.5
+        ("2026-07-10", 3.0, 1.8),   # 0.6
+        ("2026-07-09", 1.0, 0.9),   # 0.9
+    ]
+    rows = []
+    for iso, planned, actual in days:
+        n = 1
+        lines = ["suggested schedule today:"]
+        rem = planned
+        while rem > 1e-9:
+            chunk = min(rem, 2.0)
+            lines.append(f"  09:00-11:00 task{n} ({chunk:.1f}h)")
+            rem -= chunk
+            n += 1
+        write(iso, "\n".join(lines) + "\n")
+        rows.append([iso, "work", "09:00", "10:00", str(round(actual * 60)),
+                    "x", ""])
+    seed(ns, rows)
+    factor = D._planner_realism_factor(d, 60)
+    assert factor is not None, factor
+    ratio, n = factor
+    # sorted ratios: [0.5, 0.5, 0.6, 0.9, 1.0, 1.0] -> median (index 3) = 0.9
+    assert n == 6 and abs(ratio - 0.9) < 1e-9, factor
+
+    # ---- silence: fewer than 5 days with a real written schedule ----
+    d2 = _mk(D, today=TODAY,
+            diary_path=lambda dd: os.path.join(tmp, dd.isoformat() + ".txt"))
+    seed(ns, rows[:4])
+    for iso, *_r in days[4:]:
+        write(iso, "SIGNAL: thesis\n")   # no schedule block these two days
+    assert D._planner_realism_factor(d2, 60) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1739,7 +1807,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("deadline-postmortem", suite_deadline_postmortem),
           ("deadline-renegotiation", suite_deadline_renegotiation),
           ("one-less", suite_one_less),
-          ("sensor-health", suite_sensor_health)]
+          ("sensor-health", suite_sensor_health),
+          ("planner-realism", suite_planner_realism)]
 
 
 def main():

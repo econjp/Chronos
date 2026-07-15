@@ -4,6 +4,19 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Planner realism factor (v8.54)
+
+The morning schedule (v8.0) writes a suggested time-blocked plan every
+day; nothing ever checked what became of it. Now it does: each past
+day's own written schedule gets reconciled against what actually got
+tracked, and the planner learns a personal plan-survival rate — "your
+average planned day survives 90%." The morning schedule scales its own
+hour estimates by that rate before placing blocks, and says so right in
+the header: `(planning at 90% density — your plans have survived that
+rate over the last 6 scheduled days)`. Grades the planner's realism
+only, never the person — no compliance tracking of what you actually
+did on any one day.
+
 ### Sensor health meter (v8.53)
 
 **Tools → Data doctor** now opens with a new section at the top: per

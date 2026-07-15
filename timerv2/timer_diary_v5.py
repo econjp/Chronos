@@ -60,6 +60,27 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.54 (planner realism factor — backlog #25, the schedule
+audits itself):
+  - v8.0 writes a suggested schedule every morning; nothing ever
+    checked what became of it. New `_planned_hours_from_file`: reads a
+    past day's own written schedule block back out of its file (same
+    in-file convention trick `_estimate_factor` uses for "--- Done:"
+    lines) — total hours actually PLACED into blocks, excluding the
+    "uncommitted" free-time line. New `_planner_realism_factor`:
+    (actual tracked hours / planned hours, capped at 1.0) per day,
+    median over the last 60 days with a real written schedule — "your
+    average planned day survives 90%." `_day_schedule_lines` now
+    scales each item's needed hours by that ratio BEFORE placing
+    blocks, and prints the density it's planning at right in the
+    schedule header. Self-calibrating planning without any compliance
+    tracking of the person — it grades the PLANNER's realism only,
+    same standing guardrail as everywhere else in this app. New
+    "planner-realism" selftest suite (parsing sums placement lines and
+    correctly excludes the uncommitted line, a hand-verified 6-day
+    median with one overshoot day correctly capped at 1.0, silence
+    with fewer than 5 real scheduled days); 37/37 green.
+
 New in v8.53 (sensor health meter — backlog #23, the platform watching
 its own instruments):
   - Every insight silently degrades when a source rots — the phone
@@ -4553,10 +4574,20 @@ class App(tk.Tk):
         slots = list(self._free_slots(self.today))
         if not slots:
             return self._focus_order_lines()
+        realism = self._planner_realism_factor()
+        if realism:
+            ratio, _n = realism
+            items = [(name, left, need * ratio, behind)
+                     for name, left, need, behind in items]
         quality = self._hour_quality()
         placements, slots = self._energy_place(items, slots, quality)
         lines = ["suggested schedule today (hardest work steered to your "
                  "peak hours):" if quality else "suggested schedule today:"]
+        if realism:
+            ratio, n = realism
+            lines.append(f"  (planning at {round(100 * ratio)}% density — "
+                        f"your plans have survived that rate over the last "
+                        f"{n} scheduled day(s))")
         for name, behind, placed, shortfall in placements:
             tag = " ⚠ behind pace" if behind else ""
             for s, e in placed:
@@ -6817,6 +6848,51 @@ class App(tk.Tk):
         ttk.Label(win, text=hint, foreground="#777777",
                   wraplength=760).pack(anchor="w", padx=8, pady=(0, 6))
         refresh()
+
+    def _planned_hours_from_file(self, iso):
+        """Backlog #25: total hours actually PLACED into blocks in one
+        day's own schedule — the '  HH:MM-HH:MM name (Xh)' lines
+        `_day_schedule_lines` (v8.0) writes once at day-open. Excludes
+        the trailing 'uncommitted (Xh free today total)' line (that's
+        free time, not a plan — its different text shape means the
+        regex naturally skips it, no special-casing needed). Same
+        in-file convention trick `_estimate_factor` uses for its own
+        '--- Done:' lines. None if that day never got a schedule block
+        written at all (nothing to reconcile against)."""
+        pat = re.compile(r"^  \d\d:\d\d-\d\d:\d\d .+? \(([0-9.]+)h\)", re.M)
+        try:
+            with open(self.diary_path(dt.date.fromisoformat(iso)),
+                      encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            return None
+        if "suggested schedule today" not in text:
+            return None
+        matches = pat.findall(text)
+        return sum(float(m) for m in matches) if matches else None
+
+    def _planner_realism_factor(self, days=60):
+        """Backlog #25: the schedule audits itself. For each of the
+        last `days` days that got a written schedule, the plan-
+        survival ratio = actual tracked hours that day / planned hours
+        (capped at 1.0 — overshooting a plan isn't "surviving more,"
+        it's just a different day). Returns (median ratio, n), or None
+        until 5+ real scheduled days exist. Grades the PLANNER's
+        realism only — no compliance tracking of what the person did
+        on any single day, the standing planning-engine guardrail."""
+        idx = day_index()
+        ratios = []
+        for i in range(1, days + 1):
+            iso = (self.today - dt.timedelta(days=i)).isoformat()
+            planned = self._planned_hours_from_file(iso)
+            if not planned:
+                continue
+            actual = (idx.get(iso) or {"work": 0})["work"] / 60
+            ratios.append(min(1.0, actual / planned))
+        if len(ratios) < 5:
+            return None
+        ratios.sort()
+        return ratios[len(ratios) // 2], len(ratios)
 
     def _estimate_factor(self, kws=None):
         """(median actual/estimate ratio, sample count) from '--- Done: x
