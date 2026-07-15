@@ -896,6 +896,15 @@ purpose; the *walls* are the major thing, and they're now named.
   19 (overbooked, genuinely-tight-day, behind-at-pace, and both silence
   cases — no deadlines at all, and a normal roomy/on-pace week); 19/19
   green.
+- **v8.33** (metrics shorthand — backlog #66, DONE). `_metrics_from_text`
+  rewritten to split-by-comma then match per-token, so a bare word with
+  no `=`/`:` implicitly logs `word=1` ("METRICS: meditation,
+  cold_shower") alongside normal `key=value` tokens on the same line.
+  `_metrics_insight` needed zero changes — it already only checks
+  presence-of-key. Same "metrics" selftest suite extended (mixed-form
+  line, bare-word-only line, invalid-bare-token-skipped); existing
+  key=value/key:val cases unchanged, no regression; 19/19 green (no new
+  suite — an existing one grew).
 
 ## BACKLOG (priority order — continue here)
 
@@ -1761,8 +1770,13 @@ purpose; the *walls* are the major thing, and they're now named.
     will be thin at first, so this should degrade gracefully to "not
     enough data yet" per metric rather than blank columns.
 
-66. **Metrics shorthand — lower friction than key=value (USABILITY,
-    pairs with #19 quick-capture).** METRICS (v8.27) requires typing
+66. ~~**Metrics shorthand — lower friction than key=value.**~~ — DONE
+    v8.33. Ended up rewriting the parser to split-by-comma-then-match-
+    per-token rather than "one alternate regex branch" as originally
+    sketched (needed to reliably tell a bare word apart from a malformed
+    key=value token on the same line) — same end result. Still open:
+    #19's quick-capture hotkey to pair with it.
+    (USABILITY, pairs with #19 quick-capture). METRICS (v8.27) requires typing
     `key=value`; for simple yes/no habits (meditated, cold shower, took
     magnesium) that's more typing than the fact deserves. A shorthand:
     a bare word in the METRICS line with no `=` implicitly logs

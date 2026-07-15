@@ -45,7 +45,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_lag_evening_start_line", "_lag_insight", "_week_ahead_lines"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
-               "_LINE_TAG_RULES", "_WORD_RE", "_WORD_STOPWORDS"}
+               "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
+               "_WORD_STOPWORDS"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -434,6 +435,13 @@ def suite_metrics():
     assert mf(D, "METRICS: mood=calm, water=6") == {"mood": "calm", "water": 6.0}
     assert mf(D, "no metrics line here") == {}
     assert mf(D, "metrics:  KEY = 5 ") == {"key": 5.0}
+
+    # ---- shorthand: a bare word with no '=' implicitly logs word=1 ----
+    assert mf(D, "METRICS: meditation, cold_shower") == {
+        "meditation": 1.0, "cold_shower": 1.0}
+    assert mf(D, "METRICS: meditation, water=6, cold_shower") == {
+        "meditation": 1.0, "water": 6.0, "cold_shower": 1.0}   # mixed forms
+    assert mf(D, "METRICS: 5bad, water=6") == {"water": 6.0}   # invalid bare token skipped
 
     # ---- _day_metrics: live diary text (today) vs a past day file ----
     class FakeDiary:

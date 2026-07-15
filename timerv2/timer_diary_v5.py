@@ -60,6 +60,18 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.33 (metrics shorthand — backlog #66, lower friction for habits):
+  - the METRICS line (v8.27) required "key=value" for everything; a bare
+    word with no "=" now implicitly logs word=1 — "METRICS: meditation,
+    cold_shower" instead of typing "=1" on each. Mixed forms in the same
+    line work too ("meditation, water=6, cold_shower"). _metrics_insight
+    needed no change at all — it already just checks presence-of-key, so
+    shorthand entries feed the exact same correlation machinery as any
+    typed key=value pair. Rewrote the parser to split-by-comma first
+    (was one big regex over the whole line) specifically so bare tokens
+    have somewhere to be recognised; existing key=value/key:val parsing
+    unchanged (same suite, extended, no regression).
+
 New in v8.32 (week-ahead risk brief — backlog #42, the co-pilot's weekly twin):
   - Monday's file already opens with WEEK REVIEW (looking back); it now
     also gets WEEK AHEAD, looking forward across the next 7 days as a
@@ -6763,25 +6775,33 @@ class App(tk.Tk):
     # (against the project's own no-speculative-sources rule) but by making
     # the COST of adding one, the day it's actually wanted, one typed word.
 
-    METRICS_RE = re.compile(r"([a-zA-Z_][a-zA-Z0-9_]*)\s*[=:]\s*"
-                            r"([^,]+?)(?=\s*,|\s*$)")
+    METRICS_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s*[=:]\s*(.+)$")
+    METRICS_BARE_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
     @classmethod
     def _metrics_from_text(cls, text):
-        """First 'METRICS: key=val, key=val' line -> {key: value}. Values
-        parse as float when possible (meditation=10, water=6), else stay
-        as the typed string (mood=calm, supplement=magnesium) — one
-        mechanism for numbers and labels alike. Missing line -> {}."""
+        """First 'METRICS: ...' line -> {key: value}. Comma-separated
+        tokens: 'key=val'/'key:val' (value parses as float when possible,
+        else stays the typed string) OR a bare word, which shorthand-logs
+        as key=1 — lower friction for yes/no habits ('METRICS: meditation,
+        cold_shower' instead of typing '=1' on each). Missing line -> {}."""
         for line in text.splitlines():
             s = line.strip()
             if s.lower().startswith("metrics:"):
                 out = {}
-                for key, val in cls.METRICS_RE.findall(s[8:]):
-                    val = val.strip()
-                    try:
-                        out[key.strip().lower()] = float(val)
-                    except ValueError:
-                        out[key.strip().lower()] = val.lower()
+                for tok in s[8:].split(","):
+                    tok = tok.strip()
+                    if not tok:
+                        continue
+                    m = cls.METRICS_RE.match(tok)
+                    if m:
+                        key, val = m.group(1).lower(), m.group(2).strip()
+                        try:
+                            out[key] = float(val)
+                        except ValueError:
+                            out[key] = val.lower()
+                    elif cls.METRICS_BARE_RE.match(tok):
+                        out[tok.lower()] = 1.0
                 return out
         return {}
 

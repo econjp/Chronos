@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Metrics shorthand (v8.33)
+
+The METRICS line used to require `key=value` for everything. Now a bare
+word logs itself as `1`: `METRICS: meditation, cold_shower` instead of
+`meditation=1, cold_shower=1`. Mix and match freely — `METRICS:
+meditation, water=6, cold_shower` all works on one line. Lower friction
+for the yes/no habits that are most of what biohacking logging actually
+is.
+
 ### Week ahead (v8.32)
 
 Monday's file already reviews last week; it now also previews the next
