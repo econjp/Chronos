@@ -4,6 +4,18 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Commitment-reliability ledger (v8.57)
+
+A new opt-in header line, never auto-inserted: `COMMIT: thesis 4h`
+commits to 4h on tasks matching "thesis" today; `COMMIT: 4h` alone
+commits to 4h of tracked work overall. The Monday review reconciles
+each recent commitment against what actually got delivered and reports
+the trailing rate once 5+ real ones exist: `you hit your morning
+commitment 3 of the last 5 days — you reliably deliver ~60% of what you
+promise yourself; promise that and mean it`. Never grades any one day —
+just the honest personal rate, so you can promise what you actually
+deliver instead of what you wish you did.
+
 ### Time capsule (v8.56)
 
 On-this-day looks back one year automatically. Now you can deliberately

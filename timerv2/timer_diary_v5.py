@@ -60,6 +60,26 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.57 (commitment-reliability ledger — backlog #18, self-
+calibration feedback, not a promise-tracking gate):
+  - A new opt-in header line — never auto-inserted, same convention as
+    EXPERIMENT/DECIDED: `COMMIT: thesis 4h` commits to 4h on tasks
+    matching "thesis" that day; `COMMIT: 4h` (no keywords) commits to
+    4h of tracked work overall. New `_commit_from_text` parses it (same
+    first-match-wins template as `_energy_from_text`); new
+    `_commitment_reliability` reconciles each of the last 30 days that
+    had a real commitment against what actually got delivered. One
+    line in the Monday review once 5+ real commitments exist: "you hit
+    your morning commitment 3 of the last 5 days — you reliably
+    deliver ~60% of what you promise yourself; promise that and mean
+    it." Never grades any ONE day, only the trailing rate — the honest
+    version of a promise-tracker without becoming a compliance gate.
+    `COMMIT:` added to the header syntax-highlight rules. New
+    "commitment-reliability" selftest suite (parsing with/without
+    keywords and malformed input, a hand-verified 5-commitment/3-hit
+    scenario mixing keyword-scoped and whole-day commitments, silence
+    below the n≥5 gate); 39/39 green.
+
 New in v8.56 (time capsule — backlog #61, the forward-looking
 counterpart to on-this-day):
   - On-this-day (v8.12) looks back one year, automatically. Nothing let
@@ -2313,6 +2333,71 @@ class App(tk.Tk):
         except OSError:
             return None
 
+    # ----- commitment-reliability ledger (backlog #18) -----
+    #
+    # A COMMIT: line is opt-in (same convention as EXPERIMENT/DECIDED —
+    # never auto-inserted, typed only when the owner wants to make a
+    # morning promise to themselves): "COMMIT: thesis 4h" commits to 4h
+    # on tasks matching "thesis"; "COMMIT: 4h" (no keywords) commits to
+    # 4h of tracked work overall. The ledger never grades any ONE day —
+    # only the trailing rate, read back once a week, self-calibration
+    # feedback rather than a promise-tracking gate.
+
+    _COMMIT_RE = re.compile(r"^COMMIT:\s*(.*?)\s*([0-9.]+)\s*h\s*$", re.I)
+
+    def _commit_from_text(self, text):
+        """First COMMIT: line's (keyword-spec, hours), or None — same
+        first-match-wins template as _energy_from_text."""
+        for line in text.splitlines():
+            m = self._COMMIT_RE.match(line.strip())
+            if m:
+                try:
+                    return m.group(1).strip(), float(m.group(2))
+                except ValueError:
+                    continue
+        return None
+
+    def _commitment_reliability(self, days=30):
+        """Backlog #18: for each of the last `days` days with a real
+        COMMIT: line, whether that day's delivered hours (matched to
+        the commitment's own keywords, or the day's whole tracked
+        total when none were given) met or exceeded what was
+        committed. Returns (hit_rate, hits, n), or None until 5+ real
+        commitments exist — the honesty gate every stat here uses."""
+        idx = day_index()
+        hits = n = 0
+        for i in range(1, days + 1):
+            d = self.today - dt.timedelta(days=i)
+            try:
+                with open(self.diary_path(d), encoding="utf-8") as f:
+                    text = f.read()
+            except OSError:
+                continue
+            commit = self._commit_from_text(text)
+            if not commit:
+                continue
+            kws_str, hours = commit
+            kws = self._match_kws(kws_str)
+            if kws:
+                delivered = matched_minutes(kws, d, d) / 60
+            else:
+                delivered = (idx.get(d.isoformat()) or {"work": 0})["work"] / 60
+            n += 1
+            if delivered + 1e-9 >= hours:
+                hits += 1
+        if n < 5:
+            return None
+        return hits / n, hits, n
+
+    def _commitment_reliability_line(self, days=30):
+        stat = self._commitment_reliability(days)
+        if not stat:
+            return None
+        rate, hits, n = stat
+        return (f"  you hit your morning commitment {hits} of the last "
+               f"{n} day(s) — you reliably deliver ~{round(100 * rate)}% "
+               "of what you promise yourself; promise that and mean it")
+
     # ----- day / paths -----
 
     def rollover_hour(self):
@@ -3207,8 +3292,8 @@ class App(tk.Tk):
         (re.compile(r"^=== (THEME|END THEME)"), "theme_block"),
         (re.compile(r"^==="), "day_header"),
         (re.compile(r"^(SIGNAL:|AVOID:|YEAR:|ENERGY:|METRICS:|EXPERIMENT:|"
-                    r"DECIDED:|CAPSULE:|TODAY:|TODO|SOMEDAY:|WEEK REVIEW|"
-                    r"plan today:|focus order today)"),
+                    r"DECIDED:|CAPSULE:|COMMIT:|TODAY:|TODO|SOMEDAY:|"
+                    r"WEEK REVIEW|plan today:|focus order today)"),
          "meta_header"),
         (re.compile(r"⚠|^!!!"), "warn_line"),
         (re.compile(r"^---"), "struct"),
@@ -4790,6 +4875,9 @@ class App(tk.Tk):
         one_less = self._one_less_line()
         if one_less:
             parts.append(one_less)
+        commit_rel = self._commitment_reliability_line()
+        if commit_rel:
+            parts.append(commit_rel)
         return parts
 
     def _week_ahead_lines(self):

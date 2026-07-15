@@ -58,7 +58,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_experiment_from_file", "_week_metric_totals",
         "_experiment_review_line", "_scan_decisions",
         "_carry_year", "_on_this_day_line", "_lifetime_ledger_line",
-        "_due_capsules", "_capsule_lines",
+        "_due_capsules", "_capsule_lines", "_commit_from_text",
+        "_commitment_reliability", "_commitment_reliability_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -66,7 +67,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
-               "_WORD_STOPWORDS", "_DECAY_BUCKETS", "_CAPSULE_RE"}
+               "_WORD_STOPWORDS", "_DECAY_BUCKETS", "_CAPSULE_RE",
+               "_COMMIT_RE"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -1818,6 +1820,58 @@ def suite_time_capsule():
     assert D._due_capsules(d) == []
 
 
+def suite_commitment_reliability():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    TODAY = dt.date(2026, 8, 15)
+    d = _mk(D, today=TODAY,
+            diary_path=lambda dd: os.path.join(tmp, dd.isoformat() + ".txt"))
+
+    # ---- _commit_from_text: parsing ----
+    assert D._commit_from_text(d, "COMMIT: thesis 4h\n") == ("thesis", 4.0)
+    assert D._commit_from_text(d, "COMMIT: 4h\n") == ("", 4.0)
+    assert D._commit_from_text(d, "COMMIT: thesis, writing 2.5h\n") == (
+        "thesis, writing", 2.5)
+    assert D._commit_from_text(d, "SIGNAL: thesis\nno commit here\n") is None
+    assert D._commit_from_text(d, "COMMIT: not a number\n") is None
+
+    # ---- _commitment_reliability: 5 real commitments, 3 hits ----
+    def write(day, body):
+        with open(os.path.join(tmp, day + ".txt"), "w",
+                  encoding="utf-8") as f:
+            f.write(body)
+
+    write("2026-08-14", "COMMIT: thesis 4h\n")     # 5h delivered -> hit
+    write("2026-08-13", "COMMIT: thesis 4h\n")     # 2h delivered -> miss
+    write("2026-08-12", "COMMIT: 3h\n")             # 3h total -> hit (exact)
+    write("2026-08-11", "COMMIT: 3h\n")             # 1h total -> miss
+    write("2026-08-10", "COMMIT: admin 1h\n")       # 1h admin -> hit
+    write("2026-08-09", "SIGNAL: thesis\n")          # no COMMIT -> not counted
+    seed(ns, [
+        ["2026-08-14", "work", "09:00", "14:00", "300", "thesis: ch1", ""],
+        ["2026-08-13", "work", "09:00", "11:00", "120", "thesis: ch2", ""],
+        ["2026-08-12", "work", "09:00", "12:00", "180", "admin", ""],
+        ["2026-08-11", "work", "09:00", "10:00", "60", "admin", ""],
+        ["2026-08-10", "work", "09:00", "10:00", "60", "admin task", ""],
+        ["2026-08-09", "work", "09:00", "17:00", "999", "x", ""],
+    ])
+    stat = D._commitment_reliability(d, 30)
+    assert stat is not None, stat
+    rate, hits, n = stat
+    assert (hits, n) == (3, 5) and abs(rate - 0.6) < 1e-9, stat
+
+    line = D._commitment_reliability_line(d, 30)
+    assert line == ("  you hit your morning commitment 3 of the last 5 "
+                    "day(s) — you reliably deliver ~60% of what you "
+                    "promise yourself; promise that and mean it"), line
+
+    # ---- silence: fewer than 5 real commitments ----
+    write("2026-08-09", "SIGNAL: thesis\n")   # keep it COMMIT-less
+    write("2026-08-10", "SIGNAL: thesis\n")   # remove one more commitment
+    assert D._commitment_reliability(d, 30) is None
+    assert D._commitment_reliability_line(d, 30) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1852,7 +1906,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("one-less", suite_one_less),
           ("sensor-health", suite_sensor_health),
           ("planner-realism", suite_planner_realism),
-          ("time-capsule", suite_time_capsule)]
+          ("time-capsule", suite_time_capsule),
+          ("commitment-reliability", suite_commitment_reliability)]
 
 
 def main():

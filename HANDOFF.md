@@ -950,6 +950,19 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.57** (commitment-reliability ledger — backlog #18, DONE, self-
+  calibration feedback not a gate). New opt-in `COMMIT: thesis 4h` /
+  `COMMIT: 4h` header line (never auto-inserted, same convention as
+  EXPERIMENT/DECIDED). New `_commit_from_text` (same template as
+  `_energy_from_text`) + `_commitment_reliability` (n>=5 gate,
+  keyword-scoped or whole-day commitments), surfaced in the Monday
+  review — "you hit your morning commitment 3 of the last 5 days —
+  you reliably deliver ~60% of what you promise yourself." Never
+  grades any one day, only the trailing rate. `COMMIT:` added to the
+  header syntax-highlight rules. New "commitment-reliability" selftest
+  suite (parsing variants including malformed input, a hand-verified
+  5-commitment/3-hit mixed scenario, silence below the gate); 39/39
+  green (new suite, was 38).
 - **v8.56** (time capsule — backlog #61, DONE, the forward-looking
   counterpart to on-this-day). New `_due_capsules`: scans every day
   file for a `CAPSULE: YYYY-MM-DD | message` line whose date equals
@@ -1563,7 +1576,12 @@ purpose; the *walls* are the major thing, and they're now named.
     on WHY a block moved ("your 13–15 peak"). Both small follow-ups on
     `_hour_quality`.
 
-18. **Commitment-reliability ledger (SELF-KNOWLEDGE).** A `COMMIT: thesis
+18. ~~**Commitment-reliability ledger.**~~ — DONE v8.57. New
+    `_commit_from_text` (same template as `_energy_from_text`) +
+    `_commitment_reliability`, surfaced in the Monday review next to
+    the one-less advisor. Original design note kept below for
+    reference.
+    (SELF-KNOWLEDGE).** A `COMMIT: thesis
     4h` line the user optionally types in the morning header (same in-file
     convention as SIGNAL/ENERGY). At rollover the app compares committed
     vs delivered per that day's csv and accrues a personal stat over time:
