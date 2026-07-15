@@ -60,6 +60,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_carry_year", "_on_this_day_line", "_lifetime_ledger_line",
         "_due_capsules", "_capsule_lines", "_commit_from_text",
         "_commitment_reliability", "_commitment_reliability_line",
+        "_protected_intervals",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -1872,6 +1873,33 @@ def suite_commitment_reliability():
     assert D._commitment_reliability_line(d, 30) is None
 
 
+def suite_protected_windows():
+    D, ns = fresh()
+    d = _mk(D, settings={"protected_windows": [
+        {"label": "lunch", "start": "12:00", "end": "13:00"},
+        {"label": "wind-down", "start": "21:00", "end": "22:00"},
+        {"label": "bad range", "start": "15:00", "end": "14:00"},   # s >= e
+        {"label": "bad format", "start": "not-a-time", "end": "13:00"},
+        {"label": "", "start": "10:00", "end": "11:00"},   # off (empty label
+                                                            # doesn't matter to
+                                                            # the parser itself,
+                                                            # only the UI skips
+                                                            # it on save — this
+                                                            # still parses fine)
+    ]})
+    out = D._protected_intervals(d)
+    assert out == [(time(12, 0), time(13, 0)), (time(21, 0), time(22, 0)),
+                   (time(10, 0), time(11, 0))], out
+
+    # ---- silence: nothing configured ----
+    d2 = _mk(D, settings={})
+    assert D._protected_intervals(d2) == []
+
+    # ---- a missing key is skipped, not a crash ----
+    d3 = _mk(D, settings={"protected_windows": [{"label": "half"}]})
+    assert D._protected_intervals(d3) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1907,7 +1935,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("sensor-health", suite_sensor_health),
           ("planner-realism", suite_planner_realism),
           ("time-capsule", suite_time_capsule),
-          ("commitment-reliability", suite_commitment_reliability)]
+          ("commitment-reliability", suite_commitment_reliability),
+          ("protected-windows", suite_protected_windows)]
 
 
 def main():

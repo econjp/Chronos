@@ -60,6 +60,23 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.58 (protected time windows — backlog #50, the scheduler's
+missing exclusion zone):
+  - `_work_window` (v7.9) sets one daily envelope the scheduler is
+    allowed to fill; nothing stopped it suggesting a block over lunch
+    or a wind-down hour that's technically "free" but shouldn't be
+    claimed. New Tools > "Protected time windows…": named daily-
+    recurring windows ("lunch 12:00-13:00", "wind-down 21:00-22:00"),
+    a small settings list, same grid-of-entries dialog pattern as
+    Goals/Deadlines. New `_protected_intervals` parses them into
+    (start, end) tuples, malformed HH:MM entries skipped rather than
+    raising; `_free_slots` now subtracts them exactly like calendar
+    busy-time already is — one more "busy" source merged into the same
+    primitive, not a new concept. New "protected-windows" selftest
+    suite (valid windows parse correctly, a backwards range/malformed
+    time/missing key are all skipped rather than crashing, empty
+    settings silence); 40/40 green.
+
 New in v8.57 (commitment-reliability ledger — backlog #18, self-
 calibration feedback, not a promise-tracking gate):
   - A new opt-in header line — never auto-inserted, same convention as
@@ -2554,6 +2571,8 @@ class App(tk.Tk):
         toolsm.add_command(label="Daily target…", command=self._set_target)
         toolsm.add_command(label="Work-day window (free-slot finder)…",
                            command=self._set_work_window)
+        toolsm.add_command(label="Protected time windows (lunch, wind-down)…",
+                           command=self._set_protected_windows)
         m.add_cascade(label="Tools", menu=toolsm)
         self.menu = m
         self.config(menu=m)
@@ -3093,6 +3112,53 @@ class App(tk.Tk):
             return
         self.settings["work_window"] = [s, e]
         save_settings(self.settings)
+
+    def _set_protected_windows(self):
+        """Backlog #50: named daily-recurring windows the scheduler must
+        never claim — lunch, a wind-down hour — subtracted from
+        _free_slots exactly like calendar busy-time already is. Same
+        small-grid-of-entries dialog pattern as Goals/Deadlines."""
+        win = tk.Toplevel(self)
+        win.title("Protected time windows")
+        win.resizable(False, False)
+        win.grab_set()
+        cols = ("Label (empty = off)", "Start (HH:MM)", "End (HH:MM)")
+        for c, lbl in enumerate(cols):
+            ttk.Label(win, text=lbl).grid(row=0, column=c, padx=4, pady=(8, 2))
+        cur = self.settings.get("protected_windows", [])
+        grid = []
+        for i in range(4):
+            w = cur[i] if i < len(cur) else {}
+            row = []
+            for c, key in enumerate(("label", "start", "end")):
+                e = ttk.Entry(win, width=20 if c == 0 else 10)
+                e.insert(0, w.get(key, ""))
+                e.grid(row=i + 1, column=c, padx=4, pady=2)
+                row.append(e)
+            grid.append(row)
+
+        def save():
+            out = []
+            for row in grid:
+                label = row[0].get().strip()
+                start, end = row[1].get().strip(), row[2].get().strip()
+                if not label:
+                    continue
+                try:
+                    for v in (start, end):
+                        h, m = map(int, v.split(":"))
+                        assert 0 <= h <= 23 and 0 <= m <= 59
+                except (ValueError, AssertionError):
+                    messagebox.showerror(
+                        APP_NAME, f"Use HH:MM for '{label}'.", parent=win)
+                    return
+                out.append({"label": label, "start": start, "end": end})
+            self.settings["protected_windows"] = out
+            save_settings(self.settings)
+            win.destroy()
+
+        ttk.Button(win, text="Save", command=save).grid(
+            row=5, column=2, sticky="e", padx=4, pady=8)
 
     def _set_target(self):
         cur = self.settings.get("target_min", 0)
@@ -6378,14 +6444,36 @@ class App(tk.Tk):
                 continue
         return _merge_time_intervals(ivs)
 
+    def _protected_intervals(self):
+        """Backlog #50: named daily-recurring windows (lunch, wind-
+        down) the scheduler must never claim — subtracted from
+        _free_slots exactly like calendar busy-time already is, one
+        more "busy" source merged into the same primitive, not a new
+        concept. Malformed HH:MM entries are skipped rather than
+        raising, so a bad manual edit degrades to "one window
+        ignored," not a crash."""
+        out = []
+        for w in self.settings.get("protected_windows", []):
+            try:
+                sh, sm = map(int, w["start"].split(":"))
+                eh, em = map(int, w["end"].split(":"))
+                s, e = dt.time(sh, sm), dt.time(eh, em)
+                if s < e:
+                    out.append((s, e))
+            except (ValueError, KeyError, AttributeError, TypeError):
+                continue
+        return out
+
     def _free_slots(self, d):
         """Free time-of-day ranges on date d: the work window minus
-        calendar busy time minus (today only) already-logged work/break
-        — the foundation piece v8's real time-blocked scheduler is built
+        calendar busy time minus protected windows (lunch, wind-down —
+        backlog #50) minus (today only) already-logged work/break —
+        the foundation piece v8's real time-blocked scheduler is built
         on. Returns [(start_time, end_time), ...]; slivers under 15 min
         are dropped so it reads as usable blocks, not calendar noise."""
         win_start, win_end = self._work_window()
         busy = list(self._busy_intervals().get(d.isoformat(), []))
+        busy += self._protected_intervals()
         if d == dt.date.today():
             busy += self._logged_intervals(d)
         slots = _free_from_busy(win_start, win_end, busy)

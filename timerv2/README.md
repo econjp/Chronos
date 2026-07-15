@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Protected time windows (v8.58)
+
+**Tools → Protected time windows…**: name daily-recurring windows the
+scheduler must never claim — "lunch 12:00-13:00", "wind-down
+21:00-22:00" — even though they're technically free time. Subtracted
+from the same free-slot math calendar busy-time already goes through,
+so the suggested schedule stops offering to book over lunch.
+
 ### Commitment-reliability ledger (v8.57)
 
 A new opt-in header line, never auto-inserted: `COMMIT: thesis 4h`

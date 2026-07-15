@@ -950,6 +950,16 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.58** (protected time windows — backlog #50, DONE, the
+  scheduler's missing exclusion zone). New Tools > "Protected time
+  windows…" (grid dialog, same pattern as Goals/Deadlines): named
+  daily-recurring windows ("lunch 12:00-13:00", "wind-down
+  21:00-22:00"). New `_protected_intervals` parses them (malformed
+  entries skipped, not raised); `_free_slots` subtracts them exactly
+  like calendar busy-time already is — one more "busy" source merged
+  into the same primitive. New "protected-windows" selftest suite
+  (valid parsing, a backwards range/malformed time/missing key all
+  skipped, empty-settings silence); 40/40 green (new suite, was 39).
 - **v8.57** (commitment-reliability ledger — backlog #18, DONE, self-
   calibration feedback not a gate). New opt-in `COMMIT: thesis 4h` /
   `COMMIT: 4h` header line (never auto-inserted, same convention as
@@ -1991,7 +2001,12 @@ purpose; the *walls* are the major thing, and they're now named.
     available). Gated on 1h+ of signal work today, ≥50% shallow to
     speak.
 
-50. **Protected time windows (PLANNING — the scheduler's missing
+50. ~~**Protected time windows.**~~ — DONE v8.58. New Tools >
+    "Protected time windows…" (grid dialog, same pattern as Goals/
+    Deadlines) + `_protected_intervals`, subtracted from `_free_slots`
+    exactly like calendar busy-time already is. Original design note
+    kept below for reference.
+    (PLANNING — the scheduler's missing
     exclusion zone).** `_work_window` (v7.9) sets one daily envelope the
     scheduler is allowed to fill; nothing stops it suggesting a block
     over lunch, a wind-down hour, or any other time that's technically
