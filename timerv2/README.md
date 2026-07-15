@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Cost of yes (v8.61)
+
+Every capacity view only ever looked at deadlines already on the books
+— nothing showed what ADDING one would do before you committed. The
+deadline edit dialog now previews it live: as soon as a new deadline's
+due date and total hours are both typed in, one line updates on every
+keystroke — `committing to 'NewProj' would push slack from +5.0h to
+-10.0h — Thesis would need to give up 1.0h/day to make room`. Turns the
+moment of over-committing, which used to only show up as a ⚠ weeks
+later, into a visible choice while it's still cheap to say no.
+
 ### Waiting-on / blocked tasks (v8.60)
 
 Real work often depends on someone else, not just your own control.

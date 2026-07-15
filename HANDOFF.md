@@ -950,6 +950,20 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.61** (cost of yes — backlog #52, DONE, capacity math run BEFORE
+  you commit). New `_cost_of_yes_line(hypothetical, existing)`: the
+  exact aggregate-slack math `_capacity_lines` already runs for real
+  deadlines, against a pool with one hypothetical more in it —
+  "committing to 'NewProj' would push slack from +5.0h to -10.0h —
+  Thesis would need to give up 1.0h/day to make room." Wired as a
+  live keystroke-updated preview in the deadline edit dialog, only
+  for a genuinely NEW row (a name not already saved); editing an
+  existing deadline in place is deliberately not previewed here —
+  v8.51's renegotiation tracker covers that on save instead. New
+  "cost-of-yes" selftest suite (no-existing-deadlines baseline, a
+  hand-verified give-ground scenario, silence on missing/zero scope,
+  a past due date, an unparseable date); 43/43 green (new suite, was
+  42).
 - **v8.60** (waiting-on / blocked tasks — backlog #44, DONE, external
   dependencies the planner can't see). New `blocked_by` task-library
   field (Tasks window right-click > "Set blocked by…", free text,
@@ -2083,8 +2097,15 @@ purpose; the *walls* are the major thing, and they're now named.
     feeling like the app second-guessing every SIGNAL choice, cut it —
     that's the same failure mode the guardrail already names.
 
-52. **Cost of yes — a prospective preview before committing to a new
-    deadline (PLANNING — the capacity math run BEFORE, not after).**
+52. ~~**Cost of yes — a prospective preview before committing to a
+    new deadline.**~~ — DONE v8.61. New
+    `_cost_of_yes_line(hypothetical, existing)` reusing
+    `_avail_hours`/`_capacity_lines`'s aggregate-slack math, wired as a
+    live keystroke-updated preview in the deadline edit dialog for a
+    genuinely NEW row only (editing an existing deadline in place is
+    v8.51's renegotiation tracker's territory instead). Original
+    design note kept below for reference.
+    (PLANNING — the capacity math run BEFORE, not after).**
     Every capacity view (`_capacity_lines`, `_plan_line`, #47's root
     cause) looks at deadlines already on the books. Nothing shows what
     ADDING one would actually do before you commit. In the deadline

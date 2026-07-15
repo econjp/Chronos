@@ -60,6 +60,30 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.61 (cost of yes — backlog #52, the capacity math run BEFORE
+you commit, not after):
+  - Every capacity view (`_capacity_lines`, `_plan_line`, #47's root
+    cause) only ever looked at deadlines already on the books —
+    nothing showed what ADDING one would do before you committed. New
+    `_cost_of_yes_line(hypothetical, existing)`: reuses the exact same
+    aggregate-slack math `_capacity_lines` already runs for real
+    deadlines, against a pool with one hypothetical more in it —
+    "committing to 'NewProj' would push slack from +5.0h to -10.0h —
+    Thesis would need to give up 1.0h/day to make room." Wired into
+    the deadline edit dialog as a LIVE preview: as soon as a genuinely
+    NEW row (a name not already saved) has a real date and total_h
+    typed in, the preview line updates on every keystroke, against the
+    saved deadlines as the baseline — editing an EXISTING deadline in
+    place is deliberately not previewed (ambiguous whether that's new
+    scope or a correction; v8.51's renegotiation tracker already
+    covers that case on save). Turns the moment of over-committing —
+    which used to only ever show up as a ⚠ weeks later — into a
+    visible choice at the only point it's still cheap to say no. New
+    "cost-of-yes" selftest suite (no-existing-deadlines baseline, a
+    hand-verified scenario naming which deadline gives ground and by
+    how much per day, silence on missing/zero scope, a past due date,
+    an unparseable date); 43/43 green.
+
 New in v8.60 (waiting-on / blocked tasks — backlog #44, external
 dependencies the planner can't see):
   - Everything the planner knew about was under the owner's own control;
@@ -2723,6 +2747,42 @@ class App(tk.Tk):
             save_settings(self.settings)
             self._refresh_totals()
             win.destroy()
+
+        preview_lbl = ttk.Label(win, text="", foreground="#2e6da4",
+                                wraplength=760, justify="left")
+        preview_lbl.grid(row=6, column=0, columnspan=8, sticky="w",
+                         padx=4, pady=(0, 4))
+
+        def update_preview(_event=None):
+            """Backlog #52: live "cost of yes" — as soon as a NEW row
+            (a name not already in the saved list) has a real date and
+            total_h, preview what committing to it would do to slack,
+            against the saved deadlines as the baseline. Editing an
+            EXISTING deadline in place is intentionally not previewed
+            here — ambiguous whether that's new scope or a correction,
+            and the renegotiation tracker (v8.51) already covers that
+            case on save."""
+            cur_names = {d["name"] for d in cur}
+            for row in grid:
+                name = row[0].get().strip()
+                date_s = row[2].get().strip()
+                total_s = row[3].get().strip()
+                if name and name not in cur_names and date_s and total_s:
+                    try:
+                        dt.date.fromisoformat(date_s)
+                        total = float(total_s)
+                    except ValueError:
+                        continue
+                    line = self._cost_of_yes_line(
+                        {"name": name, "date": date_s, "total_h": total},
+                        existing=cur)
+                    preview_lbl.config(text=line or "")
+                    return
+            preview_lbl.config(text="")
+
+        for row in grid:
+            row[2].bind("<KeyRelease>", update_preview)   # date
+            row[3].bind("<KeyRelease>", update_preview)   # total_h
 
         ttk.Button(win, text="Save", command=save).grid(
             row=5, column=7, sticky="e", padx=4, pady=8)
@@ -6923,6 +6983,50 @@ class App(tk.Tk):
             lines.append("")
             lines.append(f" {real}")
         return lines
+
+    def _cost_of_yes_line(self, hypothetical, existing=None):
+        """Backlog #52: every capacity view looks at deadlines already
+        on the books — nothing shows what ADDING one would do before
+        you commit. `hypothetical` is a deadline-shaped dict
+        (name/date/total_h) that doesn't have to be saved yet; reuses
+        the exact aggregate-slack math `_capacity_lines` already runs
+        for real deadlines, just against a pool with one more in it.
+        `existing` defaults to the real saved deadlines but can be
+        overridden (the edit dialog passes the saved list explicitly
+        so a live preview isn't thrown off by its own unsaved edits).
+        None for missing/invalid input — a preview needs both a real
+        date and a real scope to mean anything."""
+        try:
+            due = dt.date.fromisoformat(hypothetical["date"])
+            total_h = float(hypothetical.get("total_h") or 0)
+        except (ValueError, KeyError, TypeError):
+            return None
+        if total_h <= 0 or due < self.today:
+            return None
+        items, far = [], due
+        for dl in self.deadlines() if existing is None else existing:
+            try:
+                p = self._dl_progress(dl)
+            except (ValueError, KeyError):
+                continue
+            if p["left"] < 0 or not p.get("total_h"):
+                continue
+            items.append((dl["name"], p["left"], p["remaining_h"]))
+            far = max(far, p["due"])
+        avail = self._avail_hours(far)
+        req_before = sum(x[2] for x in items)
+        slack_before = avail - req_before
+        slack_after = avail - (req_before + total_h)
+        name = hypothetical.get("name") or "this"
+        line = (f"committing to '{name}' would push slack from "
+               f"{slack_before:+.1f}h to {slack_after:+.1f}h")
+        if slack_after < 0 and items:
+            worst_name, worst_left, worst_req = max(items, key=lambda x: x[1])
+            give = min(worst_req, -slack_after)
+            per_day = give / max(worst_left, 1)
+            line += (f" — {worst_name} would need to give up "
+                    f"{per_day:.1f}h/day to make room")
+        return line
 
     def _reallocation_line(self):
         """Backlog #59: the natural sequel to #47 (done) — not just WHY

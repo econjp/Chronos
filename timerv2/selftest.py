@@ -61,7 +61,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_due_capsules", "_capsule_lines", "_commit_from_text",
         "_commitment_reliability", "_commitment_reliability_line",
         "_protected_intervals", "_milestone_progress_line",
-        "_waiting_on_lines",
+        "_waiting_on_lines", "_cost_of_yes_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -1970,6 +1970,49 @@ def suite_waiting_on():
     assert D._waiting_on_lines(d3) == []
 
 
+def suite_cost_of_yes():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 1)
+
+    # ---- no existing deadlines: plain before/after, no "give up" clause ----
+    d = _mk(D, today=TODAY, _avail_hours=lambda until: 15.0)
+    line = D._cost_of_yes_line(d, {"name": "NewProj", "date": "2026-08-20",
+                                   "total_h": 10}, [])
+    assert line == ("committing to 'NewProj' would push slack from "
+                    "+15.0h to +5.0h"), line
+
+    # ---- an existing deadline gets named as the one to give ground ----
+    def fake_progress(dl):
+        return {"left": 10, "total_h": 20, "remaining_h": 20,
+               "due": dt.date(2026, 8, 20)}
+    d2 = _mk(D, today=TODAY, _avail_hours=lambda until: 25.0,
+             _dl_progress=fake_progress)
+    existing = [{"name": "Thesis", "date": "2026-08-20", "total_h": 20}]
+    line2 = D._cost_of_yes_line(
+        d2, {"name": "NewProj", "date": "2026-08-15", "total_h": 15}, existing)
+    # avail=25 (stubbed), req_before=20 -> slack_before=+5; req_after=35 ->
+    # slack_after=-10; Thesis (only item) gives up min(20,10)=10h over its
+    # own 10 days left -> 1.0h/day
+    assert line2 == ("committing to 'NewProj' would push slack from "
+                     "+5.0h to -10.0h — Thesis would need to give up "
+                     "1.0h/day to make room"), line2
+
+    # ---- silence: no scope (total_h missing/zero) ----
+    d3 = _mk(D, today=TODAY, _avail_hours=lambda until: 15.0)
+    assert D._cost_of_yes_line(
+        d3, {"name": "X", "date": "2026-08-20", "total_h": 0}, []) is None
+    assert D._cost_of_yes_line(
+        d3, {"name": "X", "date": "2026-08-20"}, []) is None
+
+    # ---- silence: due date already in the past ----
+    assert D._cost_of_yes_line(
+        d3, {"name": "X", "date": "2026-07-01", "total_h": 5}, []) is None
+
+    # ---- silence: unparseable date ----
+    assert D._cost_of_yes_line(
+        d3, {"name": "X", "date": "not-a-date", "total_h": 5}, []) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2008,7 +2051,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("commitment-reliability", suite_commitment_reliability),
           ("protected-windows", suite_protected_windows),
           ("milestones", suite_milestones),
-          ("waiting-on", suite_waiting_on)]
+          ("waiting-on", suite_waiting_on),
+          ("cost-of-yes", suite_cost_of_yes)]
 
 
 def main():
