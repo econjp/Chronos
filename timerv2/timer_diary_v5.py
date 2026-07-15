@@ -60,6 +60,21 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.38 (lag correlation #4 — backlog #70, fragmentation carries over):
+  - a fourth check joins _lag_insight: does yesterday's task-switching
+    predict a SHALLOWER today, not just a scattered yesterday (#16 is
+    same-day)? "the day after a 6+ switch day, 100% of your signal work
+    lands in shallow blocks (<20m) vs 0% after a focused day (≤2
+    switches) — fragmentation carries over." Wires two measurements
+    that already existed — _day_switches (v8.18) as the trigger,
+    _day_shallow_frac (v8.19's block logic, generalised from today-only
+    to any day) as the next-day measure — through the (day, day+1) loop
+    v8.31 introduced. _shallow_threshold factored out so both the
+    today-only line and this lag check use the same personal shallow
+    threshold. Same n≥5/bucket gate as the other three lag checks.
+    Existing "lag" selftest suite extended with a dedicated positive
+    case (hand-verified 100%/0% split) plus the new silence case.
+
 New in v8.37 (word drift, the other direction — backlog #69):
   - _word_drift_insight (v8.29) only ever reported words trending UP.
     A new _word_fade_insight reports the opposite: a topic that was
@@ -6341,13 +6356,48 @@ class App(tk.Tk):
                f"average vs {fmt(b)} otherwise (n={len(late_next)} vs "
                f"{len(normal_next)}) — {abs(a - b) / 60:.1f}h {verb}")
 
+    def _lag_fragmentation_line(self, days=90):
+        """Backlog #70: does yesterday's task-switching predict a
+        SHALLOWER today, not just a scattered yesterday (#16 is same-
+        day)? Wires two already-existing measurements — `_day_switches`
+        (v8.18) as the trigger, `_day_shallow_frac` (v8.19's block logic,
+        generalised to any day) as the next-day measure — through the
+        (day, day+1) loop shape v8.31 introduced. Not new math, just the
+        same lag lens applied to a pairing nobody had checked yet."""
+        threshold = self._shallow_threshold()
+        cutoff = self.today - dt.timedelta(days=days)
+        high_next, low_next = [], []
+        d = cutoff
+        while d < self.today:
+            nxt = d + dt.timedelta(days=1)
+            frac = self._day_shallow_frac(nxt, threshold=threshold)
+            if frac:
+                shallow, total = frac
+                switches = self._day_switches(d)
+                if switches >= 6:
+                    high_next.append(100 * shallow / total)
+                elif switches <= 2:
+                    low_next.append(100 * shallow / total)
+            d += dt.timedelta(days=1)
+        if len(high_next) < 5 or len(low_next) < 5:
+            return None
+        a = sum(high_next) / len(high_next)
+        b = sum(low_next) / len(low_next)
+        if a - b < 10:
+            return None
+        return (f"the day after a 6+ switch day, {a:.0f}% of your signal "
+               f"work lands in shallow blocks (<{threshold}m) vs {b:.0f}% "
+               f"after a focused day (≤2 switches) (n={len(high_next)} vs "
+               f"{len(low_next)}) — fragmentation carries over")
+
     def _lag_insight(self, days=90):
         """Time-LAGGED correlations — what today does to tomorrow, the new
         loop shape (day, day+1) instead of every other insight's same-day
         pairing. Same honesty gates throughout each sub-check."""
         return [ln for ln in (self._lag_workout_line(days),
                               self._lag_sleep_debt_line(days),
-                              self._lag_evening_start_line(days)) if ln]
+                              self._lag_evening_start_line(days),
+                              self._lag_fragmentation_line(days)) if ln]
 
     def _life_day(self, d, signal=True):
         """Everything the app knows about one date, merged into ONE dict —
@@ -6918,22 +6968,32 @@ class App(tk.Tk):
                         f"(n={len(thrashy)} vs {len(focused)})"]
         return []
 
-    def _shallow_work_lines(self):
-        """Backlog #49: same-day depth, not switch-counting (#16) or
-        what follows a block (#38). What fraction of TODAY's signal
-        hours came in blocks under threshold — threshold derives from
-        #38's own decay cycle when available, else a flat 20min guess.
-        Needs 1h+ of signal work today to be a fair sample."""
-        kws = self._signal_kws()
+    def _shallow_threshold(self):
+        """The block-length line under which SIGNAL work reads as
+        shallow — from the personal decay cycle (#38) when available,
+        else a flat 20-minute default. Shared so every 'shallow work'
+        check (today's line, the lag-correlation check below) uses the
+        same personal definition, not a threshold recomputed per call."""
+        cyc = self._decay_cycle()
+        return max(10, int(cyc[0] * 0.4)) if cyc else 20
+
+    def _day_shallow_frac(self, day, kws=None, threshold=None):
+        """(shallow_min, total_min) of one day's matched-SIGNAL work
+        blocks — 'shallow' meaning under `threshold`. None if no signal
+        is declared for that day or there's no matching work at all.
+        Generalises the old today-only inline logic so backlog #70's
+        lag-correlation check can reuse it for any day, not just today."""
+        if kws is None:
+            kws = self._signal_kws(day)
         if not kws:
-            return []
+            return None
+        if threshold is None:
+            threshold = self._shallow_threshold()
         rows = sorted((r for r in read_rows()
-                       if r[0] == self.today.isoformat() and r[1] == "work"),
+                       if r[0] == day.isoformat() and r[1] == "work"),
                       key=lambda r: r[2])
         if not rows:
-            return []
-        cyc = self._decay_cycle()
-        threshold = max(10, int(cyc[0] * 0.4)) if cyc else 20
+            return None
         blocks = []
         i = 0
         while i < len(rows):
@@ -6950,8 +7010,20 @@ class App(tk.Tk):
             i = j
         total = sum(blocks)
         if total < 60:
-            return []
+            return None
         shallow = sum(b for b in blocks if b < threshold)
+        return shallow, total
+
+    def _shallow_work_lines(self):
+        """Backlog #49: same-day depth, not switch-counting (#16) or
+        what follows a block (#38). What fraction of TODAY's signal
+        hours came in blocks under threshold. Needs 1h+ of signal work
+        today to be a fair sample."""
+        threshold = self._shallow_threshold()
+        frac = self._day_shallow_frac(self.today, threshold=threshold)
+        if not frac:
+            return []
+        shallow, total = frac
         pct = round(100 * shallow / total)
         if pct >= 50:
             return [f"{pct}% of today's signal hours came in blocks under "

@@ -71,6 +71,9 @@ clear a real, honest threshold:
 - *"the day AFTER a short-sleep night (<7h), output averages 1.0h vs
   5.0h after a full night — sleep debt doesn't clear in one day"*
 - *"mornings after working past 21:00 you start 1.8h later on average"*
+- *"the day after a 6+ switch day, 71% of your signal work lands in
+  shallow blocks (<20m) vs 22% after a focused day — fragmentation
+  carries over"* (v8.38)
 
 Same honesty gates as everywhere else (real sample sizes, a real swing) —
 just a new question: not "does X correlate with today," but "does X

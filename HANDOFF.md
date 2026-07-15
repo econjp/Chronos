@@ -950,6 +950,20 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.38** (lag correlation #4 — backlog #70, DONE). A fourth check
+  joins `_lag_insight`: `_shallow_threshold`/`_day_shallow_frac` factored
+  out of `_shallow_work_lines` (v8.19) so the same shallow-block logic
+  applies to ANY day, not just today; `_lag_fragmentation_line` pairs
+  yesterday's `_day_switches` (v8.18, ≥6 vs ≤2) against today's shallow-
+  work fraction — "the day after a 6+ switch day, 100% of your signal
+  work lands in shallow blocks vs 0% after a focused day — fragmentation
+  carries over." Same n≥5/bucket gate as the other three lag checks.
+  Existing "lag" selftest suite extended with a hand-verified positive
+  case (four distinct-named 15m blocks summing to the 60m minimum, all
+  under the flat 20m threshold, vs one 60m deep block) plus the new
+  silence case; registered five new methods + one class attribute
+  (`_DECAY_BUCKETS`) the harness needed once `_lag_insight`'s
+  composition pulled them in transitively; 22/22 green.
 - **v8.37** (word drift, the fade direction — backlog #69, DONE, start
   of a new session's batch). `_word_drift_counts` factored out of
   `_word_drift_insight` so the increase check (v8.29) and the new
@@ -1916,8 +1930,13 @@ purpose; the *walls* are the major thing, and they're now named.
     slot. Reuses everything v8.29 built; this is a second scoring pass
     over data already gathered, not a new source.
 
-70. **Lag correlation #4 — yesterday's fragmentation → today's shallow
-    work (ANALYSIS, extends v8.31's new loop shape).** v8.18's task-
+70. ~~**Lag correlation #4 — yesterday's fragmentation → today's shallow
+    work.**~~ — DONE v8.38. `_shallow_threshold`/`_day_shallow_frac`
+    factored out of `_shallow_work_lines` so the same block-shallowness
+    logic works for any day, not just today; `_lag_fragmentation_line`
+    is the fourth check in `_lag_insight`. Original design note kept
+    below for reference.
+    (ANALYSIS, extends v8.31's new loop shape). v8.18's task-
     thrash meter and v8.19's shallow-work ratio both exist as SAME-day
     checks; v8.31 proved the (day, day+1) lag shape is cheap to add
     once the loop exists. Natural fourth pairing: does a high-switch day

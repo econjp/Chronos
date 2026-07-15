@@ -44,12 +44,14 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_word_fade_insight",
         "_lag_workout_line", "_lag_sleep_debt_line", "_day_start_late_map",
         "_lag_evening_start_line", "_lag_insight", "_week_ahead_lines",
+        "_day_switches", "_shallow_threshold", "_day_shallow_frac",
+        "_decay_cycle", "_lag_fragmentation_line",
         "_break_budget_line", "_lens_registry", "_lens_overlap_lines",
         "_health_extras_lines"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
-               "_WORD_STOPWORDS"}
+               "_WORD_STOPWORDS", "_DECAY_BUCKETS"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -717,8 +719,38 @@ def suite_lag():
     assert line3 and "10:00" in line3 and "07:00" in line3, line3
     assert "later" in line3, line3
 
-    # ---- composition: all three fire, in order, none crash on missing data ----
+    # ---- fragmentation: a 6+ switch day -> shallower next day ----
+    d._signal_kws = lambda day=None: ["x"]
+    d._decay_cycle = lambda: None              # force the flat 20m threshold
+    high_days = [dt.date(2026, 4, 10) + dt.timedelta(days=i) for i in range(5)]
+    low_days = [dt.date(2026, 5, 10) + dt.timedelta(days=i) for i in range(5)]
+    rows4 = []
+    for x in high_days:
+        # 7 rows alternating x/y 10 min apart = 6 switches that day
+        for i, task in enumerate(["x", "y"] * 3 + ["x"]):
+            r = row(x.isoformat(), 10, task)
+            r[2] = f"{9 + i // 6:02d}:{(i * 10) % 60:02d}"
+            rows4.append(r)
+        nxt = (x + dt.timedelta(days=1)).isoformat()
+        # next day: FOUR separate 15m blocks (distinct task strings so
+        # they don't merge into one run), all < the 20m threshold, total
+        # 60m clears the _day_shallow_frac minimum -> 100% shallow
+        for k, sub in enumerate(("xa", "xb", "xc", "xd")):
+            r2 = row(nxt, 15, sub)
+            r2[2] = f"{9 + k:02d}:00"
+            rows4.append(r2)
+    for x in low_days:
+        rows4.append(row(x.isoformat(), 30, "x"))          # 0 switches
+        nxt = (x + dt.timedelta(days=1)).isoformat()
+        rows4.append(row(nxt, 60, "x"))         # next day: one 60m block, deep
+    seed(ns, rows4)
+    frag = D._lag_fragmentation_line(d, 90)
+    assert frag and "100%" in frag and "0%" in frag, frag
+    assert "fragmentation carries over" in frag, frag
+
+    # ---- composition: all four fire, none crash on missing data ----
     seed(ns, rows2)
+    d._signal_kws = lambda day=None: []          # no signal -> frag check silent
     out = D._lag_insight(d, 90)
     assert len(out) >= 1 and any("10:00" in x for x in out), out
 
@@ -727,9 +759,11 @@ def suite_lag():
     d2 = _mk(D, today=dt.date(2026, 6, 2))
     d2._health_data = lambda: {}
     d2._sleep_h = lambda iso: None
+    d2._signal_kws = lambda day=None: []
     assert D._lag_workout_line(d2, 90) is None
     assert D._lag_sleep_debt_line(d2, 90) is None
     assert D._lag_evening_start_line(d2, 90) is None
+    assert D._lag_fragmentation_line(d2, 90) is None
     assert D._lag_insight(d2, 90) == []
 
 
