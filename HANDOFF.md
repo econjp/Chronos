@@ -950,6 +950,22 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.51** (deadline renegotiation tracker — backlog #46, DONE,
+  scope-creep honesty). New module-level
+  `_deadline_revisions_after_save(old, new, today_iso)`: compares the
+  deadline list before/after a save (matched by name), appends a
+  `history` entry (the OLD date/total_h, timestamped) to any deadline
+  whose date or total_h actually changed; wired into the existing
+  edit dialog's save(), no new UI. Once 2+ revisions exist, new
+  `_deadline_renegotiation_line` adds one line under that deadline in
+  the dashboard — "this deadline has moved 2 time(s) since 2026-06-29
+  — due date is now 45d later than first set, scope grew from 20h to
+  45h." Live and ongoing, distinct from v8.50's post-mortem (fires
+  once, after resolution). New "deadline-renegotiation" selftest
+  suite (history accumulates without overwriting, a no-op save adds
+  no phantom entry, a new deadline gets no history key, three
+  phrasing variants, a malformed entry stays silent); 34/34 green
+  (new suite, was 33).
 - **v8.50** (deadline post-mortem — backlog #28, DONE, each closed
   deadline becomes calibration data). New `_deadline_postmortem_lines`
   (pure): scope vs actual hours, the estimate factor on THIS project
@@ -1820,7 +1836,12 @@ purpose; the *walls* are the major thing, and they're now named.
     a different one than #28's post-mortem (ongoing running total vs.
     a one-time verdict after the fact).
 
-46. **Deadline renegotiation tracker (SELF-KNOWLEDGE — scope-creep
+46. ~~**Deadline renegotiation tracker.**~~ — DONE v8.51. New
+    `_deadline_revisions_after_save` (pure, wired into the existing
+    edit dialog's save()) + `_deadline_renegotiation_line`, surfaced
+    in the dashboard next to the lifetime ledger line. Original design
+    note kept below for reference.
+    (SELF-KNOWLEDGE — scope-creep
     honesty).** Deadlines can have their `date` or `total_h` edited at
     any time, silently — nothing remembers the ORIGINAL numbers. Log
     every edit to a deadline's date/scope as a small history list on

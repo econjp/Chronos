@@ -34,7 +34,7 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "day_length_hours", "backup_integrity_line",
        "_free_from_busy", "_deep_capacity_minutes", "_merge_time_intervals",
        "_pinned_after_add", "_pinned_after_remove", "day_totals",
-       "load_settings", "save_settings"}
+       "load_settings", "save_settings", "_deadline_revisions_after_save"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -58,7 +58,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_experiment_review_line", "_scan_decisions",
         "_carry_year", "_on_this_day_line", "_lifetime_ledger_line",
         "_estimate_factor", "_deadline_postmortem_lines",
-        "_run_deadline_postmortems"}
+        "_run_deadline_postmortems", "_deadline_renegotiation_line"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -1512,6 +1512,77 @@ def suite_deadline_postmortem():
     assert out2 == [], out2      # already marked -> never repeats
 
 
+def suite_deadline_renegotiation():
+    D, ns = fresh()
+    revise = ns["_deadline_revisions_after_save"]
+
+    # ---- first edit: history starts, carrying the OLD values ----
+    old = [{"name": "Thesis", "date": "2026-07-15", "total_h": 20}]
+    new = [{"name": "Thesis", "date": "2026-08-01", "total_h": 20}]
+    out = revise(old, new, "2026-07-01")
+    assert out[0]["history"] == [
+        {"date": "2026-07-15", "total_h": 20, "as_of": "2026-07-01"}], out
+
+    # ---- second edit: appends, doesn't overwrite the first entry ----
+    out2 = revise(out, [{"name": "Thesis", "date": "2026-08-15",
+                         "total_h": 30}], "2026-07-20")
+    assert out2[0]["history"] == [
+        {"date": "2026-07-15", "total_h": 20, "as_of": "2026-07-01"},
+        {"date": "2026-08-01", "total_h": 20, "as_of": "2026-07-20"}], out2
+
+    # ---- a no-op save (nothing actually changed): history carries
+    # forward unchanged, no phantom third entry ----
+    out3 = revise(out2, [{"name": "Thesis", "date": "2026-08-15",
+                         "total_h": 30}], "2026-08-01")
+    assert out3[0]["history"] == out2[0]["history"], out3
+
+    # ---- a brand-new deadline (no matching name in the old list):
+    # no history key at all ----
+    out4 = revise(old, [{"name": "New thing", "date": "2026-09-01",
+                        "total_h": 10}], "2026-07-01")
+    assert "history" not in out4[0], out4
+
+    D2, _ = fresh()
+    d = _mk(D2)
+
+    # ---- silence: fewer than 2 revisions ----
+    dl1 = {"name": "Thesis", "date": "2026-08-15", "total_h": 30,
+          "history": [{"date": "2026-07-15", "total_h": 20,
+                       "as_of": "2026-07-01"}]}
+    assert D2._deadline_renegotiation_line(d, dl1) is None
+
+    # ---- speaks: both date and scope moved ----
+    dl2 = {"name": "Thesis", "date": "2026-07-16", "total_h": 45,
+          "history": [{"date": "2026-06-01", "total_h": 20,
+                       "as_of": "2026-06-29"},
+                      {"date": "2026-06-20", "total_h": 30,
+                       "as_of": "2026-07-05"}]}
+    line = D2._deadline_renegotiation_line(d, dl2)
+    # date: 2026-06-01 -> 2026-07-16 = 45 days later (June has 30 days:
+    # 30 to reach 07-01, +15 to reach 07-16); scope: first entry's 20h
+    # -> current 45h
+    assert line == ("this deadline has moved 2 time(s) since 2026-06-29 "
+                    "— due date is now 45d later than first set, scope "
+                    "grew from 20h to 45h"), line
+
+    # ---- speaks: only scope moved, date unchanged ----
+    dl3 = {"name": "Thesis", "date": "2026-06-01", "total_h": 45,
+          "history": [{"date": "2026-06-01", "total_h": 20,
+                       "as_of": "2026-06-29"},
+                      {"date": "2026-06-01", "total_h": 30,
+                       "as_of": "2026-07-05"}]}
+    line3 = D2._deadline_renegotiation_line(d, dl3)
+    assert line3 == ("this deadline has moved 2 time(s) since 2026-06-29 "
+                     "— scope grew from 20h to 45h"), line3
+
+    # ---- silence: malformed history entry ----
+    dl4 = {"name": "Thesis", "date": "2026-06-01", "total_h": 45,
+          "history": [{"total_h": 20, "as_of": "2026-06-29"},
+                      {"date": "2026-06-01", "total_h": 30,
+                       "as_of": "2026-07-05"}]}
+    assert D2._deadline_renegotiation_line(d, dl4) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1541,7 +1612,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("decision-log", suite_decision_log),
           ("annual-theme", suite_annual_theme),
           ("lifetime-ledger", suite_lifetime_ledger),
-          ("deadline-postmortem", suite_deadline_postmortem)]
+          ("deadline-postmortem", suite_deadline_postmortem),
+          ("deadline-renegotiation", suite_deadline_renegotiation)]
 
 
 def main():

@@ -60,6 +60,28 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.51 (deadline renegotiation tracker — backlog #46, scope-creep
+honesty):
+  - Deadlines could always have their date/scope edited silently, with
+    nothing remembering the ORIGINAL numbers. New module-level
+    `_deadline_revisions_after_save(old, new, today_iso)`: compares the
+    deadline list before/after a save (matched by name) and appends a
+    `history` entry — the OLD date/total_h, timestamped — to any
+    deadline whose date or total_h actually changed; unchanged
+    deadlines carry their history forward untouched. Wired into the
+    existing deadline edit dialog's save(), no new UI. Once 2+
+    revisions exist, new `_deadline_renegotiation_line` adds one line
+    under that deadline in the dashboard's "Deadlines & Goals" tab:
+    "this deadline has moved 2 time(s) since 2026-06-29 — due date is
+    now 45d later than first set, scope grew from 20h to 45h." No
+    judgment beyond the numbers — a LIVE, ongoing check, distinct from
+    v8.50's post-mortem (which only ever fires once, after a deadline
+    resolves). New "deadline-renegotiation" selftest suite (history
+    accumulates across edits without overwriting, a no-op save adds no
+    phantom entry, a brand-new deadline gets no history key at all,
+    date-only/scope-only/both-moved phrasing, a malformed entry stays
+    silent); 34/34 green.
+
 New in v8.50 (deadline post-mortem — backlog #28, each deadline closed
 becomes calibration data):
   - Once a scoped deadline's due date passes, one retro block writes
@@ -1163,6 +1185,34 @@ def _pinned_after_add(pins, query, max_n=5):
 
 def _pinned_after_remove(pins, query):
     return [p for p in pins if p != query]
+
+
+def _deadline_revisions_after_save(old_deadlines, new_deadlines, today_iso):
+    """Backlog #46: deadlines can have their date/scope edited silently
+    at any time — nothing remembers the ORIGINAL numbers. Compares old
+    vs new deadline lists (matched by name) and returns new_deadlines
+    with a 'history' entry APPENDED to any deadline whose date or
+    total_h actually changed — the OLD values, timestamped, so scope
+    creep is traceable after the fact. A deadline's own history
+    carries forward unchanged when nothing about it moved this save.
+    Pure list op; the caller (the existing edit dialog's save()) does
+    the actual settings write."""
+    old_by_name = {d.get("name"): d for d in old_deadlines if d.get("name")}
+    out = []
+    for nd in new_deadlines:
+        nd = dict(nd)
+        od = old_by_name.get(nd.get("name"))
+        if od:
+            moved = (od.get("date") != nd.get("date") or
+                    float(od.get("total_h") or 0) != float(nd.get("total_h") or 0))
+            hist = list(od.get("history") or [])
+            if moved:
+                hist.append({"date": od.get("date"),
+                            "total_h": od.get("total_h"), "as_of": today_iso})
+            if hist:
+                nd["history"] = hist
+        out.append(nd)
+    return out
 
 
 def already_running():
@@ -2365,6 +2415,8 @@ class App(tk.Tk):
                             "date": vals["date"], "total_h": total,
                             "target_h": target, "match": vals["match"],
                             "goal": vals["goal"] or None})
+            out = _deadline_revisions_after_save(
+                cur, out, dt.date.today().isoformat())
             self.settings["deadlines"] = out
             self.settings["dl_name"] = ""      # retire the legacy single form
             save_settings(self.settings)
@@ -2432,6 +2484,41 @@ class App(tk.Tk):
         return (f"{name}: {total // 60}h across {sessions} session(s) "
                f"since {since} ({days} days — {avg:.1f}h/day lifetime "
                "average)")
+
+    def _deadline_renegotiation_line(self, dl):
+        """Backlog #46: once a deadline has been edited 2+ times (its
+        own `history`, appended by `_deadline_revisions_after_save` on
+        every edit), one honest line stating the drift pattern — no
+        judgment beyond the numbers, that's entirely the point.
+        Different from #28's post-mortem (fires once, after the
+        deadline resolves): this is a LIVE, ongoing check, catching
+        genuine re-scoping vs repeatedly deferring the same
+        discomfort."""
+        hist = dl.get("history") or []
+        if len(hist) < 2:
+            return None
+        first = hist[0]
+        try:
+            first_date = dt.date.fromisoformat(first["date"])
+            cur_date = dt.date.fromisoformat(dl["date"])
+        except (ValueError, KeyError, TypeError):
+            return None
+        first_total = float(first.get("total_h") or 0)
+        cur_total = float(dl.get("total_h") or 0)
+        date_delta = (cur_date - first_date).days
+        since = first.get("as_of") or first["date"]
+        line = f"this deadline has moved {len(hist)} time(s) since {since}"
+        extra = []
+        if date_delta:
+            extra.append(f"due date is now {abs(date_delta)}d "
+                        f"{'later' if date_delta > 0 else 'earlier'} "
+                        "than first set")
+        if first_total != cur_total:
+            extra.append(f"scope {'grew' if cur_total > first_total else 'shrank'}"
+                        f" from {first_total:g}h to {cur_total:g}h")
+        if extra:
+            line += " — " + ", ".join(extra)
+        return line
 
     def _set_goals(self):
         """Deadlines answer 'when'; goals answer WHY the hours happen.
@@ -7659,6 +7746,9 @@ class App(tk.Tk):
                     dl.get("start"))
                 if lifetime:
                     lines.append(f"    {lifetime}")
+                reneg = self._deadline_renegotiation_line(dl)
+                if reneg:
+                    lines.append(f"    {reneg}")
             lines += [" " + s for s in self._capacity_lines()]
 
         lines += ["", "INSIGHTS — your last 60 days, cross-referenced"]

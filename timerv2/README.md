@@ -4,6 +4,18 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Deadline renegotiation tracker (v8.51)
+
+Deadlines could always have their date/scope edited silently, with
+nothing remembering the original numbers. Every edit through the
+existing deadline dialog now logs the OLD date/hours onto that
+deadline's own history. Once it's been edited 2+ times, one honest
+line appears in the dashboard's **Deadlines & Goals** tab: `this
+deadline has moved 2 time(s) since 2026-06-29 — due date is now 45d
+later than first set, scope grew from 20h to 45h`. No judgment — just
+the pattern, catching the difference between genuinely re-scoping
+reality and repeatedly deferring the same discomfort.
+
 ### Deadline post-mortem (v8.50)
 
 Once a scoped deadline's due date passes, one retro block writes into
