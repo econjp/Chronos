@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.49 (goal lifetime ledger — backlog #45, the un-windowed
+view):
+  - Every existing view is windowed — 8 weeks (alignment/trajectory), a
+    deadline's own scope (burn-down), a calendar year (#15, not yet
+    built). Nothing answered "how much of my life has this actually
+    taken, total." New `_lifetime_ledger_line(name, kws, start_iso)`:
+    total hours + session count since `start_iso` (a deadline's own
+    stored start, if set) or the first-ever matching csv row (goals
+    have no start field yet — "since the beginning" is the honest
+    default). One new line under each goal and deadline in the
+    dashboard's "Deadlines & Goals" tab: "Thesis: 187h across 62
+    session(s) since 2026-06-29 (134 days — 1.4h/day lifetime
+    average)." Row-level scan (needs the session count, which
+    `matched_minutes` alone can't give — that only returns a total).
+    New "lifetime-ledger" selftest suite (fallback to earliest matching
+    row, an explicit start_iso both anchoring the date shown AND
+    filtering out earlier matches, silence with no keywords, silence
+    with keywords that never matched); 32/32 green.
+
 New in v8.48 (annual theme — backlog #64, the year-scale sibling of
 SIGNAL/AVOID):
   - A new `YEAR: <theme>` header line, auto-carried into every day file
@@ -2355,6 +2374,43 @@ class App(tk.Tk):
     def _goal_minutes(self, g, lo, hi):
         """Tracked minutes [lo, hi] on tasks matching the goal's keywords."""
         return matched_minutes(self._match_kws(g.get("match")), lo, hi)
+
+    def _lifetime_ledger_line(self, name, kws, start_iso=None):
+        """Backlog #45: the un-windowed view. Every other lens is
+        windowed — 8 weeks (alignment/trajectory), a deadline's own
+        scope (burn-down), a calendar year (#15) — nothing answers "how
+        much of my life has this actually taken, total." `start_iso`
+        (a deadline's own stored start, if any) anchors the window;
+        goals have no such field yet, so absent means "since the
+        first-ever matching row in the csv" — the true lifetime, not
+        an arbitrary one. Needs row-level granularity for the session
+        count, so it's its own scan, not matched_minutes() itself
+        (which only returns a total)."""
+        if not kws:
+            return None
+        total = sessions = 0
+        earliest = None
+        for r in read_rows():
+            if r[1] == "break" or not task_matches(r[5], kws):
+                continue
+            if start_iso and r[0] < start_iso:
+                continue
+            try:
+                m = int(r[4])
+            except ValueError:
+                continue
+            total += m
+            sessions += 1
+            if earliest is None or r[0] < earliest:
+                earliest = r[0]
+        if not sessions:
+            return None
+        since = start_iso or earliest
+        days = max((self.today - dt.date.fromisoformat(since)).days, 1)
+        avg = (total / 60) / days
+        return (f"{name}: {total // 60}h across {sessions} session(s) "
+               f"since {since} ({days} days — {avg:.1f}h/day lifetime "
+               "average)")
 
     def _set_goals(self):
         """Deadlines answer 'when'; goals answer WHY the hours happen.
@@ -7365,6 +7421,10 @@ class App(tk.Tk):
                 if m14 == 0:
                     seg += " — nothing in 14 days; still a goal?"
                 lines.append(seg)
+                lifetime = self._lifetime_ledger_line(
+                    g["name"], self._match_kws(g.get("match")), g.get("start"))
+                if lifetime:
+                    lines.append(f"    {lifetime}")
 
         # the whole life, not just the tracked slice: account the waking week
         n = self.today.weekday() + 1
@@ -7418,6 +7478,11 @@ class App(tk.Tk):
                 if why:
                     seg += f"  ({why})"
                 lines.append(seg)
+                lifetime = self._lifetime_ledger_line(
+                    dl["name"], self._match_kws(dl.get("match")),
+                    dl.get("start"))
+                if lifetime:
+                    lines.append(f"    {lifetime}")
             lines += [" " + s for s in self._capacity_lines()]
 
         lines += ["", "INSIGHTS — your last 60 days, cross-referenced"]

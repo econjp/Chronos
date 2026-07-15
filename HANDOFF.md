@@ -950,6 +950,18 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.49** (goal lifetime ledger — backlog #45, DONE, the un-windowed
+  view). New `_lifetime_ledger_line(name, kws, start_iso)`: total
+  hours + session count since `start_iso` (a deadline's own stored
+  start, if set) or the first-ever matching csv row (goals have no
+  start field yet). One new line under each goal/deadline in the
+  dashboard's "Deadlines & Goals" tab — "Thesis: 187h across 62
+  session(s) since 2026-06-29 (134 days — 1.4h/day lifetime
+  average)." Row-level scan (needed for the session count;
+  `matched_minutes` alone only gives a total). New "lifetime-ledger"
+  selftest suite (fallback to earliest matching row, an explicit
+  start_iso anchoring the date AND filtering out earlier matches,
+  two silence gates); 32/32 green (new suite, was 31).
 - **v8.48** (annual theme — backlog #64, DONE, the year-scale sibling
   of SIGNAL/AVOID). New `YEAR: <theme>` header line, new `_carry_year`
   (same shape as `_carry_avoid`, v8.13), auto-carried into every day
@@ -1759,7 +1771,14 @@ purpose; the *walls* are the major thing, and they're now named.
     nag about. Cheap: one settings field, one filter applied at the two
     existing read sites.
 
-45. **Goal lifetime ledger (SELF-KNOWLEDGE — the un-windowed view).**
+45. ~~**Goal lifetime ledger.**~~ — DONE v8.49. New
+    `_lifetime_ledger_line(name, kws, start_iso)`, one line under each
+    goal/deadline in the dashboard's "Deadlines & Goals" tab. Goals
+    still have no `start` field (no UI change made for it — absent
+    just means "since the first-ever matching row," the honest
+    default); deadlines use their existing stored `start` when set.
+    Original design note kept below for reference.
+    (SELF-KNOWLEDGE — the un-windowed view).**
     Every current view is windowed — 8 weeks (alignment, trajectory),
     a deadline's own scope (burn-down), a calendar year (#15). Nothing
     answers "how much of my life has this actually taken, total, since

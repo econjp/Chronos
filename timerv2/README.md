@@ -4,6 +4,16 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Goal lifetime ledger (v8.49)
+
+Every existing view is windowed — 8 weeks, a deadline's own scope, a
+calendar year. The **Life dashboard → Deadlines & Goals** tab now adds
+one un-windowed line under each goal and deadline: `Thesis: 187h across
+62 session(s) since 2026-06-29 (134 days — 1.4h/day lifetime average)`.
+Anchored to a deadline's own stored start date if it has one, or the
+first-ever matching session in the csv otherwise — the true lifetime
+cost, not an arbitrary window.
+
 ### Annual theme (v8.48)
 
 A new `YEAR: <theme>` header line — the year-scale sibling of SIGNAL/

@@ -54,7 +54,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_year_rhythm_grid", "_energy_forecast_line",
         "_experiment_from_file", "_week_metric_totals",
         "_experiment_review_line", "_scan_decisions",
-        "_carry_year", "_on_this_day_line"}
+        "_carry_year", "_on_this_day_line", "_lifetime_ledger_line"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -1396,6 +1396,47 @@ def suite_annual_theme():
     assert D._on_this_day_line(d) is None
 
 
+def suite_lifetime_ledger():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 7, 15)
+    d = _mk(D, today=TODAY)
+    kws = ["thesis"]
+
+    # ---- no start_iso: falls back to the earliest matching row ----
+    rows = [["2026-07-05", "work", "09:00", "10:00", "60", "thesis: ch1", ""],
+            ["2026-07-08", "work", "09:00", "11:00", "120", "thesis: ch2", ""],
+            ["2026-07-12", "work", "09:00", "12:00", "180", "thesis: ch3", ""],
+            # excluded: a break row (even if it somehow matched) and a
+            # work row on a genuinely different task
+            ["2026-07-09", "break", "12:00", "12:30", "500", "", ""],
+            ["2026-07-09", "work", "09:00", "10:00", "500", "email", ""]]
+    seed(ns, rows)
+    line = D._lifetime_ledger_line(d, "Thesis", kws)
+    # total 60+120+180=360m=6h, 3 sessions, earliest 2026-07-05,
+    # days=(2026-07-15 - 2026-07-05)=10, avg=(360/60)/10=0.6h/day
+    assert line == ("Thesis: 6h across 3 session(s) since 2026-07-05 "
+                    "(10 days — 0.6h/day lifetime average)"), line
+
+    # ---- with start_iso: anchors "since" AND filters out earlier rows ----
+    rows2 = [["2026-07-01", "work", "09:00", "10:00", "999", "thesis: old", ""],
+             ["2026-07-12", "work", "09:00", "11:30", "150", "thesis: ch3", ""],
+             ["2026-07-13", "work", "09:00", "10:40", "100", "thesis: ch4", ""]]
+    seed(ns, rows2)
+    line2 = D._lifetime_ledger_line(d, "Thesis", kws, "2026-07-10")
+    # 2026-07-01 row excluded (before start_iso) despite matching;
+    # total 150+100=250m -> floor 250//60=4h, 2 sessions,
+    # since=start_iso (declared, not the earliest matched row),
+    # days=(2026-07-15 - 2026-07-10)=5, avg=(250/60)/5=0.8333 -> "0.8"
+    assert line2 == ("Thesis: 4h across 2 session(s) since 2026-07-10 "
+                     "(5 days — 0.8h/day lifetime average)"), line2
+
+    # ---- silence: no keywords ----
+    assert D._lifetime_ledger_line(d, "Thesis", []) is None
+
+    # ---- silence: keywords given but nothing ever matched ----
+    assert D._lifetime_ledger_line(d, "Nope", ["xyznomatch"]) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1423,7 +1464,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("experiment-engine", suite_experiment_engine),
           ("pinned-searches", suite_pinned_searches),
           ("decision-log", suite_decision_log),
-          ("annual-theme", suite_annual_theme)]
+          ("annual-theme", suite_annual_theme),
+          ("lifetime-ledger", suite_lifetime_ledger)]
 
 
 def main():
