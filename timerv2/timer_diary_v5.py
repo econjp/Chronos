@@ -60,6 +60,23 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.53 (sensor health meter — backlog #23, the platform watching
+its own instruments):
+  - Every insight silently degrades when a source rots — the phone
+    sleep-export automation breaks, the .ics goes stale, ENERGY stops
+    being typed — with nothing ever surfacing that before now. New
+    `_sensor_health_lines`, surfaced as a new section at the top of
+    the Data doctor window: per source, last date seen with real data,
+    coverage % over the trailing 30 days, and a plain alarm once it's
+    gone quiet longer than a reasonable cadence ("sleep import: last
+    seen 2026-06-15 (30d ago), 0% coverage — the phone automation may
+    have stopped"). Also surfaces the personal baselines the anomaly
+    watch judges against — median sleep, median week — so the
+    co-pilot's calls are inspectable, not oracular. New
+    "sensor-health" selftest suite (all three alarms firing together
+    with exact coverage/gap numbers, a healthy pass with no alarms,
+    the fully-unconfigured silence path); 36/36 green.
+
 New in v8.52 (weekly "one less" — backlog #35, a subtraction advisor):
   - Every insight so far adds awareness; this one subtracts. New
     `_one_less_candidates`: three removal candidates sourced entirely
@@ -8886,6 +8903,82 @@ class App(tk.Tk):
 
     # ----- data doctor (keep the substrate clean) -----
 
+    def _sensor_health_lines(self, days=30):
+        """Backlog #23: the platform watching its own instruments.
+        Every insight silently degrades when a source rots — the phone
+        sleep-export automation breaks, the .ics goes stale, ENERGY
+        stops being typed — with nothing ever surfacing that until an
+        insight just quietly stops appearing. Per source: last date
+        seen with real data, coverage % over the trailing `days` days,
+        a plain alarm once it's gone quiet longer than a reasonable
+        cadence. Also surfaces the personal baselines the anomaly
+        watch judges against (median sleep, median week) so the
+        co-pilot's calls are inspectable, not oracular."""
+        hd = self._health_data()
+        lines = ["SENSOR HEALTH:"]
+
+        sleep_isos = sorted(iso for iso, rec in hd.items() if rec.get("sleep_h"))
+        if sleep_isos:
+            last = sleep_isos[-1]
+            gap = (self.today - dt.date.fromisoformat(last)).days
+            cutoff = (self.today - dt.timedelta(days=days - 1)).isoformat()
+            cov = round(100 * sum(1 for iso in sleep_isos if iso >= cutoff)
+                       / days)
+            line = (f"  sleep import: last seen {last} ({gap}d ago), "
+                   f"{cov}% coverage")
+            if gap > 10:
+                line += " — the phone automation may have stopped"
+            lines.append(line)
+        else:
+            lines.append("  sleep import: no data seen yet")
+
+        path = self.settings.get("ics_path")
+        if not path:
+            lines.append("  calendar: not configured")
+        elif not os.path.exists(path):
+            lines.append("  calendar: configured path not found")
+        else:
+            age_days = (self.today -
+                       dt.datetime.fromtimestamp(os.path.getmtime(path)).date()).days
+            line = f"  calendar: export file last updated {age_days}d ago"
+            if age_days > 14:
+                line += " — may have gone stale"
+            lines.append(line)
+
+        logged, last_energy = 0, None
+        for i in range(days):
+            d = self.today - dt.timedelta(days=i)
+            if self._day_energy(d) is not None:
+                logged += 1
+                if last_energy is None:
+                    last_energy = d
+        if last_energy:
+            gap = (self.today - last_energy).days
+            line = (f"  ENERGY: last typed {last_energy.isoformat()} "
+                   f"({gap}d ago), {round(100 * logged / days)}% coverage")
+            if gap > 5:
+                line += " — you've stopped logging it"
+            lines.append(line)
+        else:
+            lines.append("  ENERGY: never typed")
+
+        hist_sleep = sorted(v for v in
+                           (rec.get("sleep_h") for rec in hd.values()) if v)
+        if len(hist_sleep) >= 10:
+            lines.append(f"  your normal sleep: "
+                         f"{hist_sleep[len(hist_sleep) // 2]:.1f}h "
+                         f"(median, n={len(hist_sleep)})")
+        weekly = {}
+        for iso, rec in day_index().items():
+            iso_date = dt.date.fromisoformat(iso)
+            monday = iso_date - dt.timedelta(days=iso_date.weekday())
+            weekly[monday] = weekly.get(monday, 0) + rec["work"]
+        if len(weekly) >= 4:
+            vals = sorted(weekly.values())
+            lines.append(f"  your normal week: {vals[len(vals) // 2] / 60:.1f}h "
+                         f"tracked (median, n={len(weekly)} weeks)")
+        return lines
+
     def _doctor_scan(self):
         """One pass over the csv: task-name spelling variants, junk rows,
         exact duplicates, overlapping work intervals. Returns
@@ -8980,6 +9073,7 @@ class App(tk.Tk):
 
         def render():
             lines, rename, junk, dups = self._doctor_scan()
+            lines = self._sensor_health_lines() + ["", *lines]
             backup_line = backup_integrity_line()
             if backup_line:
                 lines = [backup_line, ""] + lines

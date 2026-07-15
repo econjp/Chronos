@@ -60,7 +60,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_carry_year", "_on_this_day_line", "_lifetime_ledger_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
-        "_one_less_candidates", "_one_less_line"}
+        "_one_less_candidates", "_one_less_line", "_sensor_health_lines"}
 STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -1640,6 +1640,73 @@ def suite_one_less():
     assert "the task you keep bouncing off" in line3, line3
 
 
+def suite_sensor_health():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 7, 15)
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+
+    # ---- weekly baseline: 5 distinct Mondays, 300m (5h) each ----
+    rows = []
+    for w in range(1, 6):
+        monday = dt.date(2026, 7, 13) - dt.timedelta(weeks=w)
+        rows.append([monday.isoformat(), "work", "09:00", "14:00", "300",
+                    "x", ""])
+    seed(ns, rows)
+
+    # ---- sleep: 15 consecutive days, all well outside the 30-day
+    # coverage window (last seen 30 days ago) -> 0% coverage, alarm ----
+    hd = {(dt.date(2026, 6, 1) + dt.timedelta(days=i)).isoformat():
+          {"sleep_h": 7.0} for i in range(15)}
+
+    # ---- calendar: file exists but hasn't been touched in 20 days ----
+    ics_path = os.path.join(tmp, "cal.ics")
+    open(ics_path, "w").close()
+    old_ts = dt.datetime.combine(
+        TODAY - dt.timedelta(days=20), dt.time()).timestamp()
+    os.utime(ics_path, (old_ts, old_ts))
+
+    # ---- ENERGY: only one day logged in the last 30, 6 days ago ----
+    energy_days = {"2026-07-09"}
+
+    d = _mk(D, today=TODAY, settings={"ics_path": ics_path},
+            _health_data=lambda: hd,
+            _day_energy=lambda day: 3 if day.isoformat() in energy_days
+                                    else None)
+    lines = D._sensor_health_lines(d)
+    assert lines[0] == "SENSOR HEALTH:", lines
+    assert ("  sleep import: last seen 2026-06-15 (30d ago), 0% coverage "
+           "— the phone automation may have stopped" in lines), lines
+    assert ("  calendar: export file last updated 20d ago — may have "
+           "gone stale" in lines), lines
+    assert ("  ENERGY: last typed 2026-07-09 (6d ago), 3% coverage — "
+           "you've stopped logging it" in lines), lines
+    assert "  your normal sleep: 7.0h (median, n=15)" in lines, lines
+    assert ("  your normal week: 5.0h tracked (median, n=5 weeks)"
+           in lines), lines
+
+    # ---- healthy path: no alarms fire when everything's recent ----
+    hd2 = {(TODAY - dt.timedelta(days=i)).isoformat(): {"sleep_h": 7.0}
+          for i in range(15)}
+    d2 = _mk(D, today=TODAY, settings={"ics_path": ics_path},
+             _health_data=lambda: hd2,
+             _day_energy=lambda day: 3 if day == TODAY else None)
+    fresh_ts = dt.datetime.combine(TODAY, dt.time()).timestamp()
+    os.utime(ics_path, (fresh_ts, fresh_ts))     # updated "today"
+    lines2 = D._sensor_health_lines(d2)
+    assert not any("may have stopped" in ln or "gone stale" in ln
+                  or "stopped logging" in ln for ln in lines2), lines2
+
+    # ---- silence-ish: nothing configured/typed/imported at all ----
+    d3 = _mk(D, today=TODAY, settings={}, _health_data=lambda: {},
+             _day_energy=lambda day: None)
+    seed(ns, [])
+    lines3 = D._sensor_health_lines(d3)
+    assert "  sleep import: no data seen yet" in lines3, lines3
+    assert "  calendar: not configured" in lines3, lines3
+    assert "  ENERGY: never typed" in lines3, lines3
+    assert not any("your normal" in ln for ln in lines3), lines3
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -1671,7 +1738,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("lifetime-ledger", suite_lifetime_ledger),
           ("deadline-postmortem", suite_deadline_postmortem),
           ("deadline-renegotiation", suite_deadline_renegotiation),
-          ("one-less", suite_one_less)]
+          ("one-less", suite_one_less),
+          ("sensor-health", suite_sensor_health)]
 
 
 def main():

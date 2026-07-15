@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Sensor health meter (v8.53)
+
+**Tools → Data doctor** now opens with a new section at the top: per
+data source (sleep import, calendar, ENERGY logging) — last date seen,
+coverage % over the last 30 days, and a plain alarm once it's gone
+quiet longer than makes sense: `sleep import: last seen 2026-06-15
+(30d ago), 0% coverage — the phone automation may have stopped`. Also
+lists the personal baselines the anomaly watch judges against (your
+normal sleep, your normal week) — the co-pilot's calls, inspectable
+instead of oracular.
+
 ### Weekly "one less" (v8.52)
 
 Every insight so far adds awareness; this one subtracts. The Monday

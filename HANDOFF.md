@@ -950,6 +950,18 @@ purpose; the *walls* are the major thing, and they're now named.
   selftest suite 21 (registry exclusion, the no-shared-string-but-real-
   overlap case, keyword-collision-that-never-fired stays silent,
   no-overlap and <2-lenses silence); 21/21 green.
+- **v8.53** (sensor health meter — backlog #23, DONE, the platform
+  watching its own instruments). New `_sensor_health_lines`, a new
+  section at the top of the Data doctor window: per source (sleep
+  import, calendar, ENERGY logging) — last date seen with real data,
+  coverage % over the trailing 30 days, a plain alarm once it's gone
+  quiet longer than a reasonable cadence ("sleep import: last seen
+  2026-06-15 (30d ago), 0% coverage — the phone automation may have
+  stopped"). Also lists the personal baselines the anomaly watch
+  judges against (median sleep, median week). New "sensor-health"
+  selftest suite (all three alarms firing together with exact
+  coverage/gap numbers, a healthy pass with no alarms, the fully-
+  unconfigured silence path); 36/36 green (new suite, was 35).
 - **v8.52** (weekly "one less" — backlog #35, DONE, a subtraction
   advisor). New `_one_less_candidates`: three removal candidates
   sourced from mechanisms already built this session — the worst
@@ -1596,7 +1608,14 @@ purpose; the *walls* are the major thing, and they're now named.
     (n=14) — the gym is a productivity tool, not a cost." Probably the
     highest insight-per-line-of-code item left.
 
-23. **Sensor health meter (TRUST / USABILITY).** Every insight silently
+23. ~~**Sensor health meter.**~~ — DONE v8.53. New
+    `_sensor_health_lines`, a new section at the top of the Data
+    doctor window: per source (sleep, calendar, ENERGY) last date
+    seen, 30-day coverage %, a plain alarm past a reasonable cadence;
+    also the personal baselines (median sleep, median week) the
+    anomaly watch judges against. Original design note kept below for
+    reference.
+    (TRUST / USABILITY).** Every insight silently
     degrades when a source rots: the phone sleep-export automation breaks,
     the .ics goes stale, ENERGY stops being typed. One small view (or a
     Data-doctor section): per source — last date seen, coverage % over 30
