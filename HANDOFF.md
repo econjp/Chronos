@@ -2348,6 +2348,60 @@ purpose; the *walls* are the major thing, and they're now named.
     gate, never re-nagged) applies here at its sharpest, since this is
     the one feature that could tempt turning insight into instruction.
 
+77. **Annual theme retrospective (MEMORY, extends the annual theme,
+    v8.48, with the same "close the loop when it ends" shape v8.50's
+    deadline post-mortem introduced).** v8.48 lets a `YEAR:` theme
+    carry silently forever; nothing ever looks back once a theme
+    actually changes (a new `YEAR:` value replaces the old one) or a
+    full calendar year completes. When that happens, one retro block
+    into that day's file: how many days the old theme ran, how many
+    `DECIDED:` lines (v8.47) and `EXPERIMENT:` runs (v8.45) happened
+    under it, and — if the theme's wording plausibly overlaps a
+    declared goal or domain's keywords — the tracked hours that
+    actually went there while it was standing. Not a verdict on
+    whether the year was "good," just the honest record a theme
+    closing deserves, same restraint as the deadline post-mortem.
+
+78. **Sensor health trend (TRUST, extends the sensor health meter,
+    v8.53, from an opportunistic snapshot to an early warning).** The
+    meter only speaks when Data doctor is opened by hand — a source
+    can rot for weeks before anyone happens to check. Add one
+    Monday-review line (same slot as the one-less advisor, v8.52, and
+    the experiment review, v8.45) comparing THIS week's per-source
+    coverage % against the trailing 4-week baseline: "ENERGY logging
+    dropped from 90% to 30% this week — still worth typing, or has it
+    quietly stopped mattering?" Reuses `_sensor_health_lines`'
+    per-source coverage math, windowed instead of all-time; same
+    honesty gate (a real week of history on both sides), same
+    once-stated-never-nagged restraint as everything else surfaced in
+    that slot.
+
+79. **Planner realism per-weekday (PLANNING, extends the planner
+    realism factor, v8.54, with the weekday-bucketing pattern this
+    session proved out three times over — break budget v2 #72, energy
+    forecast #29, running-hot's weekday match).** `_planner_realism_factor`
+    blends every scheduled day into one median regardless of weekday —
+    but a Monday plan (written fresh, more optimistic) and a Friday
+    plan (written tired, already more honest) plausibly survive at
+    genuinely different rates. Bucket by `dt.date.weekday()` before
+    taking the median, same degrade-to-the-blend-until-n≥10 discipline
+    used everywhere else this pattern has shipped. `_day_schedule_lines`
+    would then scale today's items by TODAY's own weekday's density,
+    not the all-days blend.
+
+80. **METRICS streak tracker (FEEDBACK, extends the bare-word
+    shorthand, v8.33, into new territory rather than another
+    extension of an existing retrospective).** `METRICS: meditation,
+    cold_shower` logs a habit as a bare yes/no in seconds, but nothing
+    has ever counted the RUN — how many consecutive days a given
+    metric key has appeared. One line per tracked habit, wherever
+    METRICS already gets summarized: "meditation: 12-day streak
+    (longest ever 18, started 2026-05-02)." Pure scan over the same
+    METRICS lines the app already parses (`_metrics_from_text`/
+    `_day_metrics`), no new source, no new UI to configure which
+    habits to track — whatever key appears becomes trackable the
+    moment it's typed, same zero-config spirit as METRICS itself.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
