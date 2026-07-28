@@ -2806,6 +2806,120 @@ measuring what's already there.
     the kind of untrustworthy pile #43 was written to prevent
     elsewhere in the app.
 
+91. **Completed-task archive (SELF-KNOWLEDGE/HYGIENE — owner's own
+    ask, 2026-07-19: "make sure OLD TASKS are saved").** `done()` in
+    the Tasks window currently `pop()`s a finished item straight out of
+    `settings["tasks"]` — the `--- Done: ...` line lands in that day's
+    diary text so it isn't truly gone, but it stops being STRUCTURED
+    data the moment it's marked done, which quietly undermines #10's
+    per-category estimate factor and #45's goal lifetime ledger (both
+    want clean historical Done data, not "re-parse every diary file
+    for `--- Done:` lines" as the only path back to it). Fix: append to
+    a `tasks_done` list in settings instead of discarding — same
+    fields, plus a `done_on` date. Cheap, and the two features above
+    become meaningfully easier to build well once this exists.
+
+92. **Command shorthand for common actions (USABILITY — owner's own
+    ask, 2026-07-19, narrower and safer than #60).** #60 (embedded
+    Python console) is explicitly deferred pending real design work;
+    this is the specific narrow case the owner actually described —
+    "if a todo is done, write it off with a command" — and it doesn't
+    need `exec()`/`eval()` at all. A tiny recognized-verb parser on
+    something typed in the task box or a dedicated prompt: `done:
+    thesis ch4` marks the matching task-library item done (writes its
+    `--- Done:` line, same as clicking Done); maybe `start: <name>`,
+    `goal: <task> = <goal name>`. Pattern-matching a small fixed
+    vocabulary, not arbitrary code — none of #60's real risk (a typo
+    corrupting years of data) applies here. Ship this regardless of
+    whether #60 ever gets built; it's a different, much safer idea
+    that happens to share the surface-level "type a command" framing.
+
+93. **Quick day-file navigator (USABILITY — owner's own ask,
+    2026-07-19: "nice way to open previous days... without having to
+    navigate the files").** File > "Open a day file…" exists but goes
+    through `filedialog.askopenfilename` — a real OS file-picker dialog
+    starting in the diary folder, which is exactly the "navigate the
+    files" friction being asked to remove. A lighter in-app picker
+    instead: a small dropdown/list of recent day files (last 14-30
+    days, or a simple date-jump: "yesterday", "a week ago", "a month
+    ago") that opens directly into the same viewer #12's on-this-day
+    and #14's ask-your-diary already read files through — reuses
+    existing read paths, the only new part is the picker UI itself.
+
+94. **Scheduled break appointment (PLANNING — owner's own ask,
+    2026-07-19, Finnish: "if it's 12:00 now, set a timer for a break at
+    14:00, and until then focus is mandatory").** Distinct from the
+    existing `[15m]` time-box (which boxes a TASK's duration, open-
+    ended start) — this boxes a specific FUTURE break APPOINTMENT: "my
+    next break is at 14:00" as a real clock time, not a duration from
+    now. Natural extension of #50's protected time windows (a one-off
+    scheduled break is a protected window that expires after firing
+    once, not a daily-recurring one) — could reuse the same settings
+    shape and `_free_slots` subtraction, plus a one-time notification
+    at the target time via the existing floating-pill/status-bar
+    surfaces. "Mandatory focus until then" should stay a STATED framing
+    in the UI text, never an actual lock, per the standing anti-gating
+    precedent (#9, #30's pull-back note) — the owner's own phrasing
+    ("ns PAKKO" / "sort of mandatory") already hedges toward stated-not-
+    enforced, worth preserving that instinct when this gets built.
+
+95. **Within-session efficiency-decline detector (ANALYSIS — owner's
+    own ask, 2026-07-19, explicitly speculative).** "Notices if your
+    work slows down in the evening... and then you can see if you want
+    to continue at home" — real-time trend detection WITHIN a single
+    day/session (block lengths shrinking, more switches, longer breaks
+    creeping in), distinct from every existing insight here which
+    looks at PAST days, not the live trend of the one happening right
+    now. Harder than most items in this backlog: needs a genuine
+    live-trend model, not a threshold check, and "suggest a location
+    change" is a real UX leap this app has never made (everything else
+    states a line, never suggests an action outside the software
+    itself). Flagged explicitly as needing real design thought before
+    building, similar to #60 — log the idea, don't rush the shape.
+
+96. **Tiered SIGNAL priorities (PLANNING — owner's own ask, 2026-07-28:
+    "some tasks aren't THAT signal... there should be tiers, #1 prio is
+    thesis stuff").** Real tension to resolve carefully, not just
+    build: the "Signal vs. maintenance" design rule (see above,
+    resolved 2026-07-13) explicitly rejected a BLENDED "50% signal"
+    score as less honest than the existing three-bucket model (signal
+    / goal-aligned / plain work / noise). This ask is different in
+    kind, worth distinguishing explicitly — DISCRETE ranked tiers
+    ("SIGNAL1: thesis" / "SIGNAL2: hegemon drafting"), not a continuous
+    blend — which may not violate that precedent at all, since it's
+    still a strict ordering, not an averaged score. Before building:
+    re-read the original resolution's reasoning (collapsing maintenance
+    into "signal" inflates the metric and kills its one job) and check
+    whether 2-3 named tiers preserve that honesty or quietly recreate
+    the blend by another name. If it survives that check, the
+    mechanism is small — a numbered SIGNAL line convention, same
+    carry-forward shape as SIGNAL/AVOID, `_is_signal` gains a tier
+    return value instead of a boolean.
+
+97. **BUG, found 2026-07-29 auditing the owner's real task library:
+    auto-capture creates a new task for every growing snapshot of a
+    still-being-typed bullet, not just the finished line.** `_add_task`
+    dedupes by exact normalized string match; `_auto_capture_bullets`
+    fires on the 10s live autosave (v6.8). While a TODO/SOMEDAY bullet
+    is actively being typed, each autosave tick captures whatever
+    partial text exists at that moment — since the string keeps
+    growing, exact-match dedup never catches consecutive snapshots of
+    the SAME bullet, so one sentence typed over a minute becomes 10+
+    near-duplicate task-library entries, each a longer prefix of the
+    last. Confirmed directly in the owner's real settings.json: over
+    30 of ~84 entries are these growing-prefix duplicates from just two
+    typing sessions (2026-07-19, 2026-07-26). Fix, once picked up:
+    don't capture a bullet while it's still the LAST line of the file
+    AND the cursor is on it (capture on leaving the line / new bullet
+    starting / day rollover instead of on every autosave tick), or —
+    simpler — when a new capture's normalized text starts with an
+    EXISTING same-source entry's normalized text (a prefix-extension,
+    not a new bullet), update that entry in place instead of appending
+    a new one. Real, user-facing bug, not a style nit — worth fixing
+    before #43/#55/#90's hygiene features have to work around
+    thousands of stale duplicates as the library grows. Not fixed yet
+    this session — flagged for the next round.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
