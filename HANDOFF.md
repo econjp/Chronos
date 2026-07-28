@@ -2920,6 +2920,84 @@ measuring what's already there.
     thousands of stale duplicates as the library grows. Not fixed yet
     this session — flagged for the next round.
 
+98. **Themed writing: toggle where it's stored (USABILITY — owner's
+    own ask, 2026-07-29).** Themed writing (v6.4) always embeds its
+    `=== THEME: x ===` block into TODAY's day file — no second data
+    store, by design. The owner wants an option to instead store a
+    theme separately (its own file/folder) rather than always landing
+    in the daily log. Real design tension worth resolving before
+    building, not papering over: the sacred rule is "everything visible
+    lands in the day file, no hidden state" — a themed-writing session
+    filed elsewhere would be exactly that hidden state, unless Browse
+    Themes (which currently scans every day file for blocks) also
+    learns to scan the separate location, and On-this-day/word-drift/
+    ask-your-diary either follow it there too or explicitly don't (and
+    say so). Probably the right shape: a per-theme-topic setting (some
+    topics — reflection, brainstorming — stay in the daily log; others
+    — a specific ongoing research thread, say — get their own file the
+    daily log only LINKS to, not embeds) rather than one global on/off
+    switch. Needs that design pass before implementation, not a quick
+    toggle bolted on.
+
+99. **Day-by-day audit, 2026-07-29 — findings from reading 19 real day
+    files (2026-07-10 through 2026-07-28), software-relevant only.**
+    Requested directly by the owner, done as a software-development
+    review, not a life review — nothing personal below, only what's
+    useful for TimerDiary's own development. Five findings:
+    - **Recurring multi-hour "mega-break" gaps.** At least six times
+      across these 19 days, a session was left open (not properly
+      Reset) across a long gap — overnight, or many hours away — and
+      on return the ENTIRE gap logs as one undifferentiated break
+      (observed durations: 20h52m, 20h3m, 10h29m, 16h13m, 15h7m,
+      15h11m). Not incorrect — that time genuinely wasn't worked — but
+      worth checking whether v8.55's new screen-lock detection
+      (shipped this session, not yet confirmed working on the owner's
+      real machine) already substantially fixes the OVERNIGHT case
+      going forward, since a laptop left locked overnight is exactly
+      what `is_locked()` should catch. If gaps this long still slip
+      through after confirming v8.55 works, that's a real follow-up:
+      maybe a break past some large threshold (4h+?) deserves a
+      different offer than the standard retro-split dialog.
+    - **Possible bug, unverified against current code: switching task
+      DURING a break may have made the new task inherit the break's
+      elapsed time**, self-reported by the owner once early in
+      development (2026-07-11: "IF SWITCH TASK DURING THE BREAK, THE
+      NEW TASK WILL INHERIT THE TIME"). Old report, likely already
+      addressed by later work on the timer state machine, but never
+      explicitly re-verified — worth a direct test before assuming
+      it's fine: start work, Stop (break), change the task box, Start
+      again, check the new task's logged interval doesn't include any
+      of the break duration.
+    - **Interleaved-task friction, observed directly (2026-07-27):**
+      "checking [X] but from time to time [Y]... shuld even log as
+      work, then switch, but takes time" — when two tasks interleave
+      at a finer grain than feels worth a formal Switch, the owner
+      just logs everything under one task rather than pay the
+      switching overhead. Not necessarily fixable (may be an inherent
+      tracking-granularity tradeoff, not a bug) but worth keeping in
+      mind if any future feature touches task-switching friction.
+    - **Deadline-projection volatility in the first days of a new
+      deadline** — one observed case swung from "~386 days late" to
+      "~59 days late" to "~37 days late" across three consecutive
+      mornings as real velocity data accumulated (matches the honesty
+      gate working as designed — n≥5 real intervals — but a triple-
+      digit day count reads as absurd rather than honest). Possible
+      polish: when the projected lateness is extreme (past some
+      threshold, e.g. 90+ days), phrase it as "won't finish at this
+      pace" rather than a specific wild date, without changing the
+      underlying math.
+    - **Task-name drift, self-caught by the owner (2026-07-28):** two
+      task names that were meant to represent related-but-different
+      activities under the same goal had been used inconsistently for
+      weeks before being noticed (both matched the same goal's
+      keywords, so goal-level tracking was fine, but the DISTINCTION
+      between the two activities was invisible until manually
+      reviewed). Not a bug — the substring-matching architecture
+      worked exactly as designed — but a real instance of the kind of
+      drift #96's tiered-signal idea and Data doctor's existing
+      variant-detection both partially address; no new action needed
+      beyond noting it as a live example of why those matter.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
