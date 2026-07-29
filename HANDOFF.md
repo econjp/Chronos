@@ -487,6 +487,29 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v8.66** (CRITICAL FIX + wall-of-text reduction, 2026-07-29, DONE).
+  **`_carry_signal` was silently dead for anyone who never manually
+  typed into SIGNAL**: it returned the moment it found a "SIGNAL:"
+  line in yesterday's file, even blank — which is every day's line,
+  auto-written since v6.1. The goal-seed fallback beneath it never
+  actually ran once a single blank day existed, meaning every SIGNAL-
+  dependent feature in the app (timeline color, the status-bar flag,
+  best-weeks/mood/thrash/avoid-trend insights) had nothing to work
+  with, silently, for as long as the owner never filled the line in.
+  Fixed directly from the owner's own bug report ("all the recaps...
+  signal ratio... always empty"); a blank-but-present line now falls
+  through to goal-seeding exactly like a missing line always did.
+  Also: AVOID/YEAR/METRICS no longer print unconditionally every day
+  when never used — `_line_ever_used` checks the trailing 60 days
+  before showing them (or shows them anyway if currently carrying a
+  real value); SIGNAL/ENERGY stay unconditional. Direct response to
+  "huge txt wall... not easily eye-able... I'm human not machine" —
+  a first, scoped step; #86 (grouping the Insights tab itself) is the
+  next piece of the same complaint, still open. Tested: the exact
+  reported scenario reproduced and fixed, explicit-signal-carries-
+  verbatim unaffected, no-goals-blank-line still correctly empty, and
+  the three conditional-hiding scenarios (never used / historically
+  used / currently live). Full regression + selftest.py (45/45) green.
 - **v8.65** (bug fixes + two small features straight from the owner's
   own real data, 2026-07-29, DONE). **#97 fixed**: auto-capture no
   longer creates a duplicate task-library entry for every growing

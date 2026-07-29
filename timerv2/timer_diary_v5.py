@@ -60,6 +60,29 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.66 (CRITICAL FIX: SIGNAL carry-forward was silently dead
+for anyone who never typed into it, + a wall-of-text reduction,
+2026-07-29):
+  - FIXED, high-severity: `_carry_signal` used to `return` the moment
+    it found a "SIGNAL:" line in yesterday's file, even if that line
+    was blank — which is EVERY day's line, since v6.1 writes it
+    unconditionally. The goal-seed fallback below it was therefore
+    dead code for anyone who has ever had a single blank SIGNAL day:
+    once one blank day existed, every SIGNAL-dependent feature in the
+    app (timeline color, the status-bar flag, and every insight that
+    reads signal% — best-weeks, mood, thrash, avoid-trend, and more)
+    silently had nothing to work with, forever. Now a blank-but-
+    present line falls through to goal-seeding exactly like a missing
+    line always did. Confirmed and fixed directly from the owner's
+    real report ("all the recaps... signal ratio... always empty").
+  - Wall-of-text reduction: AVOID/YEAR/METRICS used to print
+    unconditionally every single day, blank, whether or not they'd
+    ever been used — three lines of pure noise for anyone who hasn't
+    adopted those axes. They now only appear once actually in use (or
+    currently carrying a real value); SIGNAL/ENERGY stay unconditional
+    as the original pair. Direct response to "huge txt wall... not
+    easily eye-able... I'm human not machine."
+
 New in v8.65 (bug fixes + two small features from the owner's own
 data, 2026-07-29):
   - FIXED (#97): auto-capture no longer creates a new task-library
@@ -2412,6 +2435,32 @@ class App(tk.Tk):
         except OSError:
             pass
         return ""
+
+    def _line_ever_used(self, prefix, days=60):
+        """Has the owner ever actually typed something after
+        `prefix:` in the last `days` days? The morning header used to
+        print AVOID/YEAR/METRICS unconditionally, even for someone who
+        has never once used them — three blank lines of pure noise
+        every single day (owner feedback, 2026-07-29: "huge txt
+        wall... not easily eye-able"). These now only show once
+        they're actually in use, or currently carrying a real value —
+        cutting real, measured noise for anyone who hasn't adopted
+        that axis. SIGNAL/ENERGY stay unconditional; those are the
+        original, sacred pair."""
+        lower = prefix.lower() + ":"
+        d = self.today - dt.timedelta(days=1)
+        end = self.today - dt.timedelta(days=days)
+        while d >= end:
+            try:
+                with open(self.diary_path(d), encoding="utf-8") as f:
+                    for line in f:
+                        s = line.strip()
+                        if s.lower().startswith(lower) and s[len(lower):].strip():
+                            return True
+            except OSError:
+                pass
+            d -= dt.timedelta(days=1)
+        return False
 
     def _carry_year(self):
         """Backlog #64: yesterday's YEAR: line text (original case), or
@@ -4953,10 +5002,15 @@ class App(tk.Tk):
             parts += self._week_ahead_lines()
             parts += self._graveyard_lines()
         parts.append(f"SIGNAL: {self._carry_signal()}")
-        parts.append(f"AVOID: {self._carry_avoid()}")
-        parts.append(f"YEAR: {self._carry_year()}")
+        avoid = self._carry_avoid()
+        if avoid or self._line_ever_used("AVOID"):
+            parts.append(f"AVOID: {avoid}")
+        year = self._carry_year()
+        if year or self._line_ever_used("YEAR"):
+            parts.append(f"YEAR: {year}")
         parts.append("ENERGY: ")   # 1-5, optionally + a mood word ("3 anxious")
-        parts.append("METRICS: ")  # anything else: meditation=10, water=6…
+        if self._line_ever_used("METRICS"):
+            parts.append("METRICS: ")  # meditation=10, water=6…
         todos = self._carry_todos(yday)
         if todos:
             parts += ["", "TODO (carried from yesterday):"] + todos
@@ -5652,14 +5706,32 @@ class App(tk.Tk):
         return f"  THIS WEEK, TRY ONE LESS: {pick[1]}"
 
     def _carry_signal(self):
-        """Yesterday's SIGNAL line text (original case), or ''."""
+        """Yesterday's SIGNAL line text (original case) if it was
+        actually filled in, else goal-seeded.
+
+        BUG FIXED 2026-07-29: a SIGNAL line that EXISTS but was left
+        blank (true for every day since v6.1 auto-writes the line
+        unconditionally) used to `return s[7:].strip()` = "" the moment
+        the line was found — never falling through to the goal-seed
+        below. Since nearly every real day file has a SIGNAL: line
+        whether or not it was ever typed into, this made the fallback
+        effectively dead code: SIGNAL kept carrying forward empty
+        forever once a single blank day existed, silently disabling
+        every SIGNAL-dependent feature in the app (timeline color,
+        the status-bar flag, and every insight that compares against
+        signal%) for anyone who never manually typed a SIGNAL value.
+        Now an existing-but-empty line is treated the same as a
+        missing one — falls through to goal-seeding either way."""
         try:
             with open(self.diary_path(self.today - dt.timedelta(days=1)),
                       encoding="utf-8") as f:
                 for line in f:
                     s = line.strip()
                     if s.lower().startswith("signal:"):
-                        return s[7:].strip()
+                        text = s[7:].strip()
+                        if text:
+                            return text
+                        break   # found but blank -> fall through below
         except OSError:
             pass
         # no signal yet? goals seed it — the why layer sets today's focus

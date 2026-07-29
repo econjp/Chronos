@@ -4,6 +4,20 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Critical fix: SIGNAL was silently dead + less wall of text (v8.66)
+
+**If you've never once typed a value into the SIGNAL line, this fixes
+a bug that's been quietly disabling most of the signal-tracking
+features since day one.** Tomorrow's header will seed SIGNAL from
+your goals automatically, and once that's carrying a real value, the
+timeline colors, the status-bar flag, and every insight that reads
+signal% (best-weeks, mood, thrash, avoid-trend) will actually have
+something to work with.
+
+Also: AVOID/YEAR/METRICS no longer print blank every single day if
+you've never used them — one less wall of empty scaffold lines to
+scroll past each morning.
+
 ### Bug fixes + two small features (v8.65)
 
 - **Fixed**: the task library no longer fills up with duplicates of a
