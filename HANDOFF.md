@@ -497,6 +497,15 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.1** (two follow-ups from v9.0, 2026-07-29, DONE). #105: a 5th
+  timeline color (`TL_SIGNAL2`) so tier-2 matched time is visually
+  distinct from plain work, same priority order as the text metrics
+  (tier-1 > tier-2 > goal-aligned > plain work). #106: Data doctor
+  gained a header-line adoption report — which of the ~12 optional
+  header conventions actually got used in the last 60 days, reusing
+  `_line_ever_used`'s own logic (refactored into a shared
+  `_line_usage_count` core so the bool-check and the count report
+  can't drift apart). Both small, both fully tested, zero regressions.
 - **v9.0** (FLAGSHIP, 2026-07-29, DONE — the owner's own call: "this
   update shuld be rly a major update... v9 makes sense"). Two real
   additions to the core data model, not connective fixes:
@@ -3197,33 +3206,17 @@ measuring what's already there.
     nag: no notification, no forced review, no auto-archival — same
     anti-nagging precedent as #9's rejected Reopening Guard.
 
-105. **Tier-2 color in the day timeline (USABILITY — completes v9.0's
-    #96 visually, new idea 2026-07-29).** The 00-24 day timeline
-    (v5.2) currently has four colors — `TL_WORK`/`TL_BREAK`/
-    `TL_SIGNAL`/`TL_GOAL` — and SIGNAL2 (v9.0) has no color of its own,
-    so tier-2 time currently paints as plain work-blue, indistinguishable
-    from untagged work at a glance even though the text-based totals
-    line and insight already know the difference. Fix: a fifth color
-    (`TL_SIGNAL2`, visually related to but distinct from `TL_SIGNAL` —
-    e.g. a lighter/desaturated green) in the same `work_color(task)`
-    lookup (`~line 5064`) that already resolves tier-1/goal/plain —
-    one more branch, no new data, no new drawing code beyond the
-    existing rectangle-fill loop.
+105. ~~**Tier-2 color in the day timeline.**~~ — FIXED v9.1. `TL_SIGNAL2`
+    (a lighter/desaturated green) added to `work_color(task)`, checked
+    after tier-1 and before goal-aligned — same priority order the
+    text metrics already use.
 
-106. **Header-line adoption panel (META — different surface than #56's
-    usage meter, new idea 2026-07-29).** #56 counts View-menu COMMAND
-    clicks (Tools > "Feature usage…"); nothing shows the parallel
-    picture for the ~13 optional header-LINE conventions that have
-    accumulated (SIGNAL2, AVOID, YEAR, METRICS, WORKBLOCK, DECIDED,
-    CAPSULE, COMMIT, EXPERIMENT, TODAY…) — which ones actually got
-    adopted vs set once and forgotten. The plumbing already exists:
-    `_line_ever_used(prefix, days)` is called once per axis today just
-    to decide morning-header visibility; a small Data-doctor-style
-    view could run it across every known prefix at once and just
-    report the table — "SIGNAL2: used 12 of last 60 days · WORKBLOCK:
-    used 8 of last 60 days · YEAR: not used in 60 days" — pure
-    read-only reporting, reuses `_line_ever_used` as-is (maybe widened
-    to return a count instead of a bool, one small signature change).
+106. ~~**Header-line adoption panel.**~~ — FIXED v9.1. Data doctor now
+    reports usage of all ~12 optional header-line conventions from one
+    table. `_line_ever_used` refactored into a thin wrapper over the
+    new `_line_usage_count(prefix, days)`, so the bool-check that
+    gates morning-header visibility and the count report can never
+    drift apart — one scan, two views.
 
 107. **WORKBLOCK-aware scheduler (PLANNING — a gap v9.0's own WORKBLOCK
     left, new idea 2026-07-29).** v9.0 wired `WORKBLOCK:` into idle/

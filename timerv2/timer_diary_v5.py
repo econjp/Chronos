@@ -60,6 +60,15 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.1 (two follow-ups from v9.0):
+  - #105: the day timeline gets a 5th color (TL_SIGNAL2) for tier-2
+    matched time — was previously indistinguishable from plain work.
+  - #106: Data doctor now reports header-line adoption — which of the
+    ~12 optional header conventions (SIGNAL2, WORKBLOCK, AVOID, YEAR,
+    METRICS…) you've actually used in the last 60 days vs never
+    touched. Read-only, reuses the existing _line_ever_used plumbing
+    (refactored to share a counting core, _line_usage_count).
+
 New in v9.0 (FLAGSHIP: tiered SIGNAL + declared work-block windows —
 two real additions to the core data model, not connective fixes):
   - #96 TIERED SIGNAL: a new SIGNAL2: header line — a second, DISCRETE
@@ -2571,6 +2580,29 @@ class App(tk.Tk):
             pass
         return ""
 
+    def _line_usage_count(self, prefix, days=60):
+        """How many of the last `days` days actually had something
+        typed after `prefix:`? The counting core behind
+        _line_ever_used (bool) and #106's adoption panel (the count
+        itself) — one file-scanning loop, two views on the same
+        question."""
+        lower = prefix.lower() + ":"
+        n = 0
+        d = self.today - dt.timedelta(days=1)
+        end = self.today - dt.timedelta(days=days)
+        while d >= end:
+            try:
+                with open(self.diary_path(d), encoding="utf-8") as f:
+                    for line in f:
+                        s = line.strip()
+                        if s.lower().startswith(lower) and s[len(lower):].strip():
+                            n += 1
+                            break
+            except OSError:
+                pass
+            d -= dt.timedelta(days=1)
+        return n
+
     def _line_ever_used(self, prefix, days=60):
         """Has the owner ever actually typed something after
         `prefix:` in the last `days` days? The morning header used to
@@ -2582,20 +2614,32 @@ class App(tk.Tk):
         cutting real, measured noise for anyone who hasn't adopted
         that axis. SIGNAL/ENERGY stay unconditional; those are the
         original, sacred pair."""
-        lower = prefix.lower() + ":"
-        d = self.today - dt.timedelta(days=1)
-        end = self.today - dt.timedelta(days=days)
-        while d >= end:
-            try:
-                with open(self.diary_path(d), encoding="utf-8") as f:
-                    for line in f:
-                        s = line.strip()
-                        if s.lower().startswith(lower) and s[len(lower):].strip():
-                            return True
-            except OSError:
-                pass
-            d -= dt.timedelta(days=1)
-        return False
+        return self._line_usage_count(prefix, days) > 0
+
+    _HEADER_LINE_PREFIXES = ("SIGNAL", "SIGNAL2", "AVOID", "YEAR", "ENERGY",
+                             "METRICS", "WORKBLOCK", "TODAY", "DECIDED",
+                             "CAPSULE", "COMMIT", "EXPERIMENT")
+
+    def _header_line_adoption_lines(self, days=60):
+        """Backlog #106: a different surface than #56's usage meter
+        (that counts View-menu COMMAND clicks) — this reports which of
+        the ~12 optional header-LINE conventions are actually adopted
+        vs set once and forgotten, reusing _line_usage_count as-is.
+        Read-only, no new data, no nagging — just the table."""
+        counts = {p: self._line_usage_count(p, days)
+                 for p in self._HEADER_LINE_PREFIXES}
+        used = {p: n for p, n in counts.items() if n}
+        lines = [f"Header-line usage (last {days} days):"]
+        if not used:
+            lines.append("  nothing typed yet beyond SIGNAL/ENERGY — see "
+                         "Tools > Quick reference for what each line is for")
+            return lines
+        for p, n in sorted(used.items(), key=lambda x: -x[1]):
+            lines.append(f"  {p + ':':<11} used {n} of last {days} days")
+        unused = [p for p in self._HEADER_LINE_PREFIXES if p not in used]
+        if unused:
+            lines.append(f"  never used: {', '.join(unused)}")
+        return lines
 
     # ----- declared work-block window (backlog #100, first half): a
     # 9-5 day job or similar external commitment is already spoken for —
@@ -4981,6 +5025,10 @@ class App(tk.Tk):
     TL_SLEEP = "#454569"
     TL_GOAL = "#8a5ba3"   # goal-aligned but not today's declared signal —
                           # e.g. a run, when today's signal is "thesis"
+    TL_SIGNAL2 = "#7fbf7f"   # backlog #105: SIGNAL2's own tier-2 color —
+                             # a lighter/desaturated TL_SIGNAL, distinct at
+                             # a glance but visibly related (same family,
+                             # one rank down)
     WORKOUT_DOT_MIN = 10   # minutes — filters Apple Watch's auto-detected
                             # "Other" activity blips from a real workout
 
@@ -5057,11 +5105,14 @@ class App(tk.Tk):
                                text="zzz (set)" if band[2] else "zzz (est.)",
                                fill="#c8c8dc", font=("Segoe UI", 7))
         kws = self._signal_kws()
+        kws2 = self._signal2_kws()
         goal_kws = [self._match_kws(g.get("match")) for g in self.goals()]
 
         def work_color(task):
             if kws and self._is_signal(task, kws):
                 return self.TL_SIGNAL
+            if kws2 and self._is_signal(task, kws2):
+                return self.TL_SIGNAL2
             if any(task_matches(task, gk) for gk in goal_kws):
                 return self.TL_GOAL
             return self.TL_WORK
@@ -10724,6 +10775,7 @@ class App(tk.Tk):
         def render():
             lines, rename, junk, dups = self._doctor_scan()
             lines = self._sensor_health_lines() + ["", *lines]
+            lines += ["", *self._header_line_adoption_lines()]
             backup_line = backup_integrity_line()
             if backup_line:
                 lines = [backup_line, ""] + lines

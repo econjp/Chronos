@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.1 — two v9.0 follow-ups
+
+- Day timeline gets a 5th color for tier-2 (SIGNAL2) matched time —
+  was invisible before, blended into plain work.
+- Data doctor now reports header-line adoption: which of the ~12
+  optional header conventions you've actually used in the last 60
+  days vs never touched.
+
 ### v9.0 — flagship: tiered SIGNAL + declared work-block windows
 
 Two real additions to the core data model, not connective fixes:
