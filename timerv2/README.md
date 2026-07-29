@@ -4,6 +4,23 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Four backlog items, priority order (v8.69)
+
+- **Capacity fix:** protected windows (lunch, wind-down) now shrink the
+  capacity dashboard and cost-of-yes preview, not just the scheduler —
+  they used to quietly disagree about whether that hour was available.
+- **Cost of yes** also flags pre-existing blocked task-library items
+  under the same goal when previewing a new deadline: "heads up: N
+  task(s) under 'X' are already blocked".
+- **File > "Open a day file…"** is now a lighter in-app picker — a
+  recent-days list plus yesterday/a week ago/a month ago jump buttons,
+  reading straight into a text pane. The old OS file dialog is still
+  there as "Browse for a day file (file picker)…".
+- **Insights tab** findings (sleep, energy, deep hours, streaks,
+  trends, 20+ of them) are no longer one flat block — grouped under
+  TIME & FOCUS / ENERGY & BODY / MOMENTUM & TRENDS. Copy for AI review
+  carries the same grouping.
+
 ### Quick reference (v8.68)
 
 **Tools > "Quick reference — what does this app do?…"** — a real

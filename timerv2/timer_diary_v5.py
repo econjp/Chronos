@@ -60,6 +60,28 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.69 (four backlog items, priority/value order):
+  - #82 FIX: protected windows (lunch, wind-down) subtracted from the
+    scheduler's block placement but not from the separate aggregate-
+    hours capacity model (_day_capacity → the capacity dashboard and
+    cost-of-yes preview) — two capacity models silently disagreeing.
+    Now both subtract the same daily protected-window hours.
+  - #84: "cost of yes" (the live slack preview when adding a new
+    deadline) now also flags pre-existing blocked task-library items
+    under the same goal — "heads up: N task(s) under 'X' are already
+    blocked" — so a capacity decision sees blockers, not just hours.
+  - #93: File > "Open a day file…" is now a lighter in-app picker (a
+    Listbox of the last 30 days + yesterday/a week ago/a month ago
+    jump buttons, reading straight into a Text pane) instead of
+    launching straight into the OS file dialog — the old dialog is
+    still one click away as "Browse for a day file (file picker)…".
+  - #86: the Insights tab's 20+ independent findings (sleep, energy,
+    deep hours, streaks, trends, etc.) used to concatenate into one
+    flat undifferentiated block. Now grouped under three sub-headers
+    — TIME & FOCUS / ENERGY & BODY / MOMENTUM & TRENDS — tagged at
+    the point each finding is generated, not guessed from the
+    rendered sentence. "Copy for AI review" carries the same grouping.
+
 New in v8.68 (quick reference restructured, owner's own follow-up
 feedback):
   - Three changes to v8.67's quick reference, all direct feedback:
@@ -2703,7 +2725,9 @@ class App(tk.Tk):
         m = tk.Menu(self)
         filem = tk.Menu(m, tearoff=0)
         filem.add_command(label="Add past session…", command=self._add_past_session)
-        filem.add_command(label="Open a day file…", command=self._open_day_file)
+        filem.add_command(label="Open a day file…", command=self._quick_day_nav)
+        filem.add_command(label="Browse for a day file (file picker)…",
+                          command=self._open_day_file)
         filem.add_command(label="Export week to calendar (.ics)", command=self._export_ics)
         filem.add_command(label="Export life record (JSON)…",
                           command=self._export_life_json)
@@ -2951,7 +2975,8 @@ class App(tk.Tk):
                     except ValueError:
                         continue
                     line = self._cost_of_yes_line(
-                        {"name": name, "date": date_s, "total_h": total},
+                        {"name": name, "date": date_s, "total_h": total,
+                         "goal": row[6].get() or None},
                         existing=cur)
                     preview_lbl.config(text=line or "")
                     return
@@ -6735,6 +6760,93 @@ class App(tk.Tk):
         if p:
             os.startfile(p)
 
+    def _quick_day_nav(self):
+        """Backlog #93: the owner's own ask — a lighter way to open a
+        previous day than the OS file-picker (which starts back in the
+        diary folder every time, the exact friction being complained
+        about). A recent-days list plus a few relative jumps
+        ("yesterday", "a week ago", "a month ago"); picking a day reads
+        it straight into a Text pane, same two-pane Listbox+Text shape
+        as the Help window. 'Open in Notepad' stays one click away for
+        anyone who wants to actually edit."""
+        try:
+            names = sorted((fn for fn in os.listdir(self.diary_dir())
+                           if fn.endswith(".txt")), reverse=True)
+        except OSError:
+            names = []
+        days = []
+        for fn in names[:30]:
+            try:
+                days.append(dt.date.fromisoformat(fn[:-4]))
+            except ValueError:
+                continue
+
+        win = tk.Toplevel(self)
+        win.title("Open a day file")
+        win.geometry("760x520")
+        win.rowconfigure(1, weight=1)
+        win.columnconfigure(1, weight=1)
+
+        jump = ttk.Frame(win)
+        jump.grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 4))
+        ttk.Label(jump, text="Jump to:").pack(side="left")
+
+        side = tk.Listbox(win, width=16, exportselection=False,
+                          font=("Segoe UI", 9), activestyle="dotbox",
+                          relief="sunken", borderwidth=2)
+        side.grid(row=1, column=0, sticky="ns", padx=(8, 4), pady=(0, 4))
+        for day in days:
+            side.insert("end", f"{day:%a %d.%m.%Y}")
+
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10),
+                      padx=10, pady=8, relief="sunken", borderwidth=2)
+        txt.grid(row=1, column=1, sticky="nsew", padx=(0, 8), pady=(0, 4))
+
+        current = {"day": None}
+
+        def show(day):
+            current["day"] = day
+            try:
+                with open(self.diary_path(day), encoding="utf-8") as f:
+                    body = f.read()
+            except OSError:
+                body = "(no file for this date)"
+            txt.config(state="normal")
+            txt.delete("1.0", "end")
+            txt.insert("1.0", body)
+            txt.config(state="disabled")
+            win.title(f"Open a day file — {day:%A %d.%m.%Y}")
+
+        def show_selected(event=None):
+            sel = side.curselection()
+            if sel:
+                show(days[sel[0]])
+
+        def jump_to(delta):
+            target = self.today - dt.timedelta(days=delta)
+            if target in days:
+                side.selection_clear(0, "end")
+                side.selection_set(days.index(target))
+                side.see(days.index(target))
+            show(target)
+
+        side.bind("<<ListboxSelect>>", show_selected)
+        for label, delta in (("yesterday", 1), ("a week ago", 7),
+                             ("a month ago", 30)):
+            ttk.Button(jump, text=label,
+                      command=lambda d=delta: jump_to(d)).pack(side="left",
+                                                               padx=(6, 0))
+
+        btns = ttk.Frame(win)
+        btns.grid(row=2, column=0, columnspan=2, sticky="e", padx=8, pady=(0, 8))
+        ttk.Button(btns, text="Open in Notepad…",
+                  command=lambda: current["day"] and os.startfile(
+                      self.diary_path(current["day"]))).pack(side="right")
+
+        if days:
+            side.selection_set(0)
+            show(days[0])
+
     def _diary_rank_days(self, query, max_days=2000):
         """Backlog #14: an honest BETTER keyword search, not fake semantic
         search (no embeddings — stdlib-only rule stands). Splits the query
@@ -7469,13 +7581,25 @@ class App(tk.Tk):
         self.status.config(text=f"Calendar linked — {nxt14:.1f}h of meetings "
                                 "in the next 14 days now reduce capacity.")
 
+    def _protected_hours(self):
+        """Backlog #82: total daily hours claimed by protected windows
+        (lunch, wind-down) — same intervals _free_slots already
+        subtracts from the scheduler, summed to a plain hour figure so
+        _day_capacity's separate aggregate-hours model can subtract
+        them too. Without this, declaring a lunch window stops the
+        scheduler from booking over it but the capacity dashboard and
+        cost-of-yes preview kept quietly counting that hour as
+        available — two capacity models disagreeing."""
+        return sum(_time_span_hours(s, e) for s, e in self._protected_intervals())
+
     def _day_capacity(self, d):
         """Net available hours on one date: weekday capacity minus
-        calendar busy time; zero on off days."""
+        calendar busy time minus protected windows; zero on off days."""
         if d.isoformat() in self.settings.get("off_dates", []):
             return 0.0
         return max(0.0, self._capacity()[d.weekday()]
-                   - self._busy_data().get(d.isoformat(), 0.0))
+                   - self._busy_data().get(d.isoformat(), 0.0)
+                   - self._protected_hours())
 
     def _avail_hours(self, until):
         """Net capacity hours from today through `until` (inclusive)."""
@@ -7603,6 +7727,13 @@ class App(tk.Tk):
             per_day = give / max(worst_left, 1)
             line += (f" — {worst_name} would need to give up "
                     f"{per_day:.1f}h/day to make room")
+        goal = hypothetical.get("goal")
+        if goal:
+            blocked = [t for t in self.settings.get("tasks", [])
+                      if t.get("goal") == goal and t.get("blocked_by")]
+            if blocked:
+                line += (f" — heads up: {len(blocked)} task(s) under "
+                        f"'{goal}' are already blocked")
         return line
 
     def _reallocation_line(self):
@@ -9120,9 +9251,14 @@ class App(tk.Tk):
             lines += [" " + s for s in self._capacity_lines()]
 
         lines += ["", "INSIGHTS — your last 60 days, cross-referenced"]
-        ins = self._insight_lines()
+        ins = self._insight_lines_grouped()
         if ins:
-            lines += ["  · " + s for s in ins]
+            for theme in self._INSIGHT_THEMES:
+                group = [line for th, line in ins if th == theme]
+                if not group:
+                    continue
+                lines.append(f"  — {theme} —")
+                lines += ["    · " + s for s in group]
         else:
             lines.append("  (still collecting — these appear as sleep, "
                          "estimate and streak history builds up)")
@@ -9700,10 +9836,25 @@ class App(tk.Tk):
                     "aren't the same axis"]
         return []
 
+    _INSIGHT_THEMES = ("TIME & FOCUS", "ENERGY & BODY", "MOMENTUM & TRENDS")
+
     def _insight_lines(self, days=60):
-        """Rule-based findings that each connect two data sources the app
-        already collects. Every line is your own history — it only speaks
-        when there are enough samples to mean something."""
+        """Flat text for callers that don't care about theme (life
+        review's top-3 excerpt) — same findings as _insight_lines_grouped,
+        theme tags stripped."""
+        return [line for _, line in self._insight_lines_grouped(days)]
+
+    def _insight_lines_grouped(self, days=60):
+        """Backlog #86: the 20+ independent findings below used to
+        concatenate into one undifferentiated block — the flat-text
+        problem v8.64 already fixed for the View menu, not yet fixed
+        here. Each finding is tagged with one of _INSIGHT_THEMES at the
+        point it's generated (a text classifier over the rendered
+        sentences would be guesswork and rot as wording changes; tagging
+        at the source is exact and free). Rule-based findings that each
+        connect two data sources the app already collects. Every line is
+        your own history — it only speaks when there are enough samples
+        to mean something."""
         out = []
         idx = day_index()
         # sleep x output — the reason the health import exists.
@@ -9721,10 +9872,11 @@ class App(tk.Tk):
         if len(good) >= 3 and len(short) >= 3:
             g = sum(good) / len(good) / 60
             s = sum(short) / len(short) / 60
-            out.append(f"on days you tracked work: after ≥7h sleep you "
+            out.append(("ENERGY & BODY",
+                       f"on days you tracked work: after ≥7h sleep you "
                        f"averaged {g:.1f}h of work ({len(good)} such days) "
                        f"vs {s:.1f}h after <7h sleep ({len(short)} days) "
-                       f"— a {g - s:+.1f}h/day difference")
+                       f"— a {g - s:+.1f}h/day difference"))
         # energy x everything — the 1-5 you type into the header. Same
         # active-days-only filter as above, same reason.
         ehi, elo, en_sl = [], [], []
@@ -9742,17 +9894,19 @@ class App(tk.Tk):
             if sl:
                 en_sl.append((sl, e))
         if len(ehi) >= 3 and len(elo) >= 3:
-            out.append(f"on days you tracked work: energy ≥4 averaged "
+            out.append(("ENERGY & BODY",
+                       f"on days you tracked work: energy ≥4 averaged "
                        f"{sum(ehi) / len(ehi) / 60:.1f}h of work "
                        f"({len(ehi)} days) vs {sum(elo) / len(elo) / 60:.1f}h "
                        f"on energy ≤2 days ({len(elo)} days) — protect what "
-                       "charges you, it IS the productivity")
+                       "charges you, it IS the productivity"))
         g_e = [e for sl, e in en_sl if sl >= 7]
         s_e = [e for sl, e in en_sl if sl < 7]
         if len(g_e) >= 3 and len(s_e) >= 3:
-            out.append(f"energy after ≥7h sleep: {sum(g_e) / len(g_e):.1f}/5 · "
+            out.append(("ENERGY & BODY",
+                       f"energy after ≥7h sleep: {sum(g_e) / len(g_e):.1f}/5 · "
                        f"after <7h: {sum(s_e) / len(s_e):.1f}/5 — your own "
-                       "body, measured")
+                       "body, measured"))
         # deep hours — when the work actually happens
         by_hour, tot = [0] * 24, 0
         cutoff = (self.today - dt.timedelta(days=days)).isoformat()
@@ -9768,9 +9922,10 @@ class App(tk.Tk):
             tot += m
         if tot >= 20 * 60:
             best, h0 = max((sum(by_hour[h:h + 3]), h) for h in range(22))
-            out.append(f"deep hours {h0:02d}–{h0 + 3:02d}: "
+            out.append(("TIME & FOCUS",
+                       f"deep hours {h0:02d}–{h0 + 3:02d}: "
                        f"{round(100 * best / tot)}% of all your work lands "
-                       "there — guard that window, schedule meetings outside it")
+                       "there — guard that window, schedule meetings outside it"))
         # focus block length — fragmentation trend
         monday = self.today - dt.timedelta(days=self.today.weekday())
         prev_lo = monday - dt.timedelta(days=21)
@@ -9792,14 +9947,16 @@ class App(tk.Tk):
             verdict = ("more fragmented — batch the interruptions"
                        if ca < 0.85 * pa else
                        "deeper focus" if ca > 1.15 * pa else "steady")
-            out.append(f"average unbroken work block {ca:.0f}m this week vs "
-                       f"{pa:.0f}m the 3 weeks before — {verdict}")
+            out.append(("TIME & FOCUS",
+                       f"average unbroken work block {ca:.0f}m this week vs "
+                       f"{pa:.0f}m the 3 weeks before — {verdict}"))
         # estimate honesty
         ef = self._estimate_factor()
         if ef:
-            out.append(f"estimates: actuals run ×{ef[0]:.1f} across "
+            out.append(("MOMENTUM & TRENDS",
+                       f"estimates: actuals run ×{ef[0]:.1f} across "
                        f"{ef[1]} finished tasks — read every [2h] as "
-                       f"{2 * ef[0]:.1f}h when planning")
+                       f"{2 * ef[0]:.1f}h when planning"))
         # streaks — an honestly-declared short day (#37's TODAY: line)
         # never breaks it; only checked within a recent lookback so an
         # old declared day doesn't force a file-open per day across the
@@ -9823,8 +9980,9 @@ class App(tk.Tk):
             else:
                 cur_s = 0
         if best:
-            out.append(f"streak: {run} active day(s) (≥30m) · best in "
-                       f"16 weeks: {best}")
+            out.append(("MOMENTUM & TRENDS",
+                       f"streak: {run} active day(s) (≥30m) · best in "
+                       f"16 weeks: {best}"))
 
         # weekday patterns — is one day of the week genuinely weaker,
         # not just noise. Needs every weekday represented (n>=3 each)
@@ -9843,10 +10001,11 @@ class App(tk.Tk):
             if avgs[best_i] > 0:
                 diff_pct = round(100 * (avgs[best_i] - avgs[worst_i]) / avgs[best_i])
                 if diff_pct >= 20:
-                    out.append(f"{names[worst_i]}s average {avgs[worst_i]:.1f}h vs "
+                    out.append(("TIME & FOCUS",
+                              f"{names[worst_i]}s average {avgs[worst_i]:.1f}h vs "
                               f"{names[best_i]}s at {avgs[best_i]:.1f}h — "
                               f"{diff_pct}% weaker, worth knowing before "
-                              "scheduling something hard there")
+                              "scheduling something hard there"))
 
         # meeting load vs deep hours — does a busy calendar day actually
         # cost you focus, or do you work around it fine
@@ -9864,14 +10023,15 @@ class App(tk.Tk):
             la = sum(light) / len(light) / 60
             verdict = ("meetings are eating your focus" if ha < 0.85 * la
                       else "holding up fine around meetings")
-            out.append(f"days with ≥2h of meetings: {ha:.1f}h of work "
+            out.append(("TIME & FOCUS",
+                       f"days with ≥2h of meetings: {ha:.1f}h of work "
                        f"({len(heavy)} days) vs {la:.1f}h on lighter-calendar "
-                       f"days ({len(light)} days) — {verdict}")
+                       f"days ({len(light)} days) — {verdict}"))
 
         # meeting fragmentation tax (backlog #21): the load check above
         # only counts HOURS; this prices the SPLITTING a meeting does to
         # the open time around it
-        out += self._meeting_fragmentation_lines()
+        out += [("TIME & FOCUS", l) for l in self._meeting_fragmentation_lines()]
 
         # break-ratio drift — is the work:break balance creeping the
         # wrong way, not just this week being unusually chatty
@@ -9892,24 +10052,25 @@ class App(tk.Tk):
             cur_ratio = cur_b / (cur_w + cur_b)
             prev_ratio = prev_b / (prev_w + prev_b)
             if cur_ratio > prev_ratio + 0.10:
-                out.append(f"breaks are {round(100 * cur_ratio)}% of tracked "
+                out.append(("TIME & FOCUS",
+                           f"breaks are {round(100 * cur_ratio)}% of tracked "
                            f"time this week vs {round(100 * prev_ratio)}% the "
-                           "3 weeks before — drifting, worth a look")
+                           "3 weeks before — drifting, worth a look"))
 
-        out += self._procrastination_insight()
-        out += self._break_insight()
-        out += self._block_decay_lines()
-        out += self._first_hour_audit()
-        out += self._thrash_insight()
-        out += self._shallow_work_lines()
-        out += self._mood_insight()
-        out += self._metrics_insight()
-        out += self._daylight_insight()
-        out += self._word_drift_insight()
-        out += self._word_fade_insight()
-        out += self._lag_insight()
-        out += self._best_weeks_lines()
-        out += self._trajectory_lines()
+        out += [("TIME & FOCUS", l) for l in self._procrastination_insight()]
+        out += [("TIME & FOCUS", l) for l in self._break_insight()]
+        out += [("TIME & FOCUS", l) for l in self._block_decay_lines()]
+        out += [("TIME & FOCUS", l) for l in self._first_hour_audit()]
+        out += [("TIME & FOCUS", l) for l in self._thrash_insight()]
+        out += [("TIME & FOCUS", l) for l in self._shallow_work_lines()]
+        out += [("ENERGY & BODY", l) for l in self._mood_insight()]
+        out += [("MOMENTUM & TRENDS", l) for l in self._metrics_insight()]
+        out += [("ENERGY & BODY", l) for l in self._daylight_insight()]
+        out += [("MOMENTUM & TRENDS", l) for l in self._word_drift_insight()]
+        out += [("MOMENTUM & TRENDS", l) for l in self._word_fade_insight()]
+        out += [("MOMENTUM & TRENDS", l) for l in self._lag_insight()]
+        out += [("MOMENTUM & TRENDS", l) for l in self._best_weeks_lines()]
+        out += [("MOMENTUM & TRENDS", l) for l in self._trajectory_lines()]
         return out
 
     def _trajectory_lines(self, weeks=8):

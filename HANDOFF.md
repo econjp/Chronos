@@ -487,6 +487,29 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v8.69** (four backlog items in priority/value order, 2026-07-29,
+  DONE). #82: fixed a real capacity-model inconsistency this session's
+  own v8.58 protected-windows feature created — protected windows
+  subtracted from the scheduler but not from `_day_capacity`'s
+  separate aggregate-hours model, so the capacity dashboard and cost-
+  of-yes preview kept counting a declared lunch/wind-down window as
+  available. #84: cost-of-yes now surfaces pre-existing `blocked_by`
+  task-library items under the same goal as the hypothetical deadline
+  — connects v8.60 and v8.61, no new computation. #93: File > "Open a
+  day file…" is a lighter in-app picker (recent-days Listbox + relative
+  jump buttons, reusing the diary-read path) instead of going straight
+  to the OS file dialog — the owner's own ask from 2026-07-19. #86: the
+  Insights tab's 20+ independent findings, previously one flat
+  undifferentiated block (the same wall-of-text problem v8.64 fixed
+  for the View menu), now group under three theme sub-headers (TIME &
+  FOCUS / ENERGY & BODY / MOMENTUM & TRENDS) tagged at the point each
+  finding is generated — resolved as thematic grouping (design option
+  (a) from the original backlog note), not severity ranking (option
+  (b)), since no severity/actionability score exists yet; revisit if
+  backlog #56's usage-meter data accumulates enough to rank by what's
+  actually acted on. `_insight_lines()` stays a flat-string wrapper
+  around the new `_insight_lines_grouped()` for the one caller (life
+  review's top-3 excerpt) that doesn't need themes.
 - **v8.68** (quick reference restructured, direct follow-up feedback
   on v8.67, 2026-07-29, DONE). Three changes: (1) moved from a new
   top-level Help menu into Tools > "Quick reference — what does this
@@ -2757,20 +2780,13 @@ measuring what's already there.
     need tuning on their Windows version, that's the first thing to
     check.
 
-82. **Protected windows should shrink the capacity totals too, not just
-    the scheduler (TRUST — an inconsistency this session's own work
-    created).** v8.58's protected time windows (lunch, wind-down)
-    subtract from `_free_slots` — the scheduler's block-placement math
-    — but `_day_capacity`/`_avail_hours`/`_capacity_lines`/v8.61's cost
-    of yes are a SEPARATE aggregate-hours model (weekday capacity minus
-    calendar busy time) that never learned about them. Declare a
-    1h lunch window and the schedule correctly stops offering to book
-    over it, but the capacity dashboard and cost-of-yes preview still
-    quietly count that hour as available — two capacity models
-    disagreeing with each other is exactly the kind of honesty gap
-    this app usually catches elsewhere. Fix: `_day_capacity` should
-    also subtract each protected window's daily duration from the
-    weekday capacity figure, same primitive, one more subtraction.
+82. ~~**Protected windows should shrink the capacity totals too, not just
+    the scheduler.**~~ — FIXED v8.69. New `_protected_hours()` sums
+    `_protected_intervals()` (the same intervals `_free_slots` already
+    subtracts) into a plain daily-hours figure; `_day_capacity` now
+    subtracts it alongside busy-calendar time. `_avail_hours` and
+    `_capacity_lines`/cost-of-yes inherit the fix for free since they
+    both already route through `_day_capacity`.
 
 83. **Milestone-aware status export (USABILITY, connects v8.59 and
     v8.62).** The conversation-ready status export currently reports a
@@ -2782,16 +2798,13 @@ measuring what's already there.
     existing date-based phrasing when no milestones are declared. Pure
     composition of two things that already exist; no new data.
 
-84. **Cost of yes should surface pre-existing blocked work under the
-    same goal (PLANNING, connects v8.60 and v8.61).** Previewing a new
-    deadline's capacity cost currently only looks at hours; if the
-    goal it's linked to already has blocked task-library items
-    (v8.60's `blocked_by`), that's relevant context for the same
-    decision — "heads up: 2 task(s) under this goal are already
-    blocked" alongside the slack preview. A one-line addition to
-    `_cost_of_yes_line`'s output when `hypothetical.get("goal")`
-    matches blocked tasks' own goal linkage; silent when nothing's
-    blocked, same as today.
+84. ~~**Cost of yes should surface pre-existing blocked work under the
+    same goal.**~~ — FIXED v8.69. `_cost_of_yes_line` takes a `goal`
+    key on `hypothetical` now (the deadline-editor's live preview
+    passes the row's goal combobox value); when set, counts
+    `blocked_by` task-library items sharing that goal and appends
+    "heads up: N task(s) under 'X' are already blocked". Silent when
+    no goal or nothing's blocked, same as before.
 
 85. **Reconcile the focus signature grid with the weekday-aware
     peak-hour profile idea (ANALYSIS — avoid building the same 2D grid
@@ -2806,23 +2819,19 @@ measuring what's already there.
     computation feeding two consumers, not two nearly-identical ones
     maintained in parallel.
 
-86. **Group/prioritize `_insight_lines()` (USABILITY — the one
-    genuinely flat surface left, named in the 2026-07-15 reflection
-    above).** 20+ independent insight generators concatenate into one
-    undifferentiated block feeding the Insights tab and Copy-for-AI-
-    review — the mirror image of the View-menu scatter v8.64 just
-    fixed, not yet addressed. Real design questions to resolve before
-    building, not just formatting: (a) group by theme (mirroring the
-    View menu's own Planning/Memory/Values split, or a Time/Health/
-    Money-of-attention split specific to insights) vs (b) rank by how
-    UNUSUAL or ACTIONABLE each finding is this week and show only the
-    top N, pushing the rest behind a "show all" — (b) is more honest
-    to the "don't drown the one thing that matters in nineteen that
-    don't" problem but needs a real severity/actionability score,
-    which doesn't exist yet. Check backlog #56's usage-meter data
-    first if it's accumulated anything by the time this gets picked
-    up — which insights get referenced/acted on in practice should
-    inform the grouping, not a guess.
+86. ~~**Group/prioritize `_insight_lines()`.**~~ — FIXED v8.69. Went
+    with design option (a), thematic grouping, not (b) severity
+    ranking — no severity/actionability score exists yet and backlog
+    #56's usage-meter data hasn't accumulated enough to build one
+    honestly. Each of the 20+ finding generators is now tagged with
+    one of three themes (TIME & FOCUS / ENERGY & BODY / MOMENTUM &
+    TRENDS) at the point it's generated — `_insight_lines_grouped()`
+    returns `[(theme, line), ...]`; `_insight_lines()` is now a thin
+    flat-string wrapper for the one caller that doesn't need themes
+    (life review's top-3 excerpt). The Insights tab and Copy-for-AI-
+    review both render the three theme sub-headers. Revisit option
+    (b) later if #56's data ever gets there — ranking by what's
+    actually acted on beats a fixed theme order.
 
 87. **Coverage map — are we actually using what we already have
     (TRUST — the data-completeness answer, made checkable instead of
@@ -2892,17 +2901,14 @@ measuring what's already there.
     path as the Tasks window, no `exec()`/`eval()`. Status bar reports
     the match or "no item matches" — never silently does nothing.
 
-93. **Quick day-file navigator (USABILITY — owner's own ask,
-    2026-07-19: "nice way to open previous days... without having to
-    navigate the files").** File > "Open a day file…" exists but goes
-    through `filedialog.askopenfilename` — a real OS file-picker dialog
-    starting in the diary folder, which is exactly the "navigate the
-    files" friction being asked to remove. A lighter in-app picker
-    instead: a small dropdown/list of recent day files (last 14-30
-    days, or a simple date-jump: "yesterday", "a week ago", "a month
-    ago") that opens directly into the same viewer #12's on-this-day
-    and #14's ask-your-diary already read files through — reuses
-    existing read paths, the only new part is the picker UI itself.
+93. ~~**Quick day-file navigator.**~~ — FIXED v8.69. File > "Open a
+    day file…" is now `_quick_day_nav`: a two-pane Listbox+Text picker
+    (same shape as v8.68's Help window) listing the last 30 day files,
+    plus yesterday/a week ago/a month ago jump buttons, reading
+    straight into the Text pane via the existing `diary_path` read
+    path. "Open in Notepad…" stays one click away for editing. The old
+    file-dialog behavior is still there as "Browse for a day file
+    (file picker)…", one entry down.
 
 94. **Scheduled break appointment (PLANNING — owner's own ask,
     2026-07-19, Finnish: "if it's 12:00 now, set a timer for a break at
