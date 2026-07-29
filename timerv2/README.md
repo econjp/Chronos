@@ -1,8 +1,27 @@
-# TimerDiary v8
+# TimerDiary v9
 
 The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
+
+### v9.0 — flagship: tiered SIGNAL + declared work-block windows
+
+Two real additions to the core data model, not connective fixes:
+
+- **`SIGNAL2:`** — a second, discrete priority tier. "SIGNAL: thesis"
+  / "SIGNAL2: hegemon" when two things matter today but one is clearly
+  sharper. SIGNAL's own number is untouched — SIGNAL2 is a strictly
+  separate bucket, reported alongside it ("signal 45% +20% tier-2"),
+  never blended in. Carries forward automatically; the header line
+  only shows up once you've actually used it.
+- **`WORKBLOCK: 09:00-17:00`** — declare an externally-committed
+  window (a day job). Inside it, idle detection and the screen-lock
+  break detector both wait about 3x longer before offering to log a
+  break, since a quick meeting or email check during already-spoken-
+  for time isn't the same as a real break. Carries forward like AVOID.
+
+Both are fully additive — a day file that never uses either line
+behaves exactly like before.
 
 ### Four backlog items, priority order (v8.69)
 

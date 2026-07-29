@@ -60,6 +60,34 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.0 (FLAGSHIP: tiered SIGNAL + declared work-block windows —
+two real additions to the core data model, not connective fixes):
+  - #96 TIERED SIGNAL: a new SIGNAL2: header line — a second, DISCRETE
+    priority tier, not a blend. This does NOT touch the "Signal vs.
+    maintenance" precedent (resolved 2026-07-13, see the design rules
+    section): SIGNAL keeps meaning exactly what it always meant
+    (today's ONE sharpest priority) — SIGNAL2 is a strictly separate,
+    disjoint bucket (a task matching both tiers counts as tier-1 only,
+    so tier-1's own number is never diluted). Carries forward like
+    AVOID; the header line stays hidden until you actually use it,
+    same as every other optional axis. Shows up live in the totals
+    line ("signal 45% +20% tier-2"), in tomorrow's yesterday-recap,
+    and as a new trailing-window insight (_signal_tier_insight, gated
+    n>=5 declared days) under MOMENTUM & TRENDS.
+  - #100 (first half) DECLARED WORK BLOCK: a new WORKBLOCK: HH:MM-HH:MM
+    header line for an externally-committed window (a day job).
+    Inside it, idle detection and the Windows+L screen-lock detector
+    (v8.55) both wait ~3x longer before offering to log a break — a
+    quick meeting or email check during already-spoken-for time isn't
+    a break the way it is outside it. The genuinely-parallel-work half
+    of #100 stays explicitly out of scope (flagged in HANDOFF as
+    likely unsolvable honestly within a single-threaded timer — no
+    fake 50/50 split invented here). Carries forward like AVOID;
+    zero behavior change for anyone who never declares one.
+  - Both features fully additive: a day file with no SIGNAL2/WORKBLOCK
+    lines behaves byte-for-byte like before. 45/45 selftest suites +
+    dedicated new-feature tests green.
+
 New in v8.69 (four backlog items, priority/value order):
   - #82 FIX: protected windows (lunch, wind-down) subtracted from the
     scheduler's block placement but not from the separate aggregate-
@@ -2439,6 +2467,64 @@ class App(tk.Tk):
                     sig += m
         return sig, work
 
+    # ----- tier-2 signal (backlog #96): a second, DISCRETE priority tier,
+    # not a blend — see "Signal vs. maintenance" in the design rules above.
+    # SIGNAL keeps meaning exactly what it always meant (today's ONE
+    # sharpest priority, untouched); SIGNAL2 is a separate, second-place
+    # bucket that never dilutes the first. -----
+
+    def _signal2_kws(self, day=None):
+        if day is None or day == self.today:
+            return self._kws_from_text(self.diary.get("1.0", "end-1c"), "signal2:")
+        try:
+            with open(self.diary_path(day), encoding="utf-8") as f:
+                return self._kws_from_text(f.read(), "signal2:")
+        except OSError:
+            return []
+
+    def _day_signal2(self, day, kws=None, kws1=None, rows=None):
+        """(tier2_min, work_min) for one day given its SIGNAL2 keywords.
+        Disjoint from tier-1 on purpose: a task matching BOTH SIGNAL and
+        SIGNAL2 counts as tier-1 only — the sharpest priority wins the
+        tie, so the two buckets never double-count the same minute and
+        tier-1's own number is never diluted by this feature existing."""
+        if kws is None:
+            kws = self._signal2_kws(day)
+        if kws1 is None:
+            kws1 = self._signal_kws(day)
+        sig2 = work = 0
+        if kws:
+            iso = day.isoformat()
+            for r in (rows if rows is not None else read_rows()):
+                if r[0] != iso or r[1] == "break":
+                    continue
+                try:
+                    m = int(r[4])
+                except ValueError:
+                    continue
+                work += m
+                if self._is_signal(r[5], kws) and not (
+                        kws1 and self._is_signal(r[5], kws1)):
+                    sig2 += m
+        return sig2, work
+
+    def _carry_signal2(self):
+        """Yesterday's SIGNAL2 line text, or '' — same standing-
+        declaration carry shape as AVOID, no goal-seeded fallback
+        (tier-2 is optional context, not the headline metric SIGNAL is,
+        so there's nothing honest to seed it with when it's never been
+        used)."""
+        try:
+            with open(self.diary_path(self.today - dt.timedelta(days=1)),
+                      encoding="utf-8") as f:
+                for line in f:
+                    s = line.strip()
+                    if s.lower().startswith("signal2:"):
+                        return s[8:].strip()
+        except OSError:
+            pass
+        return ""
+
     # ----- avoid meter (the inverse lens: what you're trying to shed) -----
 
     def _avoid_kws(self, day=None):
@@ -2510,6 +2596,67 @@ class App(tk.Tk):
                 pass
             d -= dt.timedelta(days=1)
         return False
+
+    # ----- declared work-block window (backlog #100, first half): a
+    # 9-5 day job or similar external commitment is already spoken for —
+    # idle/lock detection can afford to be far less trigger-happy about
+    # a quick meeting or email check inside it. The opposite of #50's
+    # protected windows (those say "never book here"; this says "don't
+    # treat a short pause here as a break"). -----
+
+    _WORKBLOCK_RE = re.compile(r"^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$")
+    _WORKBLOCK_IDLE_FACTOR = 3   # inside a declared work block, idle/lock
+                                  # detection waits this many times longer
+                                  # before offering to log a break
+
+    def _workblock_window(self, day=None):
+        """Today's declared WORKBLOCK: HH:MM-HH:MM window as (start, end)
+        times, or None. Same day-aware read pattern as _signal_kws/
+        _avoid_kws — live buffer for today, a file read for a past day."""
+        if day is None or day == self.today:
+            text = self.diary.get("1.0", "end-1c")
+        else:
+            try:
+                with open(self.diary_path(day), encoding="utf-8") as f:
+                    text = f.read()
+            except OSError:
+                return None
+        for line in text.splitlines():
+            s = line.strip()
+            if s.lower().startswith("workblock:"):
+                m = self._WORKBLOCK_RE.match(s[10:])
+                if not m:
+                    return None
+                sh, sm, eh, em = map(int, m.groups())
+                try:
+                    return dt.time(sh, sm), dt.time(eh, em)
+                except ValueError:
+                    return None
+        return None
+
+    def _in_workblock(self, when=None):
+        win = self._workblock_window()
+        if not win:
+            return False
+        s, e = win
+        if s > e:
+            return False              # malformed (crosses midnight) — skip, don't guess
+        return s <= (when or dt.datetime.now()).time() <= e
+
+    def _carry_workblock(self):
+        """Yesterday's WORKBLOCK line text, or '' — same standing-
+        declaration carry shape as AVOID (a fixed schedule doesn't need
+        re-typing every morning)."""
+        try:
+            with open(self.diary_path(self.today - dt.timedelta(days=1)),
+                      encoding="utf-8") as f:
+                for line in f:
+                    s = line.strip()
+                    if s.lower().startswith("workblock:"):
+                        return s[10:].strip()
+        except OSError:
+            pass
+        return ""
 
     def _carry_year(self):
         """Backlog #64: yesterday's YEAR: line text (original case), or
@@ -4572,6 +4719,8 @@ class App(tk.Tk):
         thr = int(self.settings.get("idle_min", 10))
         if not thr or self.prompting:
             return
+        if self._in_workblock():
+            thr *= self._WORKBLOCK_IDLE_FACTOR
         idle = idle_seconds()
         if idle > thr * 60:
             self.idle_since = dt.datetime.now() - dt.timedelta(seconds=idle)
@@ -4599,7 +4748,11 @@ class App(tk.Tk):
             self.lock_since = dt.datetime.now()
         elif not locked and self.lock_since:
             gone_since, self.lock_since = self.lock_since, None
-            if (dt.datetime.now() - gone_since).total_seconds() >= MIN_LOG_SECS:
+            min_secs = MIN_LOG_SECS
+            if self._in_workblock(gone_since):
+                min_secs = (int(self.settings.get("idle_min", 10)) * 60
+                           * self._WORKBLOCK_IDLE_FACTOR)
+            if (dt.datetime.now() - gone_since).total_seconds() >= min_secs:
                 self._offer_idle_break(gone_since)
 
     def _offer_idle_break(self, gone_since):
@@ -4740,6 +4893,9 @@ class App(tk.Tk):
             text += f"   |   signal {round(100 * sig_today / w)}%"
             if wk_work and wk_work != w:
                 text += f" (wk {round(100 * wk_sig / wk_work)}%)"
+            sig2_today, _ = self._day_signal2(self.today, kws1=kws_today, rows=rows)
+            if sig2_today:
+                text += f" +{round(100 * sig2_today / w)}% tier-2"
 
             def period_pct(lo, hi):
                 s = tot = 0
@@ -5027,6 +5183,9 @@ class App(tk.Tk):
                     f" / {yb // 60}h{yb % 60:02}m breaks")
             if ywork:
                 line += f", signal {round(100 * ysig / ywork)}%"
+                ysig2, _ = self._day_signal2(yday, kws1=self._signal_kws(yday))
+                if ysig2:
+                    line += f" (+{round(100 * ysig2 / ywork)}% tier-2)"
             line += self._avoid_trend_suffix(yday)
             parts.append(line + ")")
             v = self._verdict(yw, ysig, ywork, self._declared_cap_h(yday))
@@ -5057,12 +5216,18 @@ class App(tk.Tk):
             parts += self._week_ahead_lines()
             parts += self._graveyard_lines()
         parts.append(f"SIGNAL: {self._carry_signal()}")
+        sig2 = self._carry_signal2()
+        if sig2 or self._line_ever_used("SIGNAL2"):
+            parts.append(f"SIGNAL2: {sig2}")
         avoid = self._carry_avoid()
         if avoid or self._line_ever_used("AVOID"):
             parts.append(f"AVOID: {avoid}")
         year = self._carry_year()
         if year or self._line_ever_used("YEAR"):
             parts.append(f"YEAR: {year}")
+        workblock = self._carry_workblock()
+        if workblock or self._line_ever_used("WORKBLOCK"):
+            parts.append(f"WORKBLOCK: {workblock}")
         parts.append("ENERGY: ")   # 1-5, optionally + a mood word ("3 anxious")
         if self._line_ever_used("METRICS"):
             parts.append("METRICS: ")  # meditation=10, water=6…
@@ -5543,7 +5708,7 @@ class App(tk.Tk):
          "noisy — purely a display setting, the file on disk never "
          "changes."),
 
-        ("SIGNAL & AVOID",
+        ("SIGNAL, AVOID & WORKBLOCK",
          "SIGNAL: declares today's ONE real priority, as one or more "
          "comma-separated keywords — e.g. \"SIGNAL: thesis, ch4\". Any "
          "task whose name contains one of those words counts as "
@@ -5553,11 +5718,26 @@ class App(tk.Tk):
          "repeating yesterday's SIGNAL, or — if you've never set one — "
          "seeded from your Goals' own keywords (Tools > Goals). You "
          "don't have to type it every day for it to work.\n\n"
-         "AVOID: is the mirror image — keywords for what you're trying "
-         "to cut down on (\"AVOID: news, email\"). Same mechanism, "
-         "inverted, reported the same way, with a quiet arrow showing "
-         "whether this week is trending up or down against the "
-         "previous few weeks."),
+         "SIGNAL2: a second, separate priority tier — for when two "
+         "things both matter today but one is clearly sharper than the "
+         "other (\"SIGNAL: thesis\" / \"SIGNAL2: hegemon\"). It never "
+         "dilutes SIGNAL's own number — tier-1 stays exactly what it "
+         "always meant, tier-2 is reported alongside it as its own "
+         "share (\"signal 45% +20% tier-2\"). Type it once and it "
+         "carries forward like SIGNAL does; the header line only "
+         "appears once you've actually used it.\n\n"
+         "AVOID: is the mirror image of SIGNAL — keywords for what "
+         "you're trying to cut down on (\"AVOID: news, email\"). Same "
+         "mechanism, inverted, reported the same way, with a quiet "
+         "arrow showing whether this week is trending up or down "
+         "against the previous few weeks.\n\n"
+         "WORKBLOCK: declares an externally-committed window, e.g. "
+         "\"WORKBLOCK: 09:00-17:00\" for a day job. Inside it, idle and "
+         "screen-lock detection waits about 3x longer before offering "
+         "to log a break — a quick meeting or email check during "
+         "already-spoken-for time isn't a break the way it would be "
+         "outside it. Carries forward like AVOID; only appears in the "
+         "header once you've used it."),
 
         ("YEAR, ENERGY & METRICS",
          "YEAR: a standing theme for the whole year (\"YEAR: the "
@@ -10071,7 +10251,39 @@ class App(tk.Tk):
         out += [("MOMENTUM & TRENDS", l) for l in self._lag_insight()]
         out += [("MOMENTUM & TRENDS", l) for l in self._best_weeks_lines()]
         out += [("MOMENTUM & TRENDS", l) for l in self._trajectory_lines()]
+        out += [("MOMENTUM & TRENDS", l) for l in self._signal_tier_insight()]
         return out
+
+    def _signal_tier_insight(self, days=60):
+        """Backlog #96: now that SIGNAL2 exists as a real second tier,
+        name the split honestly over time — not just today's live line,
+        a trailing-window read of how much went to the sharpest priority
+        vs the next one down. Only speaks on days SIGNAL2 was actually
+        declared (an unused feature should stay silent, not report 0%
+        as if that meant something); n>=5 such days before it speaks."""
+        cutoff = self.today - dt.timedelta(days=days)
+        idx = day_index()
+        tot_work = tot_sig = tot_sig2 = active_days = 0
+        d = cutoff
+        while d < self.today:                # today isn't finished yet
+            rec = idx.get(d.isoformat())
+            if rec and rec["work"] > 0:
+                kws1 = self._signal_kws(d)
+                kws2 = self._signal2_kws(d)
+                if kws2:
+                    sig, work = self._day_signal(d, kws1)
+                    sig2, _ = self._day_signal2(d, kws2, kws1)
+                    tot_work += work
+                    tot_sig += sig
+                    tot_sig2 += sig2
+                    active_days += 1
+            d += dt.timedelta(days=1)
+        if active_days < 5 or not tot_work:
+            return []
+        return [f"tier-2 priorities: over the last {active_days} day(s) you "
+               f"declared one, {round(100 * tot_sig / tot_work)}% went to "
+               f"tier-1 and {round(100 * tot_sig2 / tot_work)}% to tier-2 "
+               "— worth knowing if tier-2 is quietly eating tier-1's time"]
 
     def _trajectory_lines(self, weeks=8):
         """The longitudinal, cross-domain view the other insights can't

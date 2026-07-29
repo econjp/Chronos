@@ -252,6 +252,16 @@ nothing, actively erodes capacity — e.g. doomscrolling). Don't build a
 "maintenance is 50% signal" scoring compromise if this comes up again;
 the three-bucket model is already correct and more honest than a blend.
 
+**Addendum, v9.0 (2026-07-29):** `SIGNAL2:` (backlog #96, tiered
+priorities) was checked against this precedent before being built and
+does not violate it. It is a fourth, DISJOINT bucket (a discrete
+tier-2 ranking), not a blend of tier-1 — a task matching both tiers
+counts as tier-1 only, and tier-1's own percentage is computed exactly
+as before, untouched by SIGNAL2 existing. If a future ask wants
+tier-2 folded INTO tier-1's number ("just count it all as signal"),
+that's the same rejected compromise as maintenance-as-signal and
+should get the same answer.
+
 ## Repo map & data formats
 
 - `timerv2/timer_diary_v5.py` — the whole app (~4100 lines, v6.6 as of
@@ -487,6 +497,37 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.0** (FLAGSHIP, 2026-07-29, DONE — the owner's own call: "this
+  update shuld be rly a major update... v9 makes sense"). Two real
+  additions to the core data model, not connective fixes:
+  **#96, tiered SIGNAL** — a new `SIGNAL2:` header line, a second
+  DISCRETE priority tier. Deliberately checked against the "Signal vs.
+  maintenance" precedent (resolved 2026-07-13) before building: SIGNAL
+  keeps meaning exactly what it always meant (today's ONE sharpest
+  priority, the headline honesty number, completely untouched);
+  SIGNAL2 is a strictly disjoint second bucket — a task matching both
+  tiers counts as tier-1 only, so tier-1 is never diluted by tier-2
+  existing. This is a discrete ranking, not the rejected "50% signal"
+  blend. Surfaces in the live totals line, tomorrow's yesterday-recap,
+  and a new trailing-window insight (`_signal_tier_insight`, MOMENTUM
+  & TRENDS, n>=5 declared days). **#100 (first half), declared work-
+  block window** — a new `WORKBLOCK: HH:MM-HH:MM` header line for an
+  externally-committed window (a day job): inside it, idle detection
+  and the v8.55 screen-lock detector both wait ~3x longer
+  (`_WORKBLOCK_IDLE_FACTOR`) before offering to log a break, since a
+  quick meeting or email check during already-spoken-for time isn't a
+  break the way it is outside it. #100's SECOND half (genuinely
+  parallel/overlapping work) stays explicitly out of scope — flagged
+  in the original backlog note as likely unsolvable honestly within a
+  single-threaded, one-task-at-a-time timer; no fake 50/50 split
+  invented. Both features are fully additive and hidden until first
+  used (`_line_ever_used`, same gate as AVOID/YEAR) — a day file that
+  never touches either line behaves byte-for-byte like v8.69. Help
+  topic "SIGNAL, AVOID & WORKBLOCK" (renamed from "SIGNAL & AVOID")
+  documents both. 45/45 selftest suites + dedicated new-feature tests
+  (disjoint-bucket math, carry-forward, header gating, idle/lock
+  threshold multiplication with an explicit outside-workblock control
+  test) all green, zero regressions in the existing suite.
 - **v8.69** (four backlog items in priority/value order, 2026-07-29,
   DONE). #82: fixed a real capacity-model inconsistency this session's
   own v8.58 protected-windows feature created — protected windows
@@ -2941,24 +2982,17 @@ measuring what's already there.
     itself). Flagged explicitly as needing real design thought before
     building, similar to #60 — log the idea, don't rush the shape.
 
-96. **Tiered SIGNAL priorities (PLANNING — owner's own ask, 2026-07-28:
-    "some tasks aren't THAT signal... there should be tiers, #1 prio is
-    thesis stuff").** Real tension to resolve carefully, not just
-    build: the "Signal vs. maintenance" design rule (see above,
-    resolved 2026-07-13) explicitly rejected a BLENDED "50% signal"
-    score as less honest than the existing three-bucket model (signal
-    / goal-aligned / plain work / noise). This ask is different in
-    kind, worth distinguishing explicitly — DISCRETE ranked tiers
-    ("SIGNAL1: thesis" / "SIGNAL2: hegemon drafting"), not a continuous
-    blend — which may not violate that precedent at all, since it's
-    still a strict ordering, not an averaged score. Before building:
-    re-read the original resolution's reasoning (collapsing maintenance
-    into "signal" inflates the metric and kills its one job) and check
-    whether 2-3 named tiers preserve that honesty or quietly recreate
-    the blend by another name. If it survives that check, the
-    mechanism is small — a numbered SIGNAL line convention, same
-    carry-forward shape as SIGNAL/AVOID, `_is_signal` gains a tier
-    return value instead of a boolean.
+96. ~~**Tiered SIGNAL priorities.**~~ — FIXED v9.0. Checked against
+    the "Signal vs. maintenance" precedent before building, as this
+    entry asked: a discrete `SIGNAL2:` tier survives the check because
+    it's a strict ranking, not a blend — SIGNAL's own number is
+    untouched (tier-1 stays exactly "today's one sharpest priority"),
+    SIGNAL2 is a disjoint second bucket, never merged into tier-1's
+    percentage. `_signal2_kws`/`_day_signal2`/`_carry_signal2` mirror
+    the existing AVOID mechanism exactly; `_signal_tier_insight` adds
+    the trailing-window read. Went with `SIGNAL2:` as its own header
+    line (not `SIGNAL1:`/`SIGNAL2:` replacing `SIGNAL:`) — zero
+    migration risk for every existing `SIGNAL:` line ever written.
 
 97. ~~**BUG: auto-capture creates a new task for every growing snapshot
     of a still-being-typed bullet.**~~ — FIXED 2026-07-29. `_add_task`
@@ -3053,40 +3087,27 @@ measuring what's already there.
 
 100. **Declared work-block container (PLANNING — owner's own ask,
     2026-07-29, follows directly from #99's interleaved-task finding,
-    explicitly "idk how to solve").** The core tension: the app models
-    time as one flat sequence of work/break intervals; a real 9-5 day-
-    job commitment is a COARSER container that doesn't fit that model
-    cleanly. Two distinct problems tangled together, worth separating
-    before designing a fix:
-    - **"Counting work days as breaks sometimes."** Within an external
-      commitment (a day job), brief internal context-switches
-      (checking email, a meeting, mentally drifting to a personal
-      project for a moment) currently either get logged as a real
-      break (Stop pressed) or silently absorbed into whatever task was
-      running. Neither is quite honest. A declared `WORKBLOCK:
-      09:00-17:00` line (same convention shape as TODAY:/AVOID:) could
-      give the app a baseline "this time is externally committed"
-      context — inside it, short internal pauses default to NOT
-      counting as a real break unless they cross some threshold,
-      inverting the normal idle-detection logic for that window.
-    - **Genuinely parallel/overlapping work** (day job AND thesis
-      "at the same time," attention split, not sequential). Harder,
-      maybe unsolvable honestly within a single-threaded timer: the
-      app can log ONE active task per moment by construction (the
-      sacred day-file format is a sequence, not parallel tracks).
-      Don't invent a fake "50/50 split" — if this needs solving at
-      all, the honest version is probably just: log it as whichever
-      task is PRIMARY at that moment, same as today, and accept that
-      genuinely simultaneous attention doesn't fit this tool's model.
-      Flagging this half explicitly as possibly out of scope rather
-      than pretending a clean fix exists.
-    Relationship to existing pieces: the OPPOSITE of #50's protected
-    time windows (those say "the scheduler must never book here";
-    this says "this time is already spoken for by something external,
-    stop being strict about internal breaks inside it"). Needs a real
-    design pass — what exactly counts as "still inside the work
-    block" vs "a real break even during it" — before building; logged
-    here so the thinking survives, matching how #60/#95 were handled.
+    explicitly "idk how to solve").** Two distinct problems tangled
+    together — kept separate on purpose:
+    - ~~**"Counting work days as breaks sometimes."**~~ — FIXED v9.0.
+      `WORKBLOCK: 09:00-17:00` (same convention shape as TODAY:/AVOID:,
+      carries forward the same way) declares an externally-committed
+      window; inside it, `_watch_idle`/`_watch_lock` multiply the
+      idle/lock threshold by `_WORKBLOCK_IDLE_FACTOR` (3x) before
+      offering to log a break — the exact inversion this entry
+      proposed. The opposite of #50's protected windows (those say
+      "never book here"; this says "stop being strict about internal
+      pauses here").
+    - **Genuinely parallel/overlapping work** (day job AND thesis "at
+      the same time," attention split, not sequential) — DELIBERATELY
+      NOT built. Still likely unsolvable honestly within a single-
+      threaded timer: the app can log ONE active task per moment by
+      construction (the sacred day-file format is a sequence, not
+      parallel tracks). Don't invent a fake "50/50 split" — if this
+      ever needs solving, the honest version is probably just: log
+      whichever task is PRIMARY at that moment, same as today, and
+      accept that genuinely simultaneous attention doesn't fit this
+      tool's model. Left open, same status as #60/#95.
 
 101. **BUG, found 2026-07-29 while cleaning up #97's duplicates: Finnish
     (ä/ö) characters get mangled to replacement chars (`�`) in some
