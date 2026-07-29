@@ -4,6 +4,18 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Bug fixes + two small features (v8.65)
+
+- **Fixed**: the task library no longer fills up with duplicates of a
+  TODO bullet you're still typing — each growing snapshot used to
+  land as its own entry.
+- **Completed-task archive**: marking a task Done now keeps it (with
+  the hours it actually took) instead of throwing it away.
+- **Command shorthand**: type `done: thesis ch4` in the task box to
+  mark a matching task done, no clicking required.
+- Extreme deadline projections ("~386 days late") now read as "far
+  behind" instead of an absurd-sounding specific number.
+
 ### View menu, reorganized (v8.64)
 
 22 flat commands are now grouped into **Planning**, **Memory**, and

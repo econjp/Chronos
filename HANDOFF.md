@@ -487,6 +487,27 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v8.65** (bug fixes + two small features straight from the owner's
+  own real data, 2026-07-29, DONE). **#97 fixed**: auto-capture no
+  longer creates a duplicate task-library entry for every growing
+  snapshot of a still-being-typed TODO bullet — `_add_task` collapses
+  a same-source prefix-extension into the existing entry in place. The
+  owner's real settings.json was cleaned with the identical logic
+  (backup taken first): 77 → 34 entries, 43 stale duplicates removed.
+  **Old bug report checked and closed**: task-switch-during-a-break
+  time inheritance (2026-07-11) — not reproducible against current
+  code. **#91 completed-task archive**: Done items now append to
+  `settings["tasks_done"]` instead of being discarded. **#92 command
+  shorthand**: `done: X` in the task box marks a matching task done —
+  fixed-verb parsing, not #60's much riskier deferred console. **#99
+  polish**: extreme deadline-projection lateness now reads "far
+  behind — see the date" instead of an absurd triple-digit number,
+  math unchanged. **New bug found, not fixed** (#101): Finnish ä/ö
+  characters can get mangled upstream of the diary save — traced to
+  the source day-file text itself (not settings.json handling, which
+  is clean), likely Tk's Windows clipboard paste; needs live
+  reproduction to pin down further. Full regression suite and
+  selftest.py (45/45) green throughout.
 - **v8.12** (procrastination pattern map — backlog #32). New
   `_procrastination_insight(days=60)`: maximal same-task work runs per
   day (rows sorted by start time); a run ≤10 min followed by a break is a
@@ -2806,33 +2827,18 @@ measuring what's already there.
     the kind of untrustworthy pile #43 was written to prevent
     elsewhere in the app.
 
-91. **Completed-task archive (SELF-KNOWLEDGE/HYGIENE — owner's own
-    ask, 2026-07-19: "make sure OLD TASKS are saved").** `done()` in
-    the Tasks window currently `pop()`s a finished item straight out of
-    `settings["tasks"]` — the `--- Done: ...` line lands in that day's
-    diary text so it isn't truly gone, but it stops being STRUCTURED
-    data the moment it's marked done, which quietly undermines #10's
-    per-category estimate factor and #45's goal lifetime ledger (both
-    want clean historical Done data, not "re-parse every diary file
-    for `--- Done:` lines" as the only path back to it). Fix: append to
-    a `tasks_done` list in settings instead of discarding — same
-    fields, plus a `done_on` date. Cheap, and the two features above
-    become meaningfully easier to build well once this exists.
+91. ~~**Completed-task archive (SELF-KNOWLEDGE/HYGIENE).**~~ — DONE
+    2026-07-29. `_mark_task_done` appends to `settings["tasks_done"]`
+    (name/est_h/priority/goal/deadline/source/added/done_on/actual_h)
+    before writing the same `--- Done:` line as before; shared by the
+    Tasks window's Done button and #92's command shorthand.
 
-92. **Command shorthand for common actions (USABILITY — owner's own
-    ask, 2026-07-19, narrower and safer than #60).** #60 (embedded
-    Python console) is explicitly deferred pending real design work;
-    this is the specific narrow case the owner actually described —
-    "if a todo is done, write it off with a command" — and it doesn't
-    need `exec()`/`eval()` at all. A tiny recognized-verb parser on
-    something typed in the task box or a dedicated prompt: `done:
-    thesis ch4` marks the matching task-library item done (writes its
-    `--- Done:` line, same as clicking Done); maybe `start: <name>`,
-    `goal: <task> = <goal name>`. Pattern-matching a small fixed
-    vocabulary, not arbitrary code — none of #60's real risk (a typo
-    corrupting years of data) applies here. Ship this regardless of
-    whether #60 ever gets built; it's a different, much safer idea
-    that happens to share the surface-level "type a command" framing.
+92. ~~**Command shorthand for common actions (USABILITY).**~~ — DONE
+    2026-07-29. `_try_command`/`_COMMAND_RE`, wired into `_go` (the
+    task box's Enter/Ctrl+Enter handler): `done: thesis ch4` marks the
+    matching task-library item done via the same `_mark_task_done`
+    path as the Tasks window, no `exec()`/`eval()`. Status bar reports
+    the match or "no item matches" — never silently does nothing.
 
 93. **Quick day-file navigator (USABILITY — owner's own ask,
     2026-07-19: "nice way to open previous days... without having to
@@ -2896,29 +2902,19 @@ measuring what's already there.
     carry-forward shape as SIGNAL/AVOID, `_is_signal` gains a tier
     return value instead of a boolean.
 
-97. **BUG, found 2026-07-29 auditing the owner's real task library:
-    auto-capture creates a new task for every growing snapshot of a
-    still-being-typed bullet, not just the finished line.** `_add_task`
-    dedupes by exact normalized string match; `_auto_capture_bullets`
-    fires on the 10s live autosave (v6.8). While a TODO/SOMEDAY bullet
-    is actively being typed, each autosave tick captures whatever
-    partial text exists at that moment — since the string keeps
-    growing, exact-match dedup never catches consecutive snapshots of
-    the SAME bullet, so one sentence typed over a minute becomes 10+
-    near-duplicate task-library entries, each a longer prefix of the
-    last. Confirmed directly in the owner's real settings.json: over
-    30 of ~84 entries are these growing-prefix duplicates from just two
-    typing sessions (2026-07-19, 2026-07-26). Fix, once picked up:
-    don't capture a bullet while it's still the LAST line of the file
-    AND the cursor is on it (capture on leaving the line / new bullet
-    starting / day rollover instead of on every autosave tick), or —
-    simpler — when a new capture's normalized text starts with an
-    EXISTING same-source entry's normalized text (a prefix-extension,
-    not a new bullet), update that entry in place instead of appending
-    a new one. Real, user-facing bug, not a style nit — worth fixing
-    before #43/#55/#90's hygiene features have to work around
-    thousands of stale duplicates as the library grows. Not fixed yet
-    this session — flagged for the next round.
+97. ~~**BUG: auto-capture creates a new task for every growing snapshot
+    of a still-being-typed bullet.**~~ — FIXED 2026-07-29. `_add_task`
+    now also checks, within the SAME source, whether the new capture
+    and an existing entry are a prefix of one another — if so, updates
+    the existing entry to the longer/more-complete version instead of
+    appending a new one, never merging across different sources/days.
+    Also cleaned the owner's real settings.json with the identical
+    logic (backed up first as `settings.json.bak-before-dedup-
+    cleanup`): 77 → 34 task-library entries, 43 stale duplicates
+    removed. Tested: growing-prefix collapse, distinct same-source
+    bullets both kept, cross-source bullets never merged, exact-repeat
+    dedup unaffected, and an out-of-order shorter snapshot arriving
+    after a longer one doesn't regress it.
 
 98. **Themed writing: toggle where it's stored (USABILITY — owner's
     own ask, 2026-07-29).** Themed writing (v6.4) always embeds its
@@ -2958,16 +2954,16 @@ measuring what's already there.
       through after confirming v8.55 works, that's a real follow-up:
       maybe a break past some large threshold (4h+?) deserves a
       different offer than the standard retro-split dialog.
-    - **Possible bug, unverified against current code: switching task
-      DURING a break may have made the new task inherit the break's
-      elapsed time**, self-reported by the owner once early in
-      development (2026-07-11: "IF SWITCH TASK DURING THE BREAK, THE
-      NEW TASK WILL INHERIT THE TIME"). Old report, likely already
-      addressed by later work on the timer state machine, but never
-      explicitly re-verified — worth a direct test before assuming
-      it's fine: start work, Stop (break), change the task box, Start
-      again, check the new task's logged interval doesn't include any
-      of the break duration.
+    - ~~**Possible bug: switching task DURING a break may have made the
+      new task inherit the break's elapsed time**~~ — CHECKED
+      2026-07-29, NOT REPRODUCIBLE. Self-reported once early in
+      development (2026-07-11); direct test against current code
+      (start work, backdate, Stop, change task box, Start, inspect
+      `work_start` and the resulting csv rows) shows `work_start`
+      resets cleanly to the moment of Start regardless of a task-box
+      change during the break, and the break itself still correctly
+      attributes to the task it interrupted. Long since fixed by later
+      state-machine work; closing this one out.
     - **Interleaved-task friction, observed directly (2026-07-27):**
       "checking [X] but from time to time [Y]... shuld even log as
       work, then switch, but takes time" — when two tasks interleave
@@ -2976,16 +2972,15 @@ measuring what's already there.
       switching overhead. Not necessarily fixable (may be an inherent
       tracking-granularity tradeoff, not a bug) but worth keeping in
       mind if any future feature touches task-switching friction.
-    - **Deadline-projection volatility in the first days of a new
-      deadline** — one observed case swung from "~386 days late" to
-      "~59 days late" to "~37 days late" across three consecutive
-      mornings as real velocity data accumulated (matches the honesty
-      gate working as designed — n≥5 real intervals — but a triple-
-      digit day count reads as absurd rather than honest). Possible
-      polish: when the projected lateness is extreme (past some
-      threshold, e.g. 90+ days), phrase it as "won't finish at this
-      pace" rather than a specific wild date, without changing the
-      underlying math.
+    - ~~**Deadline-projection volatility in the first days of a new
+      deadline**~~ — FIXED 2026-07-29. `_projection_line` and
+      `_review_bottom_line`'s "Main risk" line both now say "far
+      behind — see the date" / "is not on track to finish" past a
+      90-day threshold instead of a triple-digit day count; the +1h/day
+      sensitivity lever is also suppressed past that threshold (a
+      "3383d sooner" lever is noise, not a lever). The underlying
+      projection math is unchanged — only the two places that turn an
+      extreme number into a sentence.
     - **Task-name drift, self-caught by the owner (2026-07-28):** two
       task names that were meant to represent related-but-different
       activities under the same goal had been used inconsistently for
@@ -3034,6 +3029,31 @@ measuring what's already there.
     design pass — what exactly counts as "still inside the work
     block" vs "a real break even during it" — before building; logged
     here so the thinking survives, matching how #60/#95 were handled.
+
+101. **BUG, found 2026-07-29 while cleaning up #97's duplicates: Finnish
+    (ä/ö) characters get mangled to replacement chars (`�`) in some
+    captured diary text.** Confirmed the corruption is already present
+    in the SOURCE day-file .txt itself (`2026-07-19.txt`), not
+    introduced later — ruled out `save_settings`/`load_settings` (both
+    correctly use `encoding="utf-8"`/`"utf-8-sig"`) and `_save_diary`
+    (also plain `encoding="utf-8"`, writes `self.diary.get(...)`
+    directly). No custom clipboard-paste handler exists in this file —
+    every `clipboard_*` call is outbound (Copy for AI review etc.),
+    nothing intercepts an inbound paste. That leaves Tk/Tcl's own
+    default Windows clipboard handling as the likely site: a known
+    class of issue where pasted non-ASCII text picks up the wrong
+    Windows clipboard format (ANSI `CF_TEXT` instead of Unicode
+    `CF_UNICODETEXT`) before Tk ever hands it to Python as a string —
+    meaning by the time `self.diary.get()` reads it, the characters are
+    already lost, not mis-encoded on the way out. Next step, not done
+    this session: reproduce live (paste real Finnish text containing
+    ä/ö from another app into the diary pane) and inspect what
+    `self.diary.get()` returns immediately after the paste, before any
+    save — if it's already `�` at that point, the fix is Tk-clipboard-
+    specific (may need an explicit `-format` on the paste binding or a
+    workaround via `windll.user32.GetClipboardData` with
+    `CF_UNICODETEXT` explicitly) rather than anything in this file's
+    own save/load code, which checks out clean.
 
 ## How to verify changes without Windows
 

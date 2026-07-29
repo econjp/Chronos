@@ -60,6 +60,35 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.65 (bug fixes + two small features from the owner's own
+data, 2026-07-29):
+  - FIXED (#97): auto-capture no longer creates a new task-library
+    entry for every growing snapshot of a still-being-typed TODO
+    bullet — `_add_task` now collapses a same-source prefix-extension
+    into the existing entry instead of appending a duplicate. The
+    owner's real settings.json was cleaned with the identical logic:
+    77 → 34 task-library entries (backed up first).
+  - CHECKED (old report from 2026-07-11): task-switch-during-a-break
+    time inheritance — not reproducible against current code, closing
+    it out.
+  - #91 completed-task archive: marking a task Done now appends it to
+    `settings["tasks_done"]` (with `done_on`/`actual_h`) instead of
+    discarding it, so future features wanting clean Done history don't
+    have to re-parse every day file for `--- Done:` lines.
+  - #92 command shorthand: `done: thesis ch4` typed in the task box
+    marks the matching task-library item done — a small fixed-verb
+    parser, not #60's deferred (and much riskier) Python console.
+  - Polish: extreme deadline-projection lateness (a triple-digit day
+    count in the first days of a new deadline, before real velocity
+    settles) now reads "far behind — see the date" instead of an
+    absurd-sounding specific number; the underlying math is unchanged.
+  - Also found (not fixed — needs live reproduction, see backlog
+    #101): Finnish ä/ö characters can get mangled to `�` somewhere
+    upstream of the diary save — confirmed the corruption is already
+    in the source day-file text, not introduced by settings.json
+    handling (which checks out clean); likely Tk's own Windows
+    clipboard paste handling.
+
 New in v8.64 (View menu reorganized — the map matches the territory):
   - 22 flat View-menu commands grouped into submenus that mirror the
     NORTH STAR's own three pillars (see HANDOFF.md): Planning
@@ -3768,7 +3797,12 @@ class App(tk.Tk):
             self.logged_task = t
 
     def _go(self, event=None):
-        """Enter in the task box: split if working, otherwise just start."""
+        """Enter in the task box: split if working, otherwise just
+        start. Backlog #92: a recognized command ('done: X') is
+        handled instead of being treated as a task name."""
+        if self._try_command(self.task_var.get()):
+            self.task_var.set("")
+            return
         if self.state == "working":
             self._switch()
         else:
@@ -3932,14 +3966,19 @@ class App(tk.Tk):
         pr = self._dl_projection(dl)
         if not pr:
             return None
+        # backlog #99: a triple-digit day count (common in the first
+        # days of a new deadline, before real velocity settles) reads
+        # as absurd rather than honest — the date itself stays exact,
+        # only the qualifier softens past a threshold
         when = ("on time" if pr["delta"] == 0 else
+                "far behind — see the date" if pr["delta"] > 90 else
                 f"{pr['delta']}d late" if pr["delta"] > 0 else
                 f"{-pr['delta']}d early")
         line = (f"at your real pace ({pr['avg_active_h']:.1f}h on active "
                 f"days, active {round(100 * pr['active_frac'])}% of days) "
                 f"you land ~{pr['land']:%d.%m} — {when} "
                 f"(due {pr['due']:%d.%m})")
-        if pr["delta"] > 0 and pr["sooner"] > 0:
+        if pr["delta"] > 0 and 0 < pr["sooner"] <= 90:
             line += f".  +1h/day from now → {pr['sooner']}d sooner"
         return line
 
@@ -5360,12 +5399,83 @@ class App(tk.Tk):
                     grab = kind
         return out
 
+    def _task_actual_h(self, name, added):
+        """Real hours logged against a task-library item's name since
+        it was added — shared by the Tasks window's display column and
+        _mark_task_done's Done-line."""
+        t, tot = name.strip().lower(), 0
+        for r in read_rows():
+            if (r[1] != "break" and r[5].strip().lower() == t
+                    and r[0] >= added):
+                try:
+                    tot += int(r[4])
+                except ValueError:
+                    pass
+        return tot / 60
+
+    def _mark_task_done(self, i):
+        """Backlog #91: archive task-library item `i` to `tasks_done`
+        instead of discarding it — the --- Done: line in the diary
+        text is honest but not structured, and #10/#45 want clean
+        historical Done data without re-parsing every day file for it.
+        Writes the same --- Done: line as before. Shared by the Tasks
+        window's Done button and #92's 'done: X' command shorthand.
+        Returns the completed task's name."""
+        t = self.settings["tasks"].pop(i)
+        actual_h = self._task_actual_h(t["name"], t["added"])
+        done_rec = dict(t)
+        done_rec["done_on"] = self.today.isoformat()
+        done_rec["actual_h"] = round(actual_h, 2)
+        self.settings.setdefault("tasks_done", []).append(done_rec)
+        save_settings(self.settings)
+        line = f"--- Done: {t['name']}"
+        if t.get("est_h"):
+            line += f" (est {t['est_h']:g}h, actual {actual_h:.2f}h)"
+        self._append_text(line)
+        return t["name"]
+
+    _COMMAND_RE = re.compile(r"^(done)\s*:\s*(.+)$", re.I)
+
+    def _try_command(self, raw):
+        """Backlog #92: a tiny fixed-verb command parser for the task
+        box — 'done: thesis ch4' marks the matching task-library item
+        done. Deliberately NOT #60's deferred Python console: this is
+        pattern-matching against one recognized word, not exec()/
+        eval(), so none of #60's real risk (a typo damaging years of
+        data) applies. Returns True if `raw` was a recognized command
+        (and it was handled, successfully or not) — the caller should
+        treat the task box as consumed either way, not fall through to
+        starting/switching a task named literally 'done: ...'."""
+        m = self._COMMAND_RE.match(raw.strip())
+        if not m:
+            return False
+        arg = m.group(2).strip()
+        key = " ".join(arg.lower().split())
+        tasks = self.settings.get("tasks", [])
+        i = next((i for i, t in enumerate(tasks)
+                  if key in " ".join(t["name"].lower().split())), None)
+        if i is None:
+            self.status.config(text=f'No task-library item matches "{arg}".')
+            return True
+        name = self._mark_task_done(i)
+        self.status.config(text=f"Marked done: {name}")
+        return True
+
     def _add_task(self, name, est_h=0, priority="normal", goal=None,
                  deadline=None, source=None):
         """Add to the library, deduped by normalized name — the same
         bullet carried unchanged for a few days doesn't create
-        duplicates every time it's re-scanned. Returns True if a new
-        item was actually added."""
+        duplicates every time it's re-scanned. Backlog #97: also
+        collapses growing-prefix duplicates from the SAME source — a
+        bullet still being typed gets re-captured on every 10s
+        autosave tick, and since the text keeps growing, exact-match
+        dedup alone never catches consecutive snapshots of it. If this
+        capture's text and an existing same-source entry's text are a
+        prefix of one another, that's one bullet mid-typing, not two —
+        the entry is updated in place to the longer (more complete)
+        version instead of a new one appended. Cross-source bullets
+        are never merged this way, only same-day/same-theme captures.
+        Returns True if a genuinely new item was added."""
         name = name.strip()
         if not name:
             return False
@@ -5373,6 +5483,16 @@ class App(tk.Tk):
         tasks = self.settings.setdefault("tasks", [])
         if any(" ".join(t["name"].lower().split()) == key for t in tasks):
             return False
+        if source:
+            for t in tasks:
+                if t.get("source") != source:
+                    continue
+                existing_key = " ".join(t["name"].lower().split())
+                if key.startswith(existing_key) or existing_key.startswith(key):
+                    if len(key) > len(existing_key):
+                        t["name"] = name
+                        save_settings(self.settings)
+                    return False
         tasks.append({"name": name, "est_h": est_h, "priority": priority,
                       "goal": goal, "deadline": deadline, "source": source,
                       "added": self.today.isoformat()})
@@ -5984,14 +6104,18 @@ class App(tk.Tk):
                 if worst is None or gap < worst[1]:
                     worst = (dom["name"], gap)
         top = max(behind, key=lambda x: x[1]) if behind else None
+        # backlog #99: a triple-digit day count (common in the first
+        # days of a new deadline) reads as absurd rather than honest
+        top_late = (f"is not on track to finish" if top and top[1] > 90 else
+                    f"lands ~{top[1] if top else 0}d late")
         if top and worst and worst[1] <= -8:
-            return [f"You're behind on {top[0]} (~{top[1]}d late at real pace) "
+            return [f"You're behind on {top[0]} ({top_late} at real pace) "
                     f"AND under-investing in {worst[0]} ({worst[1]:.0f} pts "
                     "below your aim). Same fix, not two: the FIRST block of "
                     f"each day goes to {worst[0]}/{top[0]} before the urgent "
                     "small stuff eats the morning."]
         if top:
-            return [f"Main risk: {top[0]} lands ~{top[1]}d late at your current "
+            return [f"Main risk: {top[0]} {top_late} at your current "
                     "pace. Add ~1h/day to it or move the date now — while "
                     "moving it is still cheap, not the night before."]
         if worst and worst[1] <= -10:
@@ -7415,17 +7539,6 @@ class App(tk.Tk):
         tree.tag_configure("someday", foreground="#999999")
         tree.tag_configure("blocked", foreground="#a03030")
 
-        def task_actual_h(name, added):
-            t, tot = name.strip().lower(), 0
-            for r in read_rows():
-                if (r[1] != "break" and r[5].strip().lower() == t
-                        and r[0] >= added):
-                    try:
-                        tot += int(r[4])
-                    except ValueError:
-                        pass
-            return tot / 60
-
         def refresh(keep_selection=None):
             sel = keep_selection if keep_selection is not None else tree.selection()
             tree.delete(*tree.get_children())
@@ -7449,7 +7562,7 @@ class App(tk.Tk):
                 tree.insert("", "end", iid=str(i), tags=(tag,), values=(
                     self._PRI_ICON.get(pri, "○"), name,
                     f"{est:g}h" if est else "—",
-                    f"{task_actual_h(t['name'], t['added']):.2f}h",
+                    f"{self._task_actual_h(t['name'], t['added']):.2f}h",
                     t.get("goal") or "—", t.get("deadline") or "—",
                     t.get("source") or "—"))
             # rebuilding the tree drops selection unless we restore it — a
@@ -7532,13 +7645,7 @@ class App(tk.Tk):
             i = picked()
             if i is None:
                 return
-            t = self.settings["tasks"].pop(i)
-            save_settings(self.settings)
-            line = f"--- Done: {t['name']}"
-            if t.get("est_h"):
-                line += (f" (est {t['est_h']:g}h, actual "
-                         f"{task_actual_h(t['name'], t['added']):.2f}h)")
-            self._append_text(line)
+            self._mark_task_done(i)
             refresh()
 
         def delete():
