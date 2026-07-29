@@ -2998,6 +2998,43 @@ measuring what's already there.
       variant-detection both partially address; no new action needed
       beyond noting it as a live example of why those matter.
 
+100. **Declared work-block container (PLANNING — owner's own ask,
+    2026-07-29, follows directly from #99's interleaved-task finding,
+    explicitly "idk how to solve").** The core tension: the app models
+    time as one flat sequence of work/break intervals; a real 9-5 day-
+    job commitment is a COARSER container that doesn't fit that model
+    cleanly. Two distinct problems tangled together, worth separating
+    before designing a fix:
+    - **"Counting work days as breaks sometimes."** Within an external
+      commitment (a day job), brief internal context-switches
+      (checking email, a meeting, mentally drifting to a personal
+      project for a moment) currently either get logged as a real
+      break (Stop pressed) or silently absorbed into whatever task was
+      running. Neither is quite honest. A declared `WORKBLOCK:
+      09:00-17:00` line (same convention shape as TODAY:/AVOID:) could
+      give the app a baseline "this time is externally committed"
+      context — inside it, short internal pauses default to NOT
+      counting as a real break unless they cross some threshold,
+      inverting the normal idle-detection logic for that window.
+    - **Genuinely parallel/overlapping work** (day job AND thesis
+      "at the same time," attention split, not sequential). Harder,
+      maybe unsolvable honestly within a single-threaded timer: the
+      app can log ONE active task per moment by construction (the
+      sacred day-file format is a sequence, not parallel tracks).
+      Don't invent a fake "50/50 split" — if this needs solving at
+      all, the honest version is probably just: log it as whichever
+      task is PRIMARY at that moment, same as today, and accept that
+      genuinely simultaneous attention doesn't fit this tool's model.
+      Flagging this half explicitly as possibly out of scope rather
+      than pretending a clean fix exists.
+    Relationship to existing pieces: the OPPOSITE of #50's protected
+    time windows (those say "the scheduler must never book here";
+    this says "this time is already spoken for by something external,
+    stop being strict about internal breaks inside it"). Needs a real
+    design pass — what exactly counts as "still inside the work
+    block" vs "a real break even during it" — before building; logged
+    here so the thinking survives, matching how #60/#95 were handled.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
