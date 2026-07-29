@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.2 — two small fixes
+
+- SIGNAL's auto-fill now seeds from your most urgent deadline instead
+  of blending every goal's keywords — sharper, less diffuse.
+- "Copy status update" now names the current milestone ("Currently on
+  ch5, 60% of its hours") instead of a bare date, when a deadline has
+  a milestone breakdown.
+
 ### v9.1 — two v9.0 follow-ups
 
 - Day timeline gets a 5th color for tier-2 (SIGNAL2) matched time —

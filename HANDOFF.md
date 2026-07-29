@@ -497,6 +497,20 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.2** (two small high-priority fixes, 2026-07-29, DONE). #109:
+  `_carry_signal`'s fallback now seeds from the single most-urgent
+  scoped deadline (`_focus_items`' own ranking) instead of blending
+  every goal's keywords — a real morning's confusion traced directly
+  to the diffuse blend, even though the day's own plan line had
+  already named the urgent deadline. Falls back to the all-goals
+  blend only when no deadline is scoped. #83: the status export now
+  reports the current milestone ("Currently on ch5, 60% of its
+  hours") instead of a bare date when a deadline has a milestone
+  breakdown — `_milestone_progress_line`'s credit math factored out
+  into `_milestone_credit`, shared by both the internal and external-
+  facing renderings so they can't drift apart. selftest.py's `METH`
+  extraction set updated to include the new shared method — a
+  mechanical step easy to forget when factoring out a helper.
 - **v9.1** (two follow-ups from v9.0, 2026-07-29, DONE). #105: a 5th
   timeline color (`TL_SIGNAL2`) so tier-2 matched time is visually
   distinct from plain work, same priority order as the text metrics
@@ -2838,15 +2852,11 @@ measuring what's already there.
     `_capacity_lines`/cost-of-yes inherit the fix for free since they
     both already route through `_day_capacity`.
 
-83. **Milestone-aware status export (USABILITY, connects v8.59 and
-    v8.62).** The conversation-ready status export currently reports a
-    bare projection date ("landing August 04"); when a deadline has a
-    milestone breakdown (v8.59), the external-facing paragraph could
-    say something an advisor actually cares about instead — "currently
-    on ch5 (60% of its hours)" — reusing `_milestone_progress_line`'s
-    own computation rather than the raw date. Falls back to the
-    existing date-based phrasing when no milestones are declared. Pure
-    composition of two things that already exist; no new data.
+83. ~~**Milestone-aware status export.**~~ — FIXED v9.2. Credit math
+    factored out of `_milestone_progress_line` into `_milestone_credit`
+    (shared by both renderings); `_status_update_text` now says
+    "Currently on ch5 (60% of its hours)" when milestones exist, falls
+    back to the date-based phrasing otherwise.
 
 84. ~~**Cost of yes should surface pre-existing blocked work under the
     same goal.**~~ — FIXED v8.69. `_cost_of_yes_line` takes a `goal`
@@ -3255,23 +3265,11 @@ measuring what's already there.
     with (a) + (b)'s simpler button version; drag-and-drop is a nice-
     to-have layered on top, not required for the core ask.
 
-109. **Deadline-urgency-seeded SIGNAL fallback (PLANNING — directly
-    from what happened to the owner today, 2026-07-29: opened the app,
-    the auto-filled SIGNAL didn't feel confident, said so — "not sure
-    whats signal for today... theres like plenty of diff things I kinda
-    could and need to do but idk whats rly signal").** `_carry_signal`'s
-    goal-seed fallback (used when there's no carried-forward value)
-    joins keywords from EVERY goal together — diffuse by construction,
-    the opposite of "today's ONE sharpest priority." A sharper seed
-    already exists in the app and isn't being reused here: `_focus_items`
-    (built for #59's reallocation line) already ranks deadlines by how
-    urgent/behind-pace they are. Fix: when there's no carried SIGNAL and
-    at least one deadline is scoped, seed from the single MOST URGENT
-    `_focus_items` entry's own matched keywords instead of blending all
-    goals — "SIGNAL: thesis" because thesis is the deadline actually
-    behind pace, not because it's alphabetically first among goals. Only
-    falls back to the old all-goals blend when no deadline is scoped at
-    all (a plain-goals period, no active urgency to anchor to).
+109. ~~**Deadline-urgency-seeded SIGNAL fallback.**~~ — FIXED v9.2.
+    `_carry_signal` now seeds from the single most-urgent `_focus_items`
+    entry's own match keywords when nothing carried forward and at
+    least one deadline is scoped; falls back to the old all-goals
+    blend only when no deadline is scoped at all.
 
 110. **Unmatched-task-name goal/domain suggestion (TRUST — turns "plain
     work" bucket bloat into an actionable fix, new idea 2026-07-29).**

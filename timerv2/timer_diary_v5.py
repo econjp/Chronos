@@ -60,6 +60,24 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.2 (two small high-priority fixes):
+  - #109: SIGNAL's fallback (when nothing carried forward) now seeds
+    from the single MOST URGENT scoped deadline's own keywords
+    (_focus_items' own ranking) instead of blending every goal's
+    keywords together. "SIGNAL: thesis" because thesis is actually
+    behind pace, not because it's alphabetically first among goals.
+    Falls back to the old all-goals blend only when no deadline is
+    scoped. Directly caused by a real morning where the auto-fill felt
+    unconfident even though the day's own plan line had already named
+    the urgent deadline two lines up.
+  - #83: the conversation-ready status export ("Copy status update")
+    now says "Currently on ch5 (60% of its hours)" instead of a bare
+    projection date when a deadline has a milestone breakdown — pure
+    composition of _milestone_credit (factored out of
+    _milestone_progress_line so both the internal and external-facing
+    renderings share one computation) and the existing status text.
+    Falls back to the date-based phrasing when no milestones exist.
+
 New in v9.1 (two follow-ups from v9.0):
   - #105: the day timeline gets a 5th color (TL_SIGNAL2) for tier-2
     matched time — was previously indistinguishable from plain work.
@@ -3287,6 +3305,18 @@ class App(tk.Tk):
         milestone tracker (there's no mechanism to tag which tracked
         minutes belong to which milestone) — but an honest one, since
         it never claims more than the deadline's own real total."""
+        parts = self._milestone_credit(dl)
+        if not parts:
+            return None
+        return "  milestones: " + ", ".join(parts["text"])
+
+    def _milestone_credit(self, dl):
+        """The shared credit computation behind _milestone_progress_line
+        (internal, blunt register) and #83's status-export phrasing
+        (external register) — one pass over the milestone list, two
+        renderings. Returns None when there's no breakdown; otherwise
+        {"text": [...], "current": (name, pct) or None if every
+        milestone is already done}."""
         milestones = _parse_milestones(dl.get("milestones", ""))
         if not milestones:
             return None
@@ -3305,16 +3335,18 @@ class App(tk.Tk):
             lo_iso, hi_iso = lo.isoformat(), self.today.isoformat()
             done_total_h = sum(rec["work"] for iso, rec in idx.items()
                               if lo_iso <= iso <= hi_iso) / 60
-        cum_declared, parts = 0.0, []
+        cum_declared, text, current = 0.0, [], None
         for m in milestones:
             if m["done"]:
-                parts.append(f"{m['name']} done")
+                text.append(f"{m['name']} done")
             else:
                 credit = max(0.0, done_total_h - cum_declared)
                 pct = min(100, round(100 * credit / m["h"])) if m["h"] else 0
-                parts.append(f"{m['name']} at {pct}% of its hours")
+                text.append(f"{m['name']} at {pct}% of its hours")
+                if current is None:
+                    current = (m["name"], pct)
             cum_declared += m["h"]
-        return "  milestones: " + ", ".join(parts)
+        return {"text": text, "current": current}
 
     def _set_goals(self):
         """Deadlines answer 'when'; goals answer WHY the hours happen.
@@ -6197,7 +6229,8 @@ class App(tk.Tk):
 
     def _carry_signal(self):
         """Yesterday's SIGNAL line text (original case) if it was
-        actually filled in, else goal-seeded.
+        actually filled in, else seeded from the most urgent scoped
+        deadline (backlog #109), else goal-seeded as a last resort.
 
         BUG FIXED 2026-07-29: a SIGNAL line that EXISTS but was left
         blank (true for every day since v6.1 auto-writes the line
@@ -6224,7 +6257,20 @@ class App(tk.Tk):
                         break   # found but blank -> fall through below
         except OSError:
             pass
-        # no signal yet? goals seed it — the why layer sets today's focus
+        # Backlog #109: no carried value — seed from the single MOST
+        # URGENT scoped deadline (_focus_items' own ranking, already
+        # built for the day-schedule/focus-order views) rather than
+        # blending every goal's keywords together. "SIGNAL: thesis"
+        # because thesis is actually behind pace, not because it's
+        # alphabetically first among goals — a diffuse blend is the
+        # opposite of "today's ONE sharpest priority." Only falls back
+        # to the all-goals blend when no deadline is scoped at all.
+        items = self._focus_items()
+        if items:
+            top_name = items[0][0]
+            dl = next((d for d in self.deadlines() if d["name"] == top_name), None)
+            if dl and dl.get("match", "").strip():
+                return dl["match"].strip()
         kws = []
         for g in self.goals():
             kws += [k.strip() for k in g.get("match", "").split(",")
@@ -8030,8 +8076,12 @@ class App(tk.Tk):
                 if this_week_h < last_week_h else "")
         text = (f"Progress update — {dl['name']}: {this_week_h:.0f}h "
                f"this week{trend}.")
+        credit = self._milestone_credit(dl)
+        milestone_now = credit["current"] if credit else None
         proj = self._dl_projection(dl)
-        if proj:
+        if milestone_now:
+            text += f" Currently on {milestone_now[0]} ({milestone_now[1]}% of its hours)."
+        elif proj:
             if proj["delta"] <= 0:
                 text += f" On pace to finish by {proj['land']:%B %d}."
             else:
