@@ -3237,6 +3237,58 @@ measuring what's already there.
     commitment? Needs a real answer, not a guess — check with the
     owner rather than assuming either way.
 
+108. **Task-library manual ranking (USABILITY — owner's own direct
+    ask, 2026-07-29: "just simply can drag or number tasks to top etc
+    etc and prio stuff.. idk if this already exists").** Answer: only
+    partially. Tasks have a 3-tier `priority` field (normal/signal/
+    someday, cycled by clicking the "!" column) but nothing orders
+    WITHIN a tier, and the Treeview doesn't even sort by tier — it's
+    plain insertion order regardless of priority, so a "signal"-tier
+    item added last still shows at the bottom under older "normal"
+    items. Fix, two parts: (a) sort the display by tier first (signal
+    > normal > someday), insertion order within each tier — a pure
+    rendering change, no new data; (b) a real manual rank: either drag-
+    to-reorder in the Treeview (tk supports this via button-motion
+    events, not trivial but doable) or simpler, an Up/Down button pair
+    that swaps a task's position in `settings["tasks"]` — the list's
+    own order already IS the rank, once (a) stops hiding it. Start
+    with (a) + (b)'s simpler button version; drag-and-drop is a nice-
+    to-have layered on top, not required for the core ask.
+
+109. **Deadline-urgency-seeded SIGNAL fallback (PLANNING — directly
+    from what happened to the owner today, 2026-07-29: opened the app,
+    the auto-filled SIGNAL didn't feel confident, said so — "not sure
+    whats signal for today... theres like plenty of diff things I kinda
+    could and need to do but idk whats rly signal").** `_carry_signal`'s
+    goal-seed fallback (used when there's no carried-forward value)
+    joins keywords from EVERY goal together — diffuse by construction,
+    the opposite of "today's ONE sharpest priority." A sharper seed
+    already exists in the app and isn't being reused here: `_focus_items`
+    (built for #59's reallocation line) already ranks deadlines by how
+    urgent/behind-pace they are. Fix: when there's no carried SIGNAL and
+    at least one deadline is scoped, seed from the single MOST URGENT
+    `_focus_items` entry's own matched keywords instead of blending all
+    goals — "SIGNAL: thesis" because thesis is the deadline actually
+    behind pace, not because it's alphabetically first among goals. Only
+    falls back to the old all-goals blend when no deadline is scoped at
+    all (a plain-goals period, no active urgency to anchor to).
+
+110. **Unmatched-task-name goal/domain suggestion (TRUST — turns "plain
+    work" bucket bloat into an actionable fix, new idea 2026-07-29).**
+    The three/four-bucket model (signal / goal-aligned / plain work /
+    noise) is correct and settled, but nothing currently helps shrink
+    the "plain work" bucket when it's large for a boring reason — a
+    real, meaningful task's name just never got added to any goal's or
+    domain's keyword list, not because it genuinely doesn't belong
+    anywhere. Fix: a Data-doctor-style scan — the top task NAMES by
+    hours (last 60 days) that match neither a goal nor a domain's
+    keywords — surfaced as "'life admin' — 8.2h, unattributed to any
+    goal or domain. Add a keyword?" with a one-click add to an existing
+    goal/domain's `match` list. Pure read of already-computed data
+    (`day_index`, `goals()`, `domains()`, `_match_kws`); no new
+    tracking, no auto-guessing which goal a name belongs to — the
+    owner picks, same as every other lens-linking action in the app.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
