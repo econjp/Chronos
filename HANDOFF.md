@@ -3197,6 +3197,53 @@ measuring what's already there.
     nag: no notification, no forced review, no auto-archival — same
     anti-nagging precedent as #9's rejected Reopening Guard.
 
+105. **Tier-2 color in the day timeline (USABILITY — completes v9.0's
+    #96 visually, new idea 2026-07-29).** The 00-24 day timeline
+    (v5.2) currently has four colors — `TL_WORK`/`TL_BREAK`/
+    `TL_SIGNAL`/`TL_GOAL` — and SIGNAL2 (v9.0) has no color of its own,
+    so tier-2 time currently paints as plain work-blue, indistinguishable
+    from untagged work at a glance even though the text-based totals
+    line and insight already know the difference. Fix: a fifth color
+    (`TL_SIGNAL2`, visually related to but distinct from `TL_SIGNAL` —
+    e.g. a lighter/desaturated green) in the same `work_color(task)`
+    lookup (`~line 5064`) that already resolves tier-1/goal/plain —
+    one more branch, no new data, no new drawing code beyond the
+    existing rectangle-fill loop.
+
+106. **Header-line adoption panel (META — different surface than #56's
+    usage meter, new idea 2026-07-29).** #56 counts View-menu COMMAND
+    clicks (Tools > "Feature usage…"); nothing shows the parallel
+    picture for the ~13 optional header-LINE conventions that have
+    accumulated (SIGNAL2, AVOID, YEAR, METRICS, WORKBLOCK, DECIDED,
+    CAPSULE, COMMIT, EXPERIMENT, TODAY…) — which ones actually got
+    adopted vs set once and forgotten. The plumbing already exists:
+    `_line_ever_used(prefix, days)` is called once per axis today just
+    to decide morning-header visibility; a small Data-doctor-style
+    view could run it across every known prefix at once and just
+    report the table — "SIGNAL2: used 12 of last 60 days · WORKBLOCK:
+    used 8 of last 60 days · YEAR: not used in 60 days" — pure
+    read-only reporting, reuses `_line_ever_used` as-is (maybe widened
+    to return a count instead of a bool, one small signature change).
+
+107. **WORKBLOCK-aware scheduler (PLANNING — a gap v9.0's own WORKBLOCK
+    left, new idea 2026-07-29).** v9.0 wired `WORKBLOCK:` into idle/
+    lock detection only — `_free_slots` (the scheduler's own busy-time
+    model, already merges calendar busy time + `_protected_intervals`)
+    still doesn't know a declared work block exists, so the morning's
+    suggested schedule and `_next_free_block_line` can still recommend
+    deep thesis work at 10:00 during a declared 09:00-17:00 day job.
+    The same "two models silently disagreeing" shape #82 just fixed
+    for protected windows, one level up: `_free_slots` should also
+    subtract `_workblock_window()` the same way it already subtracts
+    `_protected_intervals()` — one more busy-time source merged into
+    the same primitive. Open question worth resolving before building,
+    not just formatting: should `_day_capacity`'s aggregate-hours model
+    (deadline math) ALSO shrink inside a work block, same as #82 did
+    for protected windows, or does day-job time deliberately stay
+    outside the deadline-capacity pool since it's a different kind of
+    commitment? Needs a real answer, not a guess — check with the
+    owner rather than assuming either way.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
