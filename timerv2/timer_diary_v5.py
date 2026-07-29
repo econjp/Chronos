@@ -60,6 +60,18 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.67 (Help menu — a quick reference, owner's own ask):
+  - New Help menu (after File/View/Tools, the classic spot) >
+    "Quick reference…": one hand-written, deliberately short window
+    covering the header-line conventions (SIGNAL/AVOID/YEAR/ENERGY/
+    METRICS/TODO/DECIDED/CAPSULE/COMMIT/EXPERIMENT/TODAY), the task-
+    box shortcuts (done:, [15m], right-click), what's in each View-
+    menu category, and an "easy to forget exists" list — the owner's
+    own example was rediscovering the Decision log. Written by hand,
+    not generated from the changelog, and explicitly NOT meant to be
+    rewritten every version — a stable reference, not documentation
+    that chases every release.
+
 New in v8.66 (CRITICAL FIX: SIGNAL carry-forward was silently dead
 for anyone who never typed into it, + a wall-of-text reduction,
 2026-07-29):
@@ -2804,6 +2816,11 @@ class App(tk.Tk):
         toolsm.add_command(label="Protected time windows (lunch, wind-down)…",
                            command=self._set_protected_windows)
         m.add_cascade(label="Tools", menu=toolsm)
+
+        helpm = tk.Menu(m, tearoff=0)
+        helpm.add_command(label="Quick reference…", command=self._help_win)
+        m.add_cascade(label="Help", menu=helpm)
+
         self.menu = m
         self.config(menu=m)
 
@@ -5452,6 +5469,68 @@ class App(tk.Tk):
                 else:
                     grab = kind
         return out
+
+    # a leading "## " marks a section header — stripped before display,
+    # not guessed from letter case (several headers have lowercase
+    # parentheticals, e.g. "VIEW MENU  (Ctrl+D = ...)")
+    _HELP_TEXT = """## THE ONE RULE
+Your day file IS the app. Timer lines, your notes, everything — one
+.txt per day, nothing hidden anywhere else.
+
+## TYPE THESE INTO ANY DAY'S HEADER
+SIGNAL: thesis, ch4         today's one real priority
+AVOID: news, email          what you're trying to shed
+YEAR: the graduation year   a standing theme for the year
+ENERGY: 3 anxious           1-5 is fuel, the word is mood
+METRICS: water=2L, meditation, cold_shower
+                             any fact — a bare word logs itself as 1
+TODO: / SOMEDAY:             bullets land in Tasks/backlog on their own
+DECIDED: apartment — staying another year, rent's still fair
+                             makes a decision searchable later
+CAPSULE: 2026-08-15 | message
+                             seals a note for a future date
+COMMIT: thesis 4h            promise yourself hours; Monday checks the rate
+EXPERIMENT: no work after 21:00
+                             a one-week self-test, checked automatically
+TODAY: 4h                    declares a short/off day — no guilt trip after
+
+## IN THE TASK BOX
+done: thesis ch4            marks a matching task-library item done
+name [15m]                  time-boxes that task for today
+right-click a task          set blocked-by, goal, or deadline
+
+## VIEW MENU  (Ctrl+D = the dashboard, the home)
+Planning    capacity, outlook, burn-down — what's coming, does it fit
+Memory      trend, heatmap, search, decision log — the archive, queryable
+Values      alignment, life review, lens overlap check — is time going
+            where you say it should
+Writing     Ctrl+T — a distraction-free popup for reflection/brainstorm
+
+## TOOLS MENU
+Settings for most of the above, plus Data doctor, Feature usage,
+Life domains, and the break/idle/schedule knobs.
+
+## EASY TO FORGET EXISTS
+Decision log · Time capsule · Life domains · Lens overlap check ·
+Cost-of-yes preview (in the deadline dialog) · Search all days ·
+Feature usage under Tools — see what you actually open
+
+Written by hand, not rewritten every version — if a line here stops
+matching reality, that's itself worth a note."""
+
+    def _help_win(self):
+        win = tk.Toplevel(self)
+        win.title(f"{APP_NAME} — quick reference")
+        win.geometry("620x560")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10), padx=10, pady=10)
+        txt.pack(fill="both", expand=True)
+        txt.tag_configure("h", font=("Consolas", 10, "bold"), foreground="#1a4a7a")
+        for line in self._HELP_TEXT.splitlines():
+            if line.startswith("## "):
+                txt.insert("end", line[3:] + "\n", "h")
+            else:
+                txt.insert("end", line + "\n")
+        txt.config(state="disabled")
 
     def _task_actual_h(self, name, added):
         """Real hours logged against a task-library item's name since

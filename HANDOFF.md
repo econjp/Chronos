@@ -487,6 +487,18 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v8.67** (Help menu — a quick reference, owner's own ask,
+  2026-07-29, DONE). New top-level Help menu (classic File/View/
+  Tools/Help order) > "Quick reference…": one short, hand-written
+  window — header-line conventions (SIGNAL/AVOID/YEAR/ENERGY/
+  METRICS/TODO/DECIDED/CAPSULE/COMMIT/EXPERIMENT/TODAY), task-box
+  shortcuts, the View menu's own categories, and an "easy to forget
+  exists" list (prompted directly by the owner rediscovering the
+  Decision log). Deliberately NOT auto-generated from the changelog
+  and NOT meant to be rewritten every version — styled after the old
+  Windows Help/About pattern the owner asked for, kept short on
+  purpose. If a future feature changes one of these conventions,
+  update this text in the same commit; otherwise leave it alone.
 - **v8.66** (CRITICAL FIX + wall-of-text reduction, 2026-07-29, DONE).
   **`_carry_signal` was silently dead for anyone who never manually
   typed into SIGNAL**: it returned the moment it found a "SIGNAL:"

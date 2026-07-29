@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### Help menu — a quick reference (v8.67)
+
+**Help > Quick reference…** — a short, hand-written window covering
+every header-line convention (SIGNAL/AVOID/YEAR/ENERGY/METRICS/TODO/
+DECIDED/CAPSULE/COMMIT/EXPERIMENT/TODAY), task-box shortcuts, what's
+in each View-menu category, and an "easy to forget exists" list.
+Styled after the old Windows Help/About pattern — short on purpose,
+not rewritten every version.
+
 ### Critical fix: SIGNAL was silently dead + less wall of text (v8.66)
 
 **If you've never once typed a value into the SIGNAL line, this fixes
