@@ -3113,6 +3113,69 @@ measuring what's already there.
     `CF_UNICODETEXT` explicitly) rather than anything in this file's
     own save/load code, which checks out clean.
 
+102. **Manual task-name merge (TRUST/HYGIENE — a real gap Data
+    doctor's existing spelling-variant merge doesn't cover, new idea
+    2026-07-29).** Data doctor (v8.?) already auto-detects and merges
+    CASE/whitespace variants of the same string ("Thesis" vs
+    "thesis") — but it groups by `" ".join(t.lower().split())`, so it
+    structurally cannot catch two genuinely different-looking labels
+    the owner privately means as the same activity. #99's day-by-day
+    audit caught exactly this live: "HGW" was used for weeks before
+    being corrected to "Hegemon" — both matched the same goal's
+    keywords so goal-level totals stayed fine, but the per-task
+    breakdown (recent-tasks dropdown, Tasks window, "Copy for AI
+    review" per-task hours, `_task_actual_h`) silently split one
+    activity's history into two entries the whole time, and nothing
+    else in the app could have caught it since the strings share no
+    substring. Fix: a small manual pairing tool (in Data doctor, or
+    its own Tools entry) — pick two distinct task names from history,
+    choose the canonical spelling, rewrite past csv rows the same way
+    Data doctor's existing Clean action already does (same rewrite
+    primitive, one more mapping source: user-declared instead of
+    auto-detected). Deliberately NOT auto-detected — unrelated strings
+    can't be inferred safely, so this stays a manual action that can
+    never silently merge two things that were actually different.
+
+103. **Deadline phase-out: extend or spin off? (PLANNING — the owner's
+    own live question, 2026-07-28: "figure out how shuld this now
+    function that gonna extend the thesis DL... shuld i jsut add new
+    DL for the rest of this thesis stuff, or edit the existing one,
+    culd be easy fix," new idea 2026-07-29).** Nothing currently
+    guides the exact moment a deadline's declared work is "done" (due
+    date passed, or scope fully logged) but the SAME goal's keyword-
+    matched work keeps happening afterward — right now the owner has
+    to guess whether to edit the old deadline's date (keeping its
+    renegotiation/ledger history continuous) or create a fresh one
+    (clean scope, but the lifetime ledger, milestone progress and
+    post-mortem math all start over from zero). Fix: when the deadline
+    editor is opened on a deadline that's past-due or fully logged,
+    and its goal still has recent matched hours, show a one-line
+    prompt naming the choice and its consequence explicitly — "this
+    deadline has N weeks of ledger history; extending the date keeps
+    it, a new deadline starts fresh" — then act on whichever the owner
+    picks with one click. Pure composition: reuses `_dl_progress`,
+    `_lifetime_ledger_line`, `_deadline_revisions_after_save` as-is;
+    the only new part is naming the choice at the right moment instead
+    of leaving it implicit and manual.
+
+104. **Task-library staleness flag (HYGIENE — the task library's own
+    honesty gate, mirroring what #56's usage meter does for insights;
+    new idea 2026-07-29).** A task-library item can sit for months
+    with zero real hours logged against it and never get marked done
+    or blocked — nothing currently distinguishes "queued behind real
+    priorities, on purpose" from "quietly forgotten," and the list
+    just grows (the #97 cleanup this session already found 43 stale
+    duplicate entries hiding in it). Fix: reuse `_task_actual_h`
+    (already computed for the Tasks window's display column) — an
+    item older than a real threshold (e.g. 6+ weeks, so it never fires
+    on work that's merely queued behind this week's priorities) with
+    0h logged gets a quiet "⏳ 6wk, 0h" marker in the Tasks window,
+    plus — only when at least one exists — a single MOMENTUM & TRENDS
+    line in #86's new grouped insights: "N task(s) aging 6+ weeks with
+    0h logged — still relevant, or done in spirit?" A flag, never a
+    nag: no notification, no forced review, no auto-archival — same
+    anti-nagging precedent as #9's rejected Reopening Guard.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
