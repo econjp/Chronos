@@ -487,6 +487,23 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v8.68** (quick reference restructured, direct follow-up feedback
+  on v8.67, 2026-07-29, DONE). Three changes: (1) moved from a new
+  top-level Help menu into Tools > "Quick reference — what does this
+  app do?…" — no new top-level menu. (2) Rebuilt as a real two-pane
+  topic viewer (`tk.Listbox` of 13 topics + a `tk.Text` content pane
+  that updates on selection) instead of one scrolling wall of text —
+  the WinHelp/CHM shape the owner asked for by name ("og windows
+  vibe"), plain tkinter, no new dependency. (3) Every topic expanded
+  into real paragraphs explaining what each convention does and why,
+  not just its syntax. `_HELP_TOPICS` is now a list of (title, body)
+  tuples instead of one big string. Tested via a real menu invocation
+  plus a simulated mouse click on a listbox row (a virtual
+  `<<ListboxSelect>>` event doesn't dispatch headlessly without a
+  running mainloop — needed `win.deiconify()` + click coordinates via
+  `bbox()`, noted here since it'll trip up the next session that
+  tries to test a Listbox binding the same way). Full regression +
+  selftest.py (45/45) green.
 - **v8.67** (Help menu — a quick reference, owner's own ask,
   2026-07-29, DONE). New top-level Help menu (classic File/View/
   Tools/Help order) > "Quick reference…": one short, hand-written

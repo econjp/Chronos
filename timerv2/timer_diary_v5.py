@@ -60,6 +60,21 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v8.68 (quick reference restructured, owner's own follow-up
+feedback):
+  - Three changes to v8.67's quick reference, all direct feedback:
+    (1) moved out of a new top-level Help menu into Tools >
+    "Quick reference — what does this app do?…" — no new top-level
+    menu, folded into the existing structure. (2) Rebuilt as a real
+    two-pane topic viewer (a Listbox of 13 topics on the left, a Text
+    pane on the right that updates on selection) instead of one long
+    scrolling wall of text — the classic WinHelp/CHM shape the owner
+    asked for ("og windows vibe"), built with plain tkinter widgets,
+    no new dependency. (3) Every topic got a real paragraph or two
+    instead of a one-line entry — explains WHAT each convention does
+    and WHY, not just the syntax. Content unchanged in substance from
+    v8.67, just far more explained and far better organized.
+
 New in v8.67 (Help menu — a quick reference, owner's own ask):
   - New Help menu (after File/View/Tools, the classic spot) >
     "Quick reference…": one hand-written, deliberately short window
@@ -2793,6 +2808,8 @@ class App(tk.Tk):
         toolsm.add_command(label="Meeting mode (idle off 90 min)",
                            command=self._meeting_mode)
         toolsm.add_command(label="Feature usage…", command=self._usage_win)
+        toolsm.add_command(label="Quick reference — what does this app do?…",
+                           command=self._help_win)
         toolsm.add_separator()
         toolsm.add_command(label="Data doctor — check & clean history…",
                            command=self._data_doctor)
@@ -2816,10 +2833,6 @@ class App(tk.Tk):
         toolsm.add_command(label="Protected time windows (lunch, wind-down)…",
                            command=self._set_protected_windows)
         m.add_cascade(label="Tools", menu=toolsm)
-
-        helpm = tk.Menu(m, tearoff=0)
-        helpm.add_command(label="Quick reference…", command=self._help_win)
-        m.add_cascade(label="Help", menu=helpm)
 
         self.menu = m
         self.config(menu=m)
@@ -5470,67 +5483,209 @@ class App(tk.Tk):
                     grab = kind
         return out
 
-    # a leading "## " marks a section header — stripped before display,
-    # not guessed from letter case (several headers have lowercase
-    # parentheticals, e.g. "VIEW MENU  (Ctrl+D = ...)")
-    _HELP_TEXT = """## THE ONE RULE
-Your day file IS the app. Timer lines, your notes, everything — one
-.txt per day, nothing hidden anywhere else.
+    # Written by hand, not generated from the changelog, and not meant
+    # to be rewritten every version — a stable reference. Each topic:
+    # (title, body). Verify exact syntax against the real regex/parser
+    # before editing this, don't write it from memory.
+    _HELP_TOPICS = [
+        ("Welcome",
+         "TimerDiary starts as a work timer and ends up knowing more "
+         "about your life than any app you've used, because it's built "
+         "on one rule: your day file IS the app.\n\n"
+         "Everything the app has to say lands as plain text in that "
+         "one .txt file per day — no hidden database, nothing you "
+         "can't read or edit yourself. Views, insights and dashboards "
+         "are all just different ways of reading that same file back.\n\n"
+         "This window explains what's actually in here — pick a topic "
+         "on the left. It's written by hand and kept short on purpose; "
+         "it won't get rewritten every time a feature ships, so if "
+         "something below stops matching reality, that's itself worth "
+         "mentioning."),
 
-## TYPE THESE INTO ANY DAY'S HEADER
-SIGNAL: thesis, ch4         today's one real priority
-AVOID: news, email          what you're trying to shed
-YEAR: the graduation year   a standing theme for the year
-ENERGY: 3 anxious           1-5 is fuel, the word is mood
-METRICS: water=2L, meditation, cold_shower
-                             any fact — a bare word logs itself as 1
-TODO: / SOMEDAY:             bullets land in Tasks/backlog on their own
-DECIDED: apartment — staying another year, rent's still fair
-                             makes a decision searchable later
-CAPSULE: 2026-08-15 | message
-                             seals a note for a future date
-COMMIT: thesis 4h            promise yourself hours; Monday checks the rate
-EXPERIMENT: no work after 21:00
-                             a one-week self-test, checked automatically
-TODAY: 4h                    declares a short/off day — no guilt trip after
+        ("The day file",
+         "Every morning (or whenever you first open the app that day) "
+         "a new day file gets created automatically, already carrying "
+         "yesterday's numbers, a plan for today, and whatever header "
+         "lines you use (see the other topics).\n\n"
+         "Below that header, the file is a mix of two things, "
+         "interleaved: raw timer lines (Start/Stop/Reset — these are "
+         "what the app writes when you press the buttons) and your own "
+         "free-typed notes, wherever you put them. You can write "
+         "between timer lines, at the end, anywhere — it all saves "
+         "automatically every ~10 seconds.\n\n"
+         "Tools > \"Hide raw timer lines in the diary\" folds the "
+         "Start/Stop/Reset bookkeeping out of view if it gets visually "
+         "noisy — purely a display setting, the file on disk never "
+         "changes."),
 
-## IN THE TASK BOX
-done: thesis ch4            marks a matching task-library item done
-name [15m]                  time-boxes that task for today
-right-click a task          set blocked-by, goal, or deadline
+        ("SIGNAL & AVOID",
+         "SIGNAL: declares today's ONE real priority, as one or more "
+         "comma-separated keywords — e.g. \"SIGNAL: thesis, ch4\". Any "
+         "task whose name contains one of those words counts as "
+         "signal time; tomorrow's header reports what share of "
+         "yesterday's work was actually signal (\"signal 67%\").\n\n"
+         "Leave it blank and it carries forward automatically: either "
+         "repeating yesterday's SIGNAL, or — if you've never set one — "
+         "seeded from your Goals' own keywords (Tools > Goals). You "
+         "don't have to type it every day for it to work.\n\n"
+         "AVOID: is the mirror image — keywords for what you're trying "
+         "to cut down on (\"AVOID: news, email\"). Same mechanism, "
+         "inverted, reported the same way, with a quiet arrow showing "
+         "whether this week is trending up or down against the "
+         "previous few weeks."),
 
-## VIEW MENU  (Ctrl+D = the dashboard, the home)
-Planning    capacity, outlook, burn-down — what's coming, does it fit
-Memory      trend, heatmap, search, decision log — the archive, queryable
-Values      alignment, life review, lens overlap check — is time going
-            where you say it should
-Writing     Ctrl+T — a distraction-free popup for reflection/brainstorm
+        ("YEAR, ENERGY & METRICS",
+         "YEAR: a standing theme for the whole year (\"YEAR: the "
+         "graduation year\") — set once, carries forward silently "
+         "after that, same shape as AVOID.\n\n"
+         "ENERGY: a 1-5 number for how much fuel you had today, "
+         "optionally followed by a word for how it FELT — \"ENERGY: 3 "
+         "anxious\". The number and the word are read as two different "
+         "things on purpose: you can be low-energy-but-calm or "
+         "high-energy-but-anxious, and the app tracks both, separately, "
+         "against your signal share.\n\n"
+         "METRICS: the general-purpose one — any personal fact you "
+         "want kept, as comma-separated key=value pairs, e.g. "
+         "\"METRICS: water=2L, meditation=10, cold_shower\". A bare "
+         "word with no \"=\" logs itself as 1 (handy for yes/no habits). "
+         "This exists so a brand-new thing you want to track — "
+         "caffeine, supplements, mood, anything — never needs new code "
+         "or a new settings dialog. Just start typing it."),
 
-## TOOLS MENU
-Settings for most of the above, plus Data doctor, Feature usage,
-Life domains, and the break/idle/schedule knobs.
+        ("TODO / SOMEDAY — the task library",
+         "Write \"TODO: reply to X\" or \"SOMEDAY: learn Y\" anywhere "
+         "in any day file — the header, a themed-writing session, "
+         "mid-note — and it's automatically copied into the Task "
+         "library (View > Tasks/backlog) within about 10 seconds, no "
+         "copying it anywhere yourself.\n\n"
+         "The library tracks estimate-vs-actual hours per task once "
+         "you finish it (click Done, or type \"done: <name>\" in the "
+         "task box — see \"In the task box\"), so over time the app "
+         "can tell you how far off your own estimates typically run.\n\n"
+         "Right-click a row to link it to a Goal or a Deadline, mark "
+         "its priority (signal / normal / someday), or set what it's "
+         "blocked by."),
 
-## EASY TO FORGET EXISTS
-Decision log · Time capsule · Life domains · Lens overlap check ·
-Cost-of-yes preview (in the deadline dialog) · Search all days ·
-Feature usage under Tools — see what you actually open
+        ("DECIDED, CAPSULE, COMMIT, EXPERIMENT, TODAY",
+         "Five smaller conventions, each solving one specific "
+         "annoyance:\n\n"
+         "DECIDED: apartment — staying another year, rent's still fair\n"
+         "  Makes a real decision searchable forever (View > Memory > "
+         "Decision log) so you stop relitigating settled questions "
+         "from memory.\n\n"
+         "CAPSULE: 2026-08-15 | a note to future you\n"
+         "  Seals a message that only resurfaces in the header on that "
+         "future date — a note to yourself, delivered on schedule.\n\n"
+         "COMMIT: thesis 4h  (or just \"COMMIT: 4h\" for overall work)\n"
+         "  A promise for the day. The Monday review reports the "
+         "trailing rate you actually deliver on — self-calibration, "
+         "not a daily grade.\n\n"
+         "EXPERIMENT: no work after 21:00\n"
+         "  Declares a one-week self-test; checked automatically "
+         "against your own trailing baseline once the week's up.\n\n"
+         "TODAY: 4h  (or \"TODAY: sick\", no number needed)\n"
+         "  Declares a short or off day IN ADVANCE, so tomorrow's "
+         "verdict judges you against what you said, not your normal "
+         "day — no guilt trip for a day you already knew would be "
+         "light."),
 
-Written by hand, not rewritten every version — if a line here stops
-matching reality, that's itself worth a note."""
+        ("In the task box",
+         "Typing \"done: thesis ch4\" and pressing Enter marks the "
+         "matching task-library item done, without opening the Tasks "
+         "window at all.\n\n"
+         "A trailing [15m] or [1h30m] on a task name time-boxes it for "
+         "today — \"email: EU [15m]\" — and the app warns once you go "
+         "over.\n\n"
+         "Right-click a row in the Tasks window to set what it's "
+         "blocked by, or link it to a Goal or Deadline."),
+
+        ("View menu — Planning",
+         "The forward-looking pillar: Week plan / capacity (your "
+         "weekly hours budget vs what's due), Outlook (every scoped "
+         "deadline simulated forward at your REAL recent pace, not the "
+         "naive one), and Deadline burn-down (one deadline's progress "
+         "chart, with a real-pace landing-date projection and — once "
+         "you're behind — whether that's a capacity problem or a "
+         "choice problem)."),
+
+        ("View menu — Memory",
+         "The archive, made queryable: Trend (8 weeks), Month heatmap, "
+         "Year rhythm map, Search all days (ranked multi-term search "
+         "across every day file, with a \"copy matching days for AI\" "
+         "button), and Decision log (every DECIDED: line, newest "
+         "first)."),
+
+        ("View menu — Values",
+         "Is your time actually going where you say it should: Life "
+         "alignment (tracked time vs. the Domains you've declared), "
+         "Life review (one weekly briefing synthesizing all three "
+         "pillars into a single honest bottom line), and Lens overlap "
+         "check (do two of your declared Goals/Domains/Deadlines "
+         "accidentally share keywords and silently double-count the "
+         "same hours toward two different percentages)."),
+
+        ("Writing",
+         "Ctrl+T opens a distraction-free popup for reflection, "
+         "brainstorming, or a \"someday\" list on any topic — it saves "
+         "as a folded block in today's day file, not a separate "
+         "document. Browse themes (View menu) is a read-only scan "
+         "across every day file for these blocks, grouped by topic, so "
+         "you can revisit everything you've written about one thing "
+         "over time."),
+
+        ("Tools menu highlights",
+         "Data doctor cleans up messy task names (typos, near-"
+         "duplicates) across your whole history. Feature usage shows "
+         "which of this app's views you actually open, honestly. Life "
+         "domains is the values layer above Goals. The rest are the "
+         "knobs: idle detection minutes, break pull-back threshold, "
+         "day rollover hour, work-day window, protected time windows "
+         "(lunch, wind-down) — all optional, all off unless you set "
+         "them."),
+
+        ("Easy to forget exists",
+         "A short list of real features that are easy to lose track "
+         "of in everything else this app does:\n\n"
+         "• Decision log — every DECIDED: line, searchable\n"
+         "• Time capsule — CAPSULE: notes to your future self\n"
+         "• Life domains — the values layer above Goals\n"
+         "• Lens overlap check — catches accidental double-counting\n"
+         "• Cost-of-yes preview — live in the deadline-editing dialog\n"
+         "• Search all days — ranked search across your whole history\n"
+         "• Feature usage (Tools) — which of all this you actually use"),
+    ]
 
     def _help_win(self):
         win = tk.Toplevel(self)
         win.title(f"{APP_NAME} — quick reference")
-        win.geometry("620x560")
-        txt = tk.Text(win, wrap="word", font=("Consolas", 10), padx=10, pady=10)
-        txt.pack(fill="both", expand=True)
-        txt.tag_configure("h", font=("Consolas", 10, "bold"), foreground="#1a4a7a")
-        for line in self._HELP_TEXT.splitlines():
-            if line.startswith("## "):
-                txt.insert("end", line[3:] + "\n", "h")
-            else:
-                txt.insert("end", line + "\n")
-        txt.config(state="disabled")
+        win.geometry("760x520")
+        win.rowconfigure(0, weight=1)
+        win.columnconfigure(1, weight=1)
+
+        side = tk.Listbox(win, width=26, exportselection=False,
+                          font=("Segoe UI", 9), activestyle="dotbox",
+                          relief="sunken", borderwidth=2)
+        side.grid(row=0, column=0, sticky="ns", padx=(8, 4), pady=8)
+        for title, _ in self._HELP_TOPICS:
+            side.insert("end", title)
+
+        txt = tk.Text(win, wrap="word", font=("Segoe UI", 10),
+                      padx=12, pady=10, relief="sunken", borderwidth=2)
+        txt.grid(row=0, column=1, sticky="nsew", padx=(0, 8), pady=8)
+
+        def show(event=None):
+            sel = side.curselection()
+            if not sel:
+                return
+            _, body = self._HELP_TOPICS[sel[0]]
+            txt.config(state="normal")
+            txt.delete("1.0", "end")
+            txt.insert("1.0", body)
+            txt.config(state="disabled")
+
+        side.bind("<<ListboxSelect>>", show)
+        side.selection_set(0)
+        show()
 
     def _task_actual_h(self, name, added):
         """Real hours logged against a task-library item's name since
