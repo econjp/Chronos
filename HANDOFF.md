@@ -3287,6 +3287,36 @@ measuring what's already there.
     tracking, no auto-guessing which goal a name belongs to — the
     owner picks, same as every other lens-linking action in the app.
 
+111. **Deadline retirement should archive, not delete (TRUST, new idea
+    2026-07-29 — surfaced by actually doing this by hand today).**
+    Retiring a finished deadline (per #103's "extend or spin off"
+    resolution) currently means removing it outright from
+    `settings["deadlines"]` — its renegotiation `history`, its
+    `postmortem_written` flag, everything about it as a STRUCTURED
+    record is gone the moment the entry is deleted. The day file still
+    has the text (permanent, per the sacred rule), but nothing
+    structured remembers "this deadline existed and was closed out" —
+    future features that want a real shape (year in review #15,
+    coverage map #87, "how many deadlines did I actually finish this
+    year") have nothing to read. Fix: mirror `tasks_done` — a
+    `settings["deadlines_done"]` list, append the full dict (plus a
+    `retired_on` date and maybe `outcome`: finished/superseded) instead
+    of dropping it, same shape as #91's task archival.
+
+112. **Settings changes should leave a visible day-file trace (TRUST —
+    the sacred rule applied to itself, new idea 2026-07-29).** "Every
+    feature must leave a visible trace in the day file" (CLAUDE.md's
+    own standing rule) currently only covers TRACKED features — goal/
+    deadline/capacity edits go straight into settings.json with no
+    day-file trace at all, unlike a Done task (`--- Done: X`) or a
+    renegotiated deadline (already logged via #51's tracker). Fix: on
+    save, goals/deadlines/capacity editors append one short line to
+    today's diary — `--- Settings changed: goal 'X' target now 5h/wk`
+    or `--- Settings changed: deadline 'Y' retired, 'Z' added` — same
+    visible-trace treatment everything else already gets, so a glance
+    at any day file shows not just what you DID but what you
+    RECONFIGURED. Small, mechanical, one line per editor's save().
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
