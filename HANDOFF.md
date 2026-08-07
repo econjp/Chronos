@@ -497,6 +497,16 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.13** (#130 + #131, 2026-08-07, DONE). #130: the morning header
+  now names today's recurring commitments and their total cost
+  ("commitments today: Day job 7.5h, Sleep 9.5h — 17.0h of 24h
+  already spoken for") — fixes a real violation of CLAUDE.md's own
+  sacred rule, since #121's commitments were visible only in the
+  Tools editor and the week calendar, never in the day file itself.
+  #131: the month calendar view now shades each cell white-to-green
+  by real `_day_capacity`, reusing the same number #118/#113 already
+  compute — one glance answers "what's on" and "how open is it"
+  together.
 - **v9.12** (#125 + #126, owner's own "automate and make it so much
   easier" ask, 2026-08-07, DONE). #126: the Recurring commitments
   editor now suggests a Sleep row from real tracked data (median
@@ -3656,34 +3666,12 @@ measuring what's already there.
     don't-apply guardrail as everything else, just shortens the
     distance between "the app noticed" and "it's fixed."
 
-130. **Today's commitment cost, visible in the day file itself (TRUST
-    — the sacred rule applied to #121, which currently violates it;
-    new idea 2026-08-07).** CLAUDE.md's own standing rule: "every
-    feature must leave a visible trace in the day file — a feature
-    that only writes to the csv reads as broken." #121's recurring
-    commitments currently show up ONLY in the Tools editor dialog and
-    the week calendar view — `_new_day_header` never mentions them at
-    all, so a day's own txt file gives no hint that e.g. 7.5h of
-    today is already spoken for by a day job and sleep. Fix: one line
-    in the morning header — "commitments today: Day job 7.5h, sleep
-    9.0h (16.5h of 24h already spoken for)" — reusing `_protected_
-    intervals_named(self.today)`, no new computation, just finally
-    surfacing what #121 already knows in the one place this app's own
-    rules say everything belongs.
+130. ~~**Today's commitment cost, visible in the day file itself.**~~
+    — FIXED v9.13. See the v9.13 version-history entry above.
 
-131. **Month view: free/busy shading per day cell (USABILITY — merges
-    #118's forecast concept into #120's month view; new idea
-    2026-08-07).** The month calendar (#120) shows named events/due-
-    dates per cell but nothing about how FREE a day actually is at a
-    glance — that's currently only in the separate free-time forecast
-    (#118), which doesn't show event names. A light background tint
-    per day cell (green-to-grey gradient by that day's `_day_capacity`
-    or biggest-free-block, the same number #118 already computes)
-    would let the month view answer both "what's on" and "how open is
-    it" in one glance instead of two separate windows. Purely visual
-    — reuses `_day_forecast`'s own per-day numbers, no new capacity
-    math, just one more `create_rectangle` fill color per cell before
-    the existing text is drawn on top.
+131. ~~**Month view: free/busy shading per day cell.**~~ — FIXED
+    v9.13. See the v9.13 version-history entry above
+    (`_cal_shade_color`, real `_day_capacity` per cell).
 
 ## How to verify changes without Windows
 

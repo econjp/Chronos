@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.13 (#130 + #131 — commitments finally visible where the
+sacred rule says they belong, plus a free/busy glance in month view,
+2026-08-07):
+  - #130: the morning header gets a new line, only when something's
+    actually declared — "commitments today: Day job 7.5h, Sleep 9.5h
+    (17.0h of 24h already spoken for)." #121's recurring commitments
+    used to be visible ONLY in the Tools editor and the week calendar
+    — never in the day file itself, which is exactly what CLAUDE.md's
+    own standing rule ("every feature must leave a visible trace in
+    the day file") says shouldn't happen. Reuses `_protected_
+    intervals_named(self.today)` as-is, no new computation.
+  - #131: the calendar's month view (View > Planning > Calendar) now
+    shades each day cell white-to-light-green by that day's real
+    `_day_capacity` — the same number #118's free-time forecast and
+    #113's lock-window candidates already use. One glance now answers
+    both "what's on" and "how open is it," instead of needing #118's
+    separate window for the second question. `_cal_shade_color` is a
+    plain linear blend, no new color infrastructure.
+
 New in v9.12 (#125 + #126 — commitments learn from real data, owner's
 own "just wanna automate and make it so much easier" ask, 2026-08-07):
   - #126: Tools > "Recurring commitments…" now suggests a Sleep row
@@ -5802,6 +5821,9 @@ class App(tk.Tk):
         fb = self._next_free_block_line()
         if fb:
             parts.append(fb)
+        commit_line = self._commitments_today_line()
+        if commit_line:
+            parts.append(commit_line)
         parts += self._day_schedule_lines()
         if self.today.weekday() == 0:
             parts += self._week_review_block()
@@ -8202,6 +8224,27 @@ class App(tk.Tk):
         return (f"biggest free block today: {s:%H:%M}-{e:%H:%M} "
                 f"({_time_span_hours(s, e):.1f}h)")
 
+    def _commitments_today_line(self):
+        """Backlog #130: CLAUDE.md's own sacred rule — "every feature
+        must leave a visible trace in the day file" — applied to
+        #121's recurring commitments, which currently show up ONLY in
+        the Tools editor and the week calendar view, never here. One
+        line, reusing `_protected_intervals_named(self.today)` as-is;
+        no new computation, just finally surfacing what #121 already
+        knows in the one place this app's own rules say everything
+        belongs. None on a day with nothing declared — an empty line
+        would just be noise for anyone who's never used the feature."""
+        by_label = {}
+        for s, e, label in self._protected_intervals_named(self.today):
+            if not label:
+                continue
+            by_label[label] = by_label.get(label, 0.0) + _time_span_hours(s, e)
+        if not by_label:
+            return None
+        total = sum(by_label.values())
+        parts = ", ".join(f"{label} {h:.1f}h" for label, h in by_label.items())
+        return f"commitments today: {parts} ({total:.1f}h of 24h already spoken for)"
+
     def _lock_window_candidates(self, dl, min_hours=2.0):
         """Backlog #113: which specific upcoming days are actually worth
         locking for a deadline — the concrete next step after
@@ -9104,10 +9147,28 @@ class App(tk.Tk):
         h_end, m_end = (h + 1, 0) if h + 1 < 24 else (23, 59)
         return d, dt.time(h, 0), dt.time(h_end, m_end)
 
+    @staticmethod
+    def _cal_shade_color(ratio, target=(0xe4, 0xf5, 0xe4)):
+        """Backlog #131: white (busy) -> light green (free), ratio in
+        [0, 1] — a plain linear blend, no new color math beyond what
+        every other tinted-cell view in this app already does (the
+        heatmap, the day timeline)."""
+        ratio = max(0.0, min(1.0, ratio))
+        r = round(255 - ratio * (255 - target[0]))
+        g = round(255 - ratio * (255 - target[1]))
+        b = round(255 - ratio * (255 - target[2]))
+        return f"#{r:02x}{g:02x}{b:02x}"
+
     def _draw_calendar_month(self, cv, year, month):
-        """Backlog #120: a real month grid — date numbers, up to a
+        """Backlog #120/#131: a real month grid — date numbers, up to a
         few event/work-session names per cell before collapsing to
-        "+N more", same shape as Outlook's own month view."""
+        "+N more", same shape as Outlook's own month view. Cell
+        background is now a light green-to-white shade by that day's
+        real `_day_capacity` (the same number #118's free-time
+        forecast and #113's lock-window candidates already use) —
+        one glance answers both "what's on" and "how open is it,"
+        instead of needing #118's separate window for the second
+        question."""
         cv.delete("all")
         first = dt.date(year, month, 1)
         start_col = first.weekday()
@@ -9151,8 +9212,10 @@ class App(tk.Tk):
             idx = start_col + day_num - 1
             row, col = idx // 7, idx % 7
             x0, y0 = pad + col * cell_w, hdr_h + pad + row * cell_h
-            bg = "#eaf2fb" if d == self.today else (
-                "#f7f7f7" if d.weekday() >= 5 else "white")
+            if d == self.today:
+                bg = "#eaf2fb"
+            else:
+                bg = self._cal_shade_color(self._day_capacity(d) / 8.0)
             cv.create_rectangle(x0, y0, x0 + cell_w, y0 + cell_h, fill=bg,
                                 outline="#e0e0e0")
             cv.create_text(x0 + 4, y0 + 2, anchor="nw", text=str(day_num),
@@ -9356,6 +9419,7 @@ class App(tk.Tk):
         render()
         ttk.Label(win, text="blue = imported calendar events · darker = "
                  "your tracked work sessions · ⚑ = a task due that day · "
+                 "greener cell (month) = more real free time that day · "
                  "right-click an hour (week) to lock it for a deadline, "
                  "or a day (month) to set a task's due date",
                  foreground="#777777", wraplength=700, justify="left"

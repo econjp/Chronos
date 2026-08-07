@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.13 — commitments in the day file, free/busy shading in month view
+
+The morning header now names today's recurring commitments and their
+total cost right in the day file — "commitments today: Day job 7.5h,
+Sleep 9.5h (17.0h of 24h already spoken for)." And the calendar's
+month view now shades each day white-to-green by how much real free
+time it actually has — one glance instead of a separate window.
+
 ### v9.12 — commitments learn from your real data
 
 Tools > "Recurring commitments…" now suggests a Sleep row from your
