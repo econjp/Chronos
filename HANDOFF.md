@@ -497,6 +497,14 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.41** (#138, 2026-08-07, DONE). Locked windows now draw as
+  their own dashed-outline layer in the week calendar view — "locked:
+  TUTA" — visible inside the app the instant a window's locked,
+  instead of only becoming visible again after a slow Outlook
+  re-import round-trip. New `_locked_windows_for_week`: pure filter,
+  no calendar fetch. New "locked-windows-for-week" selftest suite;
+  56/56 green. (Drawing layer itself untested by the harness, same
+  category as #157.)
 - **v9.40** (#143, 2026-08-07, DONE). The lock-window picker now shows
   a live "picked: 4.0h of 8.0h still needed" line as rows get picked/
   unpicked. New `_lock_picker_progress_line`: pure arithmetic over
@@ -3943,20 +3951,11 @@ measuring what's already there.
     #132's skip-a-day exception, both already built separately; new
     idea 2026-08-07.)
 
-138. **Locked windows render as their own layer in the calendar view,
-    before any Outlook round-trip (PLANNING — closes a real visibility
-    gap between #113/#122/#135's export and #120/#121's own display
-    layers; new idea 2026-08-07).** Right now a locked window is
-    invisible inside TimerDiary itself the moment it's created — it
-    only becomes visible again if you re-import the exported .ics
-    back into Outlook and TimerDiary re-fetches it, which is slow and
-    round-about, and until then it's indistinguishable from any other
-    calendar event anyway (same blue). Directly enabled by #136's
-    `locked_windows` list existing in settings.json in the first
-    place: `_draw_calendar_week` gains a 4th layer (a distinct color,
-    e.g. a solid outline instead of fill, "planned but not yet
-    happened") drawn from that list directly — no waiting on Outlook
-    at all to see what you've already committed to.
+~~138. **Locked windows render as their own layer in the calendar
+    view, before any Outlook round-trip.**~~ — DONE v9.41. See the
+    v9.41 version-history entry above. (Closes a real visibility gap
+    between #113/#122/#135's export and #120/#121's own display
+    layers; new idea 2026-08-07.)
 
 139. **"Today's plan" — one composed timeline instead of four separate
     checks (PLANNING — synthesis of #130's commitments line, #114's

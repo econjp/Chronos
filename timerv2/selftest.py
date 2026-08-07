@@ -70,6 +70,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_social_density_line", "_repeating_plan_suggestion",
         "_locked_this_week_line", "_weekly_target_lines",
         "_looks_like_pto", "_pto_skip_suggestion", "_lock_picker_progress_line",
+        "_locked_windows_for_week",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -2505,6 +2506,30 @@ def suite_lock_picker_progress():
         d4, {"kind": "task", "name": "Missing"}, 2.0) is None
 
 
+def suite_locked_windows_for_week():
+    D, ns = fresh()
+    monday = dt.date(2026, 7, 13)
+    d = _mk(D, deadlines=lambda: [
+        {"name": "TUTA", "locked_windows": [
+            {"date": "2026-07-15", "start": "14:00", "end": "18:00"},
+            {"date": "2026-07-20", "start": "09:00", "end": "10:00"},  # next wk
+            {"date": "2026-07-14", "start": "bad", "end": "10:00"}]},  # malformed
+        {"name": "Thesis", "locked_windows": [
+            {"date": "2026-07-18", "start": "09:00", "end": "13:00"}]},
+        {"name": "NoLocks"},
+    ])
+    out = D._locked_windows_for_week(d, monday)
+    assert out == [
+        (dt.date(2026, 7, 15), dt.time(14, 0), dt.time(18, 0), "TUTA"),
+        (dt.date(2026, 7, 18), dt.time(9, 0), dt.time(13, 0), "Thesis"),
+    ], out
+
+    # ---- silence: nothing locked this week ----
+    d2 = _mk(D, deadlines=lambda: [{"name": "TUTA", "locked_windows": [
+        {"date": "2026-08-01", "start": "09:00", "end": "10:00"}]}])
+    assert D._locked_windows_for_week(d2, monday) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2556,7 +2581,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("locked-this-week", suite_locked_this_week),
           ("weekly-target", suite_weekly_target),
           ("pto-skip", suite_pto_skip),
-          ("lock-picker-progress", suite_lock_picker_progress)]
+          ("lock-picker-progress", suite_lock_picker_progress),
+          ("locked-windows-for-week", suite_locked_windows_for_week)]
 
 
 def main():

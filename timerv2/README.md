@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.41 — Locked windows visible in the calendar
+
+Locking a window used to be invisible inside the app itself until you
+re-imported the exported .ics back from Outlook. The week calendar
+view now draws locked windows directly — a dashed outline labeled
+"locked: TUTA" — visible the instant you lock, distinct from an
+actual tracked session.
+
 ### v9.40 — Lock picker shows a running total
 
 The lock-window picker now shows a live "picked: 4.0h of 8.0h still

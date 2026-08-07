@@ -60,6 +60,30 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.41 (#138 — locked windows get their own visible layer in
+the calendar view, 2026-08-07):
+  - a locked window (#113/#122/#135/#136) used to be invisible inside
+    TimerDiary itself the moment it was created — the only way to see
+    it again was re-importing the exported .ics back into Outlook and
+    waiting for TimerDiary to re-fetch it, slow and round-about, and
+    even then indistinguishable from any other calendar event (same
+    solid blue). The week calendar view now draws locked windows as
+    their own 4th layer directly from `locked_windows` — a dashed,
+    unfilled outline labeled "locked: TUTA" — visible the instant a
+    window gets locked, no waiting on Outlook at all, and visually
+    distinct from an actual tracked session even when they land in
+    the same slot.
+  - new `_locked_windows_for_week`: pure filter over every deadline's
+    own `locked_windows` to the displayed week, no calendar fetch —
+    split out from `_draw_calendar_week` so the selection logic is
+    unit-testable without a live Canvas, same split #167/#137 already
+    established.
+  - new "locked-windows-for-week" selftest suite (two deadlines each
+    contributing a window, one from a following week excluded, one
+    malformed entry safely skipped, full silence); 56/56 green. The
+    drawing layer itself is untested by the harness (pure Canvas
+    rendering, same category as #157).
+
 New in v9.40 (#143 — lock-window picker shows a running "X of Yh
 still needed," 2026-08-07):
   - the lock-window picker (#113/#135) showed candidate SLOTS but
@@ -11033,16 +11057,44 @@ class App(tk.Tk):
     _CAL_MONTH_CELL_W, _CAL_MONTH_CELL_H = 104, 78   # backlog #123: shared
     _CAL_MONTH_HDR_H, _CAL_MONTH_PAD = 20, 4         # with _month_click_to_day
 
+    def _locked_windows_for_week(self, monday):
+        """Backlog #138: every locked window (#113/#122/#135/#136)
+        falling within [monday, monday+6] — pure filter over every
+        deadline's own `locked_windows`, no calendar fetch. Split out
+        from `_draw_calendar_week` so this selection logic is
+        unit-testable without a live Canvas. Returns
+        [(date, start_time, end_time, deadline_name), ...]; malformed
+        entries are skipped, not fatal."""
+        sunday = monday + dt.timedelta(days=6)
+        out = []
+        for dl in self.deadlines():
+            for w in dl.get("locked_windows", []):
+                try:
+                    d = dt.date.fromisoformat(w["date"])
+                    sh, sm = map(int, w["start"].split(":"))
+                    eh, em = map(int, w["end"].split(":"))
+                except (KeyError, ValueError, TypeError):
+                    continue
+                if monday <= d <= sunday:
+                    out.append((d, dt.time(sh, sm), dt.time(eh, em),
+                               dl.get("name", "")))
+        return out
+
     def _draw_calendar_week(self, cv, monday):
         """Backlog #120 (owner's own ask, 2026-08-07: "proper monthly
         or weekly calendar views... event or stuff names there...
         similar to outlooks monthly setup... exact time slots"). An
         hour-gridded week, 7 day columns — real Outlook-week shape.
-        Three layers, drawn back to front: recurring commitments
+        Four layers, drawn back to front: recurring commitments
         (#121 — sleep, day job, admin, neutral tan) as background
         context, then calendar events (named, from _calendar_events)
-        and tracked work sessions (named, from _work_sessions_by_day)
-        on top — all positioned by real clock time, not just counted."""
+        and tracked work sessions (named, from _work_sessions_by_day),
+        then backlog #138's locked windows (#113/#122/#135/#136) as a
+        distinct dashed OUTLINE (not filled) on top of everything else
+        — "planned but not yet happened," visible inside TimerDiary
+        itself the instant a window gets locked, no waiting on a slow
+        re-import round-trip through Outlook to see what's already
+        committed."""
         cv.delete("all")
         days = [monday + dt.timedelta(days=i) for i in range(7)]
         hdr_h, pad_l, col_w = (self._CAL_WEEK_HDR_H, self._CAL_WEEK_PAD_L,
@@ -11111,6 +11163,25 @@ class App(tk.Tk):
                                text=self._cal_truncate(f"{s:%H:%M} {name}",
                                                        col_w - 6),
                                font=("Segoe UI", 6), fill="white")
+
+        # backlog #138: locked windows as their own outlined layer —
+        # dashed, unfilled, so a locked-but-not-yet-worked block reads
+        # as distinct from an actual tracked session (CAL_WORK, filled
+        # solid) even when they'd otherwise land in the same slot
+        for d, s, e, name in self._locked_windows_for_week(monday):
+            if d not in days:
+                continue
+            i = days.index(d)
+            x0 = pad_l + i * col_w
+            y0, y1 = y_for(s), max(y_for(e), y_for(s) + 9)
+            cv.create_rectangle(x0 + 2, y0, x0 + col_w - 2, y1,
+                                fill="", outline=self.CAL_WORK,
+                                width=2, dash=(3, 2))
+            cv.create_text(x0 + col_w - 4, y1 - 1, anchor="se",
+                           text=self._cal_truncate(f"locked: {name}",
+                                                   col_w - 6),
+                           font=("Segoe UI", 6, "italic"),
+                           fill=self.CAL_WORK)
         cv.create_line(pad_l, 0, pad_l, H, fill=self._theme_color("line"))
 
     def _week_click_to_slot(self, x, y, monday):
