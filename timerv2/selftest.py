@@ -61,6 +61,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_due_capsules", "_capsule_lines", "_commit_from_text",
         "_commitment_reliability", "_commitment_reliability_line",
         "_protected_intervals", "_protected_intervals_named", "_parse_weekdays",
+        "_protected_hours",
         "_milestone_progress_line", "_milestone_credit",
         "_waiting_on_lines", "_cost_of_yes_line", "_status_update_text",
         "_status_update_all", "_focus_signature_grid", "_focus_signature_line",
@@ -810,6 +811,7 @@ def suite_lag():
 def suite_week_ahead():
     D, ns = fresh()
     d = _mk(D, today=dt.date(2026, 7, 13))   # a Monday
+    d.settings = {}   # no protected_windows -> #133's commitment line stays silent
 
     # ---- overbooked: aggregate need exceeds aggregate capacity ----
     d.deadlines = lambda: [{"name": "Thesis"}, {"name": "TUTA"}]
@@ -845,6 +847,20 @@ def suite_week_ahead():
     d.deadlines = lambda: [{"name": "Thesis"}]
     d._dl_projection = lambda dl: {"delta": -2}                # ahead
     assert D._week_ahead_lines(d) == []
+
+    # ---- #133: overbooked week names real recurring commitments ----
+    d.deadlines = lambda: [{"name": "Thesis"}, {"name": "TUTA"}]
+    d._day_capacity = lambda dd: 2.0
+    d._dl_progress = lambda dl: {"total_h": 20, "left": 30,
+                                 "remaining_h": 20, "needed_per_day": 4.0}
+    d._dl_projection = lambda dl: None
+    d.settings = {"protected_windows": [
+        {"label": "Day job", "start": "09:30", "end": "17:00", "days": "Mon-Fri"},
+        {"label": "Lunch", "start": "12:00", "end": "12:30", "days": ""},
+    ]}
+    out4 = D._week_ahead_lines(d)
+    assert any("already committed" in x and "Day job" in x for x in out4), out4
+    d.settings = {}   # restore for any suite that reuses d below this point
 
 
 def suite_break_budget():

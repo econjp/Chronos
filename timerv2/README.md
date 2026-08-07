@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.14 — the weekly co-pilot names its own commitment cost
+
+The Monday WEEK AHEAD block (see below) already netted your recurring
+commitments out of its free-hours total, but silently. Now, when the
+block fires and you've got real commitments that week, it says so:
+"(of which 97.0h already committed: Sleep 59.5h, Day job 37.5h)" — so
+the number isn't a mystery anymore.
+
 ### v9.13 — commitments in the day file, free/busy shading in month view
 
 The morning header now names today's recurring commitments and their
@@ -527,6 +535,7 @@ block:
 
 ```
 WEEK AHEAD: 14.0h free across the next 7 days · deadlines need ~40.0h
+  (of which 97.0h already committed: Sleep 59.5h, Day job 37.5h)
   ⚠ overbooked by 26.0h before the week even starts
   tightest day: Thu 16.07 (1.0h free) — front-load elsewhere if something's due
   already behind at real pace: Thesis
@@ -534,7 +543,10 @@ WEEK AHEAD: 14.0h free across the next 7 days · deadlines need ~40.0h
 
 Silent on a normal week — it only speaks when something's genuinely
 worth flagging before the week starts, the same restraint as the daily
-co-pilot line.
+co-pilot line. The commitment line (v9.14) only appears alongside it,
+never on its own — it names WHY the free-hours total is already
+smaller than raw weekday capacity, it doesn't add a new reason to
+speak.
 
 ### What today does to tomorrow (v8.31)
 

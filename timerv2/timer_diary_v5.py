@@ -60,6 +60,21 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.14 (#133 — the week-ahead line names its own commitment
+cost, 2026-08-07):
+  - the Monday "WEEK AHEAD" block (when it fires at all — overbooked,
+    a tight day, or a deadline behind pace) already netted recurring
+    commitments out of its total-free-hours figure via `_day_capacity`,
+    but silently — you'd see "14.0h free" with no way to tell that
+    number was already down from a bigger raw figure. Now, whenever
+    the week has >=30min of real recurring commitments, a second line
+    names the top 3 by hours: "(of which 97.0h already committed:
+    Sleep 59.5h, Day job 37.5h)." Same "show the why" instinct as
+    #130's daily line, same underlying primitive (`_protected_hours`/
+    `_protected_intervals_named`), no new capacity math. Stays silent
+    on calm weeks and on weeks with no declared commitments, matching
+    the function's existing quiet-by-default design.
+
 New in v9.13 (#130 + #131 — commitments finally visible where the
 sacred rule says they belong, plus a free/busy glance in month view,
 2026-08-07):
@@ -6167,6 +6182,20 @@ class App(tk.Tk):
             return []                # a normal week — nothing to flag
         lines = ["", f"WEEK AHEAD: {total_cap:.1f}h free across the next "
                     f"7 days · deadlines need ~{total_need:.1f}h"]
+        # backlog #133: total_cap above is already net of recurring
+        # commitments (_day_capacity routes through _protected_hours),
+        # but that's silent — name WHY it's smaller than raw weekday
+        # capacity, same "show the why" instinct as #130's daily line
+        commit_h = sum(self._protected_hours(d) for d in week)
+        if commit_h >= 0.5:
+            by_label = {}
+            for d in week:
+                for s, e, label in self._protected_intervals_named(d):
+                    if label:
+                        by_label[label] = by_label.get(label, 0.0) + _time_span_hours(s, e)
+            top = sorted(by_label.items(), key=lambda x: -x[1])[:3]
+            lines.append(f"  (of which {commit_h:.1f}h already committed: "
+                        + ", ".join(f"{label} {h:.1f}h" for label, h in top) + ")")
         if overbooked:
             lines.append(f"  ⚠ overbooked by {total_need - total_cap:.1f}h "
                          "before the week even starts")

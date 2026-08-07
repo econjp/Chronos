@@ -497,6 +497,13 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.14** (#133, 2026-08-07, DONE). The Monday "WEEK AHEAD" block
+  (fires only when overbooked/tight/behind) now names its own
+  commitment cost when >=30min of recurring commitments apply that
+  week — "(of which 97.0h already committed: Sleep 59.5h, Day job
+  37.5h)" — the weekly twin of v9.13's #130 daily line, same
+  underlying primitive (`_protected_hours`/`_protected_intervals_
+  named`), no new capacity math, stays silent on calm weeks.
 - **v9.13** (#130 + #131, 2026-08-07, DONE). #130: the morning header
   now names today's recurring commitments and their total cost
   ("commitments today: Day job 7.5h, Sleep 9.5h — 17.0h of 24h
@@ -3690,18 +3697,9 @@ measuring what's already there.
     today") but the data model is the real piece; the UI can start as
     simple as a text field in the existing editor.
 
-133. **Week-ahead commitment cost, extending #130 to the Monday
-    review (PLANNING — directly extends #130's "today" framing to
-    the week; new idea 2026-08-07).** #130 answers "how much of
-    TODAY is already spoken for"; the existing Monday week-ahead
-    block (`_week_ahead_lines`) never mentions commitments at all,
-    so the week's own real capacity picture stays split across two
-    places (the week-ahead text and a separate mental sum of 7 days
-    of commitments). Fix: one line in the Monday block — "commitments
-    this week: ~37.5h (Day job 37.5h) — X.Xh of real capacity left
-    once TUTA/thesis are fed" — reusing `_protected_hours(d)` summed
-    across the coming week, same primitive #82/#130 already use, no
-    new capacity math.
+~~133. **Week-ahead commitment cost, extending #130 to the Monday
+    review.**~~ — FIXED v9.14. See the v9.14 version-history entry
+    above.
 
 134. **Recurring locks, not just one-off slots (PLANNING — extends
     #113/#122's lock-windows with #121's own "recurring" concept;
