@@ -60,6 +60,26 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.40 (#143 — lock-window picker shows a running "X of Yh
+still needed," 2026-08-07):
+  - the lock-window picker (#113/#135) showed candidate SLOTS but
+    never said whether what's been picked actually adds up to
+    enough — you could lock 2 windows for TUTA and have no idea if
+    that's 4h of the 8h still needed or all of it. As rows get
+    picked/unpicked, a line now updates live under the tree: "picked:
+    4.0h of 8.0h still needed" — for a task target (no `total_h`
+    concept), the same line compares against the task's own `est_h`
+    instead.
+  - new `_lock_picker_progress_line`: pure arithmetic over
+    `_dl_progress`'s existing `remaining_h` (deadlines) or a task's
+    `est_h` (tasks) — no new computation, closes the loop between "I
+    locked something" and "I locked ENOUGH." Silent (no line) when
+    there's no real number to compare against — an unscoped deadline,
+    an estimateless task.
+  - new "lock-picker-progress" selftest suite (a deadline target, an
+    unfound deadline, a deadline with no real remaining_h, a task
+    target, an unfound/estimateless task); 55/55 green.
+
 New in v9.39 (#137 — auto-detect a real day off from the subscribed
 calendar, offer it as a #132 skip, 2026-08-07):
   - #132 fixed the DATA MODEL for skipping a recurring commitment on
@@ -9880,6 +9900,37 @@ class App(tk.Tk):
                         "has_due": bool(due)})
         return out
 
+    def _lock_picker_progress_line(self, tgt, picked_hours):
+        """Backlog #143: the lock-window picker (#113/#135) shows
+        candidate SLOTS but never said whether what's been picked
+        actually adds up to enough — you could lock 2 windows for TUTA
+        and have no idea if that's 4h of the 8h still needed this week
+        or all of it. Pure arithmetic over `_dl_progress`'s existing
+        `remaining_h` (deadlines) or a task's own `est_h` (tasks) — no
+        new computation, just closing the loop between "I locked
+        something" and "I locked ENOUGH." Returns a line, or None when
+        there's no real number to compare against (an unscoped
+        deadline, an estimateless task)."""
+        if tgt.get("kind") == "deadline":
+            dl = next((d for d in self.deadlines() if d["name"] == tgt["name"]),
+                      None)
+            if not dl:
+                return None
+            try:
+                p = self._dl_progress(dl)
+            except (ValueError, KeyError):
+                return None
+            needed = p.get("remaining_h")
+            if not needed:
+                return None
+        else:
+            t = next((t for t in self.settings.get("tasks", [])
+                      if t["name"] == tgt["name"]), None)
+            needed = float(t.get("est_h") or 0) if t else 0.0
+            if needed <= 0:
+                return None
+        return f"picked: {picked_hours:.1f}h of {needed:.1f}h still needed"
+
     def _lock_window_candidates(self, dl, min_hours=2.0):
         """Backlog #113: which specific upcoming days are actually worth
         locking for a deadline — the concrete next step after
@@ -14423,6 +14474,12 @@ class App(tk.Tk):
 
         picked, cand = set(), {"list": []}
 
+        def update_progress():
+            tgt = label_for.get(dl_var.get())
+            picked_hours = sum(cand["list"][int(i)]["hours"] for i in picked)
+            line = self._lock_picker_progress_line(tgt, picked_hours) if tgt else None
+            progress.config(text=line or "")
+
         def refresh(event=None):
             tree.delete(*tree.get_children())
             picked.clear()
@@ -14437,6 +14494,7 @@ class App(tk.Tk):
                 tree.insert("", "end", iid=str(i), values=(
                     f"{w['date']:%a %d.%m}", f"{w['start']:%H:%M}-{w['end']:%H:%M}",
                     f"{w['hours']:.1f}h"))
+            update_progress()
 
         def toggle(event):
             row = tree.identify_row(event.y)
@@ -14448,12 +14506,16 @@ class App(tk.Tk):
             else:
                 picked.add(row)
                 tree.item(row, tags=("picked",))
+            update_progress()
         tree.bind("<Button-1>", toggle)
         combo.bind("<<ComboboxSelected>>", refresh)
 
         status = ttk.Label(win, foreground="#2e6da4", wraplength=520,
                            justify="left")
         status.pack(fill="x", padx=8, pady=(0, 4))
+        progress = ttk.Label(win, foreground="#555555", wraplength=520,
+                             justify="left")
+        progress.pack(fill="x", padx=8, pady=(0, 4))
 
         def export():
             if not picked:

@@ -4,6 +4,12 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.40 — Lock picker shows a running total
+
+The lock-window picker now shows a live "picked: 4.0h of 8.0h still
+needed" line as you click rows — closing the loop between "I locked
+something" and "I locked enough," instead of leaving you to guess.
+
 ### v9.39 — Auto-detect a day off, offer to skip it
 
 The Recurring Commitments editor now checks your subscribed calendar

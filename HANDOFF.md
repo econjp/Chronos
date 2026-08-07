@@ -497,6 +497,11 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.40** (#143, 2026-08-07, DONE). The lock-window picker now shows
+  a live "picked: 4.0h of 8.0h still needed" line as rows get picked/
+  unpicked. New `_lock_picker_progress_line`: pure arithmetic over
+  `_dl_progress`'s `remaining_h` (deadlines) or a task's `est_h`
+  (tasks). New "lock-picker-progress" selftest suite; 55/55 green.
 - **v9.39** (#137, 2026-08-07, DONE). The Recurring Commitments
   editor now checks subscribed-calendar events for PTO/holiday
   language on an all-day-ish event and offers a one-click skip:
@@ -4001,20 +4006,10 @@ measuring what's already there.
     `_undated_admin_tasks` unchanged, just adds an `added`-date filter
     and a text line.
 
-143. **Lock-window picker shows a running "X of Yh still needed" as
-    you pick, using #136's now-real locked math (PLANNING — directly
-    extends #136, same session, same underlying number; new idea
-    2026-08-07).** #136 made `remaining_h`/`locked_h` real per-
-    deadline numbers, but the picker itself (#113/#135) still only
-    shows candidate SLOTS, never says whether what you've picked
-    actually adds up to enough — you can lock 2 windows for TUTA and
-    have no idea if that's 4h of the 8h still needed this week or all
-    of it. Fix: as rows get picked/unpicked in `_lock_windows_win`,
-    show a running line under the tree — "picked: 4.0h of 11.0h still
-    needed" — pure arithmetic over `_dl_progress`'s existing
-    `remaining_h` and the already-selected candidates' hours, no new
-    computation, just closing the loop between "I locked something"
-    and "I locked ENOUGH" for a short-horizon deadline like an exam.
+~~143. **Lock-window picker shows a running "X of Yh still needed" as
+    you pick.**~~ — DONE v9.40. See the v9.40 version-history entry
+    above. (Directly extends #136, same underlying number; new idea
+    2026-08-07.)
 
 ~~144. **A weekly (not just daily) locked-vs-needed check specifically
     for target_h deadlines like TUTA.**~~ — DONE v9.38. See the v9.38

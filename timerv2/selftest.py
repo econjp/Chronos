@@ -69,7 +69,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_upcoming_plans", "_ics_hint_for_url", "_free_evenings_from_rows",
         "_social_density_line", "_repeating_plan_suggestion",
         "_locked_this_week_line", "_weekly_target_lines",
-        "_looks_like_pto", "_pto_skip_suggestion",
+        "_looks_like_pto", "_pto_skip_suggestion", "_lock_picker_progress_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -2473,6 +2473,38 @@ def suite_pto_skip():
     ) is None
 
 
+def suite_lock_picker_progress():
+    D, ns = fresh()
+    d = _mk(D, deadlines=lambda: [{"name": "TUTA", "match": "tuta"}],
+            _dl_progress=lambda dl: {"remaining_h": 8.0})
+    line = D._lock_picker_progress_line(
+        d, {"kind": "deadline", "name": "TUTA"}, 4.0)
+    assert line == "picked: 4.0h of 8.0h still needed", line
+
+    # ---- deadline not found ----
+    assert D._lock_picker_progress_line(
+        d, {"kind": "deadline", "name": "Missing"}, 2.0) is None
+
+    # ---- deadline with no real remaining_h ----
+    d2 = _mk(D, deadlines=lambda: [{"name": "TUTA"}],
+             _dl_progress=lambda dl: {"remaining_h": 0})
+    assert D._lock_picker_progress_line(
+        d2, {"kind": "deadline", "name": "TUTA"}, 2.0) is None
+
+    # ---- task target with est_h ----
+    d3 = _mk(D, settings={"tasks": [{"name": "Write ch5", "est_h": 6.0}]})
+    line3 = D._lock_picker_progress_line(
+        d3, {"kind": "task", "name": "Write ch5"}, 2.0)
+    assert line3 == "picked: 2.0h of 6.0h still needed", line3
+
+    # ---- task not found / no est_h ----
+    d4 = _mk(D, settings={"tasks": [{"name": "Write ch5", "est_h": 0}]})
+    assert D._lock_picker_progress_line(
+        d4, {"kind": "task", "name": "Write ch5"}, 2.0) is None
+    assert D._lock_picker_progress_line(
+        d4, {"kind": "task", "name": "Missing"}, 2.0) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2523,7 +2555,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("repeating-plan", suite_repeating_plan),
           ("locked-this-week", suite_locked_this_week),
           ("weekly-target", suite_weekly_target),
-          ("pto-skip", suite_pto_skip)]
+          ("pto-skip", suite_pto_skip),
+          ("lock-picker-progress", suite_lock_picker_progress)]
 
 
 def main():
