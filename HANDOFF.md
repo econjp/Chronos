@@ -4229,6 +4229,62 @@ polish — the three NOT chosen this round) when continuing this work.
     history entry above. (Connects #126's "learn from real data"
     pattern with #159/#161's one-off entries; new idea 2026-08-07.)
 
+170. **Month view gets the same locked-windows layer #138 added to
+    the week view (PLANNING — the explicit gap #138 itself leaves
+    open, same "don't silently half-finish it" discipline as #157;
+    new idea 2026-08-07).** v9.41's locked-windows layer was built
+    only into `_draw_calendar_week` — `_draw_calendar_month` still has
+    no idea a window is locked, so switching to month view loses that
+    visibility again. Fix: reuse `_locked_windows_for_week` (rename to
+    something span-agnostic, or add a sibling `_locked_windows_for_
+    range(start, end)`) and draw the same dashed-outline treatment
+    inside each day cell — small relative to a fresh feature, this is
+    "finish what #138 started," not new capability.
+
+171. **`_pto_skip_suggestion` only ever surfaces ONE match per open
+    (ANALYSIS/USABILITY — a real limitation in what shipped this
+    round; new idea 2026-08-07).** v9.39 returns the single soonest
+    PTO-looking event matched to a recurring commitment, then stops —
+    if the subscribed calendar shows two separate holiday weeks this
+    month against two different commitments (Day job AND a weekly
+    class), only the first ever gets offered; the second needs the
+    editor reopened after the first is actioned to even be noticed.
+    Fix: change the return shape to a list of ALL non-overlapping
+    matches found (still capped, e.g. top 3, so the editor doesn't
+    turn into a wall of suggestion rows), one Add-skip button per row
+    — same one-click mechanic, just not artificially limited to one
+    at a time.
+
+172. **Weekly target_h line (v9.38) never actually flags falling
+    behind (PLANNING — the note that shipped it explicitly chose "no
+    threshold gate," worth revisiting now it's real data, not a
+    hypothetical; new idea 2026-08-07).** `_weekly_target_lines`
+    states the number every Monday regardless of how far under target
+    it is — deliberate at the time ("the number itself is the point,
+    not a judgment on it"), but every OTHER honesty-gate line in this
+    app (overbooked, social-heavy, tight day) escalates to a ⚠ past a
+    real threshold. Worth deciding: should "2.0h of an 8h/week target,
+    with only 2 days left in the week" get the same ⚠ treatment the
+    rest of WEEK AHEAD already gives comparable gaps, or does TUTA's
+    target genuinely want to stay judgment-free? Owner's call, not an
+    obvious yes.
+
+173. **Shared primitive for "every deadline's locked_windows, parsed
+    and filtered" instead of four near-identical loops (HYGIENE — a
+    redundancy this very session created while moving fast; new idea
+    2026-08-07).** Tonight's work alone added `_locked_hours`
+    (pre-existing), `_locked_this_week_line` (v9.37),
+    `_weekly_target_lines` (v9.38), `_locked_windows_for_week` (v9.41)
+    and `_todays_plan_lines` (v9.43) — five different places that each
+    independently loop `self.deadlines()` → `dl.get("locked_windows",
+    [])` → parse `date`/`start`/`end` with the same try/except
+    pattern, then apply their own date-range filter. One shared
+    `_all_locked_windows(self)` returning `[(date, start, end,
+    deadline_name), ...]` (parsed once, unfiltered) would let every
+    caller become a plain filter/comprehension over one list instead
+    of five copies of the same parsing logic — the kind of
+    consolidation worth doing before a 6th caller shows up, not after.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
