@@ -60,6 +60,22 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.16 (#132 — a one-off exception for a recurring commitment,
+2026-08-07):
+  - Tools > "Recurring commitments…" gets a 5th column: "Skip dates."
+    A comma-separated list of YYYY-MM-DD dates the commitment sits
+    out entirely — a single holiday or sick day off the Day job
+    without editing the whole commitment away and back. Everything
+    else declared for that day (Sleep, Lunch, ...) still applies
+    normally.
+  - checked in `_protected_intervals_named` right alongside the
+    existing weekday filter — same one-more-condition shape, no new
+    concept, so #82/#118/#113/#130/#133's shared capacity primitives
+    all inherit the fix for free.
+  - malformed skip dates are rejected with an error naming the bad
+    entry, same as the existing HH:MM validation right next to it —
+    never silently dropped.
+
 New in v9.15 (#135 — lock windows for tasks, not just deadlines,
 2026-08-07):
   - both lock-window entry points (File > "Lock study windows…" and
@@ -4232,15 +4248,18 @@ class App(tk.Tk):
         calendar but still want counted honestly against capacity.
         `Days` optionally restricts a window to specific weekdays
         ("Mon-Fri", blank = every day); a window can cross midnight
-        (sleep, e.g. 23:00-08:30) — both handled by _protected_
-        intervals, not this dialog. Same small-grid-of-entries pattern
-        as Goals/Deadlines."""
+        (sleep, e.g. 23:00-08:30); `Skip dates` (backlog #132) lets
+        one specific day sit out — a holiday off the Day job without
+        editing the whole commitment and editing it back — all three
+        handled by _protected_intervals, not this dialog. Same small-
+        grid-of-entries pattern as Goals/Deadlines."""
         win = tk.Toplevel(self)
         win.title("Recurring commitments (lunch, day job, sleep, admin...)")
         win.resizable(False, False)
         win.grab_set()
         cols = ("Label (empty = off)", "Start (HH:MM)", "End (HH:MM)",
-                "Days (blank=every day, e.g. Mon-Fri)")
+                "Days (blank=every day, e.g. Mon-Fri)",
+                "Skip dates (comma-sep YYYY-MM-DD, e.g. one-off holiday)")
         for c, lbl in enumerate(cols):
             ttk.Label(win, text=lbl).grid(row=0, column=c, padx=4, pady=(8, 2))
         cur = self.settings.get("protected_windows", [])
@@ -4249,10 +4268,13 @@ class App(tk.Tk):
         for i in range(n_rows):
             w = cur[i] if i < len(cur) else {}
             row = []
-            for c, key in enumerate(("label", "start", "end", "days")):
-                width = 26 if c == 0 else (10 if c in (1, 2) else 16)
+            for c, key in enumerate(("label", "start", "end", "days", "skip")):
+                width = 26 if c == 0 else (10 if c in (1, 2) else (16 if c == 3 else 24))
                 e = ttk.Entry(win, width=width)
-                e.insert(0, w.get(key, ""))
+                val = w.get(key, "")
+                if key == "skip" and isinstance(val, list):
+                    val = ",".join(val)
+                e.insert(0, val)
                 e.grid(row=i + 1, column=c, padx=4, pady=2)
                 row.append(e)
             grid.append(row)
@@ -4273,7 +4295,7 @@ class App(tk.Tk):
                             win, text=f"↑ suggested from {n} real tracked "
                                      "nights — edit or clear before saving",
                             foreground="#2e6da4", font=("Segoe UI", 8)
-                        ).grid(row=i + 1, column=4, sticky="w", padx=(4, 8))
+                        ).grid(row=i + 1, column=5, sticky="w", padx=(4, 8))
                         break
 
         def save():
@@ -4282,6 +4304,7 @@ class App(tk.Tk):
                 label = row[0].get().strip()
                 start, end = row[1].get().strip(), row[2].get().strip()
                 days = row[3].get().strip()
+                skip_raw = row[4].get().strip()
                 if not label:
                     continue
                 try:
@@ -4292,14 +4315,27 @@ class App(tk.Tk):
                     messagebox.showerror(
                         APP_NAME, f"Use HH:MM for '{label}'.", parent=win)
                     return
+                skip = []
+                for part in skip_raw.split(","):
+                    part = part.strip()
+                    if not part:
+                        continue
+                    try:
+                        skip.append(dt.date.fromisoformat(part).isoformat())
+                    except ValueError:
+                        messagebox.showerror(
+                            APP_NAME, f"Use YYYY-MM-DD for '{label}' skip "
+                                     f"dates — '{part}' isn't a date.",
+                            parent=win)
+                        return
                 out.append({"label": label, "start": start, "end": end,
-                           "days": days})
+                           "days": days, "skip": skip})
             self.settings["protected_windows"] = out
             save_settings(self.settings)
             win.destroy()
 
         ttk.Button(win, text="Save", command=save).grid(
-            row=n_rows + 1, column=3, sticky="e", padx=4, pady=8)
+            row=n_rows + 1, column=4, sticky="e", padx=4, pady=8)
 
     def _set_target(self):
         cur = self.settings.get("target_min", 0)
@@ -8210,10 +8246,16 @@ class App(tk.Tk):
         intervals` (below) is the plain-tuple version every interval-
         math caller actually uses; this labeled version exists for the
         calendar view (#120) to render WHAT a busy block actually is,
-        not just when."""
+        not just when. Backlog #132: a window can also carry `skip`,
+        a list of ISO dates it sits out entirely — one holiday off
+        the Day job without editing (then re-editing back) the whole
+        commitment, same one-condition-more shape as the weekday
+        filter right above it."""
         out = []
         wd = d.weekday() if d is not None else None
         for w in self.settings.get("protected_windows", []):
+            if d is not None and d.isoformat() in (w.get("skip") or []):
+                continue
             days = self._parse_weekdays(w.get("days", ""))
             if days is not None and wd is not None and wd not in days:
                 continue

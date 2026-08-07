@@ -497,6 +497,12 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.16** (#132, 2026-08-07, DONE). Recurring commitments get a
+  5th column, "Skip dates" (comma-separated YYYY-MM-DD) — one
+  holiday off the Day job without editing the whole commitment away
+  and back. Checked in `_protected_intervals_named` right alongside
+  the existing weekday filter, so every shared capacity primitive
+  (#82/#113/#118/#130/#133) inherits it for free.
 - **v9.15** (#135, 2026-08-07, DONE). Both lock-window entry points
   (File menu picker + right-click an hour in the week calendar) now
   list task-library items alongside deadlines — closes the loop with
@@ -3689,22 +3695,13 @@ measuring what's already there.
     v9.13. See the v9.13 version-history entry above
     (`_cal_shade_color`, real `_day_capacity` per cell).
 
-132. **One-off commitment exception — skip a recurring commitment on a
-    specific day (PLANNING — connects #121's commitments with #82's
-    existing off_dates concept; new idea 2026-08-07).** A "Day job"
-    commitment declared Mon-Fri has no honest way to skip a single
-    holiday or sick day without editing (and re-editing back) the
-    whole commitment — `off_dates` already exists for zeroing a
-    WHOLE day's capacity, but nothing lets one specific commitment
-    sit out one specific day while everything else (Sleep, Lunch)
-    still applies normally. Fix: a small per-commitment exception
-    list (`{"label": "Day job", ..., "skip": ["2026-08-15"]}`),
-    checked in `_protected_intervals_named` right alongside the
-    existing weekday filter — same shape, one more condition, no new
-    concept. Surfaced from the calendar itself would be ideal (right-
-    click a day already showing a commitment → "Skip 'Day job' just
-    today") but the data model is the real piece; the UI can start as
-    simple as a text field in the existing editor.
+~~132. **One-off commitment exception — skip a recurring commitment
+    on a specific day.**~~ — FIXED v9.16. See the v9.16 version-
+    history entry above. (Still open, deliberately not built: a
+    right-click-the-calendar entry point to set the exception, same
+    as the note originally floated — the text-field editor covers
+    the real need; revisit only if manually typing YYYY-MM-DD proves
+    annoying in practice.)
 
 ~~133. **Week-ahead commitment cost, extending #130 to the Monday
     review.**~~ — FIXED v9.14. See the v9.14 version-history entry

@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.16 — skip a recurring commitment on one specific day
+
+Tools > "Recurring commitments…" now has a 5th column, "Skip dates" —
+a comma-separated list of dates that commitment sits out entirely. A
+holiday off the Day job no longer means editing the whole commitment
+away and back — everything else declared for that day (Sleep, Lunch)
+still applies normally.
+
 ### v9.15 — lock windows for tasks, not just deadlines
 
 The "Lock study windows…" picker (File menu, and right-click an hour
