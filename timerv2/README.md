@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.24 — one-off dated commitments
+
+Recurring commitments get a 6th column, "One-off date" — for a real
+event week (a conference, a work trip) or a single evening plan that
+shouldn't become a permanent weekly pattern. Set it and the window
+applies on exactly that one date; the Days field is ignored once a
+one-off date is set.
+
 ### v9.23 — visual polish: window fit, text size, dark mode
 
 Fixed a real bug: the main window didn't actually fit its own

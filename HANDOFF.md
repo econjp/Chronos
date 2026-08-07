@@ -497,6 +497,14 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.24** (#159, 2026-08-07, DONE). Recurring commitments editor
+  gets a 6th column, "One-off date" — a window real on exactly ONE
+  date instead of a recurring weekday pattern, for a real event week
+  or a one-time evening plan that doesn't belong in the permanent
+  list. `Days` is ignored entirely once a one-off date is set.
+  `_protected_intervals_named` checks it first, same spot the
+  weekday filter and #132's skip already live, so every downstream
+  primitive inherits it automatically.
 - **v9.23** (#156, 2026-08-07, DONE). Visual polish, owner's own
   redirect after several rounds of small utility features: real bug
   fixed — the main window no longer fit its own toolbar (confirmed
@@ -4110,6 +4118,13 @@ polish — the three NOT chosen this round) when continuing this work.
     view) rather than guessing at one — same judgment call already
     made once this session (calendar-focus AskUserQuestion) when an
     ask was this open-ended.
+
+~~159. **One-off dated commitments — a real event week (HGW) doesn't
+    fit recurring commitments OR whole-day off_dates.**~~ — FIXED
+    v9.24. See the v9.24 version-history entry above. (Proposed and
+    built same-round, 2026-08-07, direct real need: the owner's
+    actual HGW week + one-off meetings/dinners had no clean home in
+    either existing mechanism.)
 
 ## How to verify changes without Windows
 

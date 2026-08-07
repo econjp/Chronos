@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.24 (#159 — one-off dated commitments, 2026-08-07: a real
+event week — "next week is gonna be HGW its gonna take lot of time
+like 0830-17 many days" — had no clean home; recurring commitments
+are permanent every week, and whole-day off_dates is too blunt for a
+day that's only PARTLY blocked, like Monday's meetings 10:30-14:45 or
+Friday ending early):
+  - Recurring commitments editor gets a 6th column, "One-off date" —
+    set it and the window applies on exactly that ONE date instead of
+    a recurring weekday pattern; `Days` is ignored entirely once a
+    one-off date is set, nothing to filter by weekday when it's only
+    real once.
+  - `_protected_intervals_named` checks the one-off date first, same
+    place the existing weekday filter and #132's skip-dates already
+    live — one more condition, no new concept, so every downstream
+    primitive (`_day_capacity`, `_free_slots`, the calendar view, the
+    week-ahead line) inherits correct handling automatically.
+  - malformed one-off dates are rejected with an error naming the bad
+    entry, same as every other date field in this dialog.
+
 New in v9.23 (#156 — visual polish: window/toolbar overflow fixed,
 diary text size customization, dark mode, 2026-08-07 — the owner's
 own redirect: "theres rn many problems... sometimes too small or too
@@ -4464,16 +4483,21 @@ class App(tk.Tk):
         ("Mon-Fri", blank = every day); a window can cross midnight
         (sleep, e.g. 23:00-08:30); `Skip dates` (backlog #132) lets
         one specific day sit out — a holiday off the Day job without
-        editing the whole commitment and editing it back — all three
-        handled by _protected_intervals, not this dialog. Same small-
-        grid-of-entries pattern as Goals/Deadlines."""
+        editing the whole commitment and editing it back; `One-off
+        date` (backlog #159) is the opposite case — a window real on
+        exactly ONE day (a conference week, a one-time dinner plan)
+        that doesn't belong in the permanent recurring list at all;
+        set it and `Days` is ignored entirely. All four handled by
+        _protected_intervals, not this dialog. Same small-grid-of-
+        entries pattern as Goals/Deadlines."""
         win = tk.Toplevel(self)
         win.title("Recurring commitments (lunch, day job, sleep, admin...)")
         win.resizable(False, False)
         win.grab_set()
         cols = ("Label (empty = off)", "Start (HH:MM)", "End (HH:MM)",
                 "Days (blank=every day, e.g. Mon-Fri)",
-                "Skip dates (comma-sep YYYY-MM-DD, e.g. one-off holiday)")
+                "Skip dates (comma-sep YYYY-MM-DD)",
+                "One-off date (YYYY-MM-DD, overrides Days)")
         for c, lbl in enumerate(cols):
             ttk.Label(win, text=lbl).grid(row=0, column=c, padx=4, pady=(8, 2))
         cur = self.settings.get("protected_windows", [])
@@ -4482,8 +4506,9 @@ class App(tk.Tk):
         for i in range(n_rows):
             w = cur[i] if i < len(cur) else {}
             row = []
-            for c, key in enumerate(("label", "start", "end", "days", "skip")):
-                width = 26 if c == 0 else (10 if c in (1, 2) else (16 if c == 3 else 24))
+            for c, key in enumerate(("label", "start", "end", "days", "skip", "date")):
+                width = (26 if c == 0 else 10 if c in (1, 2) else
+                        16 if c == 3 else 20 if c == 4 else 14)
                 e = ttk.Entry(win, width=width)
                 val = w.get(key, "")
                 if key == "skip" and isinstance(val, list):
@@ -4509,7 +4534,7 @@ class App(tk.Tk):
                             win, text=f"↑ suggested from {n} real tracked "
                                      "nights — edit or clear before saving",
                             foreground="#2e6da4", font=("Segoe UI", 8)
-                        ).grid(row=i + 1, column=5, sticky="w", padx=(4, 8))
+                        ).grid(row=i + 1, column=6, sticky="w", padx=(4, 8))
                         break
 
         def save():
@@ -4519,6 +4544,7 @@ class App(tk.Tk):
                 start, end = row[1].get().strip(), row[2].get().strip()
                 days = row[3].get().strip()
                 skip_raw = row[4].get().strip()
+                date_raw = row[5].get().strip()
                 if not label:
                     continue
                 try:
@@ -4542,14 +4568,24 @@ class App(tk.Tk):
                                      f"dates — '{part}' isn't a date.",
                             parent=win)
                         return
+                one_off = ""
+                if date_raw:
+                    try:
+                        one_off = dt.date.fromisoformat(date_raw).isoformat()
+                    except ValueError:
+                        messagebox.showerror(
+                            APP_NAME, f"Use YYYY-MM-DD for '{label}'s "
+                                     f"one-off date — '{date_raw}' isn't a "
+                                     "date.", parent=win)
+                        return
                 out.append({"label": label, "start": start, "end": end,
-                           "days": days, "skip": skip})
+                           "days": days, "skip": skip, "date": one_off})
             self.settings["protected_windows"] = out
             save_settings(self.settings)
             win.destroy()
 
         ttk.Button(win, text="Save", command=save).grid(
-            row=n_rows + 1, column=4, sticky="e", padx=4, pady=8)
+            row=n_rows + 1, column=5, sticky="e", padx=4, pady=8)
 
     def _set_target(self):
         cur = self.settings.get("target_min", 0)
@@ -8639,15 +8675,28 @@ class App(tk.Tk):
         a list of ISO dates it sits out entirely — one holiday off
         the Day job without editing (then re-editing back) the whole
         commitment, same one-condition-more shape as the weekday
-        filter right above it."""
+        filter right above it. Backlog #159: a window can instead
+        carry a one-off `date` (a single ISO date, not a recurring
+        weekday pattern) — a real event week (a conference, HGW) or a
+        one-time evening plan doesn't belong in the PERMANENT
+        recurring list, and forcing it in there (or into whole-day
+        off_dates when only PART of the day is actually blocked) was a
+        real gap with no clean existing home. `date` takes over
+        entirely from `days` when set — a one-off entry is real on
+        exactly one day, nothing to filter by weekday."""
         out = []
         wd = d.weekday() if d is not None else None
         for w in self.settings.get("protected_windows", []):
             if d is not None and d.isoformat() in (w.get("skip") or []):
                 continue
-            days = self._parse_weekdays(w.get("days", ""))
-            if days is not None and wd is not None and wd not in days:
-                continue
+            one_off = w.get("date")
+            if one_off:
+                if d is None or d.isoformat() != one_off:
+                    continue
+            else:
+                days = self._parse_weekdays(w.get("days", ""))
+                if days is not None and wd is not None and wd not in days:
+                    continue
             try:
                 sh, sm = map(int, w["start"].split(":"))
                 eh, em = map(int, w["end"].split(":"))
