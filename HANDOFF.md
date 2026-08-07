@@ -497,6 +497,17 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.11** (toolbar calendar button + #124, owner's own ask,
+  2026-08-07, DONE: "this scheduling or cal shuld have its own
+  button in task bar"). A 📅 button in the main toolbar opens the
+  Calendar view directly, always visible (compact mode doesn't hide
+  the top bar), sharing the View-menu entry's own usage counter. #124:
+  setting a task due date now runs `_due_date_feasibility_line` — an
+  honest, non-blocking check reusing `_avail_hours` (already aware of
+  #121's commitments, #114/#116's calendar events, #113's locked
+  windows) — and surfaces a warning only when the numbers genuinely
+  look thin, never blocking the save. Wired into both due-date entry
+  points (#123's calendar right-click and the Tasks window).
 - **v9.10** (#123, the other half of the original calendar-scheduling
   ask, 2026-08-07, DONE). Right-click a day in the calendar's month
   view → "Set task due date…" — a lightweight due-date field directly
@@ -3568,25 +3579,14 @@ measuring what's already there.
     entry above for the full design (lightweight field vs a full
     Deadline object, week/month granularity split, `_month_click_to_day`).
 
-124. **Due-date feasibility warning (TRUST — connects #123's new due-
-    dates, #121's commitments, and #113/#118's capacity math; new
-    idea 2026-08-07).** Nothing currently stops you from setting a
-    task's due date (#123) or a deadline's date to something that's
-    mathematically impossible given everything else already declared
-    — a day fully eaten by recurring commitments (#121) plus real
-    calendar events (#114/#116) plus other locked windows (#113)
-    could have zero realistic free time before a newly-set due date,
-    and nothing says so. Fix: when a due date or deadline date is set
-    (via the calendar right-click, the Tasks window, or the deadline
-    editor), run the same `_avail_hours`/`_day_forecast` math #118
-    already uses and, only if the honest number looks genuinely
-    thin or negative, add one line to the confirmation — "heads up:
-    only ~2.1h of real free time before then" — never blocking the
-    save, matching the standing no-gating precedent (#9). Pure
-    composition of primitives that already exist; the only new part
-    is running the check at the moment a date gets set instead of
-    only when a deadline's own progress view happens to be opened
-    later.
+124. ~~**Due-date feasibility warning.**~~ — FIXED v9.11, for TASK due
+    dates (#123's two entry points: the calendar's month-view right-
+    click, and the Tasks window). See the v9.11 version-history entry
+    above for the design (`_due_date_feasibility_line`, non-blocking).
+    DEADLINE date-setting (the deadline editor's own save()) is NOT
+    covered by this fix — a genuinely separate, more invasive surface
+    (a multi-row grid save, not a single date field) left for a
+    follow-up if it turns out to matter in practice.
 
 125. **Recurring-commitment drift check (TRUST — the same "declared
     vs actual" honesty pattern the app already runs elsewhere,

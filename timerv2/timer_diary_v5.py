@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.11 (toolbar calendar button + #124 due-date feasibility
+check, owner's own ask, 2026-08-07: "this scheduling or cal shuld
+have its own button in task bar"):
+  - 📅 button in the main toolbar (next to Reset/Switch/Start), always
+    visible regardless of compact mode — opens the Calendar view
+    without going through View > Planning. Shares the same usage
+    counter as the View-menu entry (one "Calendar view" count, not
+    two competing ones).
+  - #124: setting a task's due date (via the calendar or the Tasks
+    window) now runs an honest, non-blocking feasibility check —
+    `_due_date_feasibility_line` reuses `_avail_hours` (already aware
+    of recurring commitments, imported calendar events, and locked
+    windows — no new capacity math) and, only when the numbers
+    actually look thin (negative slack against a real `est_h`, or
+    near-zero total free time with no estimate to compare against),
+    adds a line to the status bar and the diary trace: "⚠ only 2.1h
+    of real free time before 15.08 — 10h estimated, 7.9h short."
+    Never blocks the save, matching the standing no-gating precedent.
+
 New in v9.10 (#123 — task due-dates via the calendar, the other half
 of the owner's original scheduling ask, 2026-08-07: "option to set
 DL or just sort of set the working windows for it"):
@@ -4254,6 +4273,10 @@ class App(tk.Tk):
         self.compact_btn = ttk.Button(self.top, text="—", width=3,
                                       command=self._toggle_compact)
         self.compact_btn.pack(side="right")
+        self.calendar_btn = ttk.Button(
+            self.top, text="📅", width=3,
+            command=self._tracked("Calendar view", self._calendar_view_win))
+        self.calendar_btn.pack(side="right", padx=(0, 4))
         self.reset_btn = ttk.Button(self.top, text="Reset", width=7,
                                     command=self._reset, state="disabled")
         self.reset_btn.pack(side="right", padx=(0, 4))
@@ -8565,6 +8588,30 @@ class App(tk.Tk):
             d += dt.timedelta(days=1)
         return total
 
+    def _due_date_feasibility_line(self, due_date, est_h=None):
+        """Backlog #124: an honest, non-blocking check for whether a
+        due date set on a task (or a deadline) still has real room
+        before it, given everything already declared — commitments
+        (#121), imported calendar events (#114/#116), other locked
+        windows (#113) — all already netted into _avail_hours, no new
+        capacity math. Compares against `est_h` when the task actually
+        has one; without an estimate there's nothing to honestly call
+        "impossible," so it only speaks up when the total free time is
+        near zero regardless. Returns None when things look fine —
+        never a reason to block the save, matching the standing
+        no-gating precedent (#9)."""
+        avail = self._avail_hours(due_date)
+        if est_h and est_h > 0:
+            slack = avail - est_h
+            if slack < 0:
+                return (f"⚠ only {avail:.1f}h of real free time before "
+                       f"{due_date:%d.%m} — {est_h:g}h estimated, "
+                       f"{-slack:.1f}h short")
+            return None
+        if avail < 2.0:
+            return f"⚠ only {avail:.1f}h of real free time before {due_date:%d.%m}"
+        return None
+
     def _capacity_lines(self):
         """The honest verdict: available hours vs deadline demand. When
         overbooked, also states a priority order — most-urgent-first
@@ -9176,15 +9223,23 @@ class App(tk.Tk):
                                     f"for {dl_name} — exported {path}")
 
         def set_task_due(name, d):
+            est_h = None
             for t in self.settings.get("tasks", []):
                 if t["name"] == name:
                     t["due"] = d.isoformat()
+                    est_h = t.get("est_h")
                     break
             else:
                 return
             save_settings(self.settings)
-            self._append_text(f"--- Task due date set: '{name}' due {d:%d.%m.%Y}")
-            self.status.config(text=f"'{name}' due {d:%d.%m.%Y}")
+            trace = f"--- Task due date set: '{name}' due {d:%d.%m.%Y}"
+            status = f"'{name}' due {d:%d.%m.%Y}"
+            feasibility = self._due_date_feasibility_line(d, est_h)
+            if feasibility:
+                trace += f" ({feasibility})"
+                status += f" — {feasibility}"
+            self._append_text(trace)
+            self.status.config(text=status)
             render()
 
         def pick_task_due(d):
@@ -9550,6 +9605,11 @@ class App(tk.Tk):
                     return
             self.settings["tasks"][i]["due"] = v or None
             save_settings(self.settings)
+            if v:
+                feasibility = self._due_date_feasibility_line(
+                    dt.date.fromisoformat(v), self.settings["tasks"][i].get("est_h"))
+                if feasibility:
+                    self.status.config(text=feasibility)
             refresh(keep_selection=[str(i)])
 
         menu = tk.Menu(tree, tearoff=0)

@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.11 — toolbar calendar button + due-date feasibility check
+
+A 📅 button now sits in the main toolbar (next to Start/Switch/Reset)
+— opens the Calendar view directly, no menu digging. And setting a
+task's due date now quietly checks whether there's actually enough
+real free time before it (given your commitments, calendar, and
+locked windows) — "⚠ only 2.1h of real free time before 15.08 — 10h
+estimated, 7.9h short." Never blocks the save, just tells you.
+
 ### v9.10 — task due-dates via the calendar
 
 Right-click a day in the calendar's month view → **"Set task due
