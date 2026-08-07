@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.29 — PLAN: diary-line quick-capture
+
+Typing is still faster than any dialog. `PLAN: dinner with X 16.08
+1930-2100` anywhere in the diary becomes a real one-off plan — same
+"Add a plan" data underneath, so it shows up everywhere a dialog-typed
+one already does. No year needed in the line (rolls to next year if
+that date already passed); times take HH:MM, HHMM, or shorthand.
+Captured live within ~10s of typing, plus a 14-day backfill sweep on
+launch so a plan typed before a relaunch isn't lost. A malformed line
+is just skipped, never an error.
+
 ### v9.28 — the week-ahead line names your real plans
 
 The Monday WEEK AHEAD block now names your actual plans for the week

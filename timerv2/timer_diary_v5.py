@@ -60,6 +60,35 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.29 (#163 — PLAN: diary-line quick-capture, 2026-08-07: the
+fastest possible way to log a plan is typing it, same reason TODO:/
+SOMEDAY: auto-capture exists):
+  - `PLAN: dinner with X 16.08 1930-2100` typed anywhere in the diary
+    becomes a real one-off protected window (#159) — no dialog, same
+    "type it into the diary itself" pattern TODO:/SOMEDAY: auto-
+    capture already established for the task library. Reuses #161's
+    "Add a plan" dialog's exact data shape unchanged, so a diary-typed
+    plan shows up everywhere a dialog-typed one already does (day
+    header, week/month calendar, 3-week forecast, auto-plan, the lock
+    picker) with zero new code in any of them.
+  - date carries no year in the line itself (DD.MM) — assumes this
+    year, rolls to next year if that date already passed, since a plan
+    is by definition still coming. Times accept HH:MM, HHMM, or
+    shorthand via the same `_parse_time_loose` the sleep-override
+    dialog already uses.
+  - live capture on the 10s autosave tick (same mechanism as TODO:/
+    SOMEDAY:), plus a 14-day backfill sweep on launch for plans typed
+    on days before a relaunch. Deduped by (label, date, start, end) so
+    the same line being rescanned every tick while still being typed
+    doesn't add duplicates.
+  - a malformed PLAN: line is silently skipped, never errors the
+    diary — same lenient-degrade posture as CAPSULE/COMMIT. PLAN:
+    added to the header syntax-highlight rules.
+  - new "plan-capture" selftest suite (valid parse, year-rollover,
+    HH:MM vs HHMM tokens, invalid month/day/time -> None, end-to-end
+    capture from diary text, dedup across repeated ticks, a genuinely
+    new plan on a later tick); 46/46 green.
+
 New in v9.28 (#166 — the week-ahead line names your real plans, not
 just deadline hours, 2026-08-07):
   - the Monday "WEEK AHEAD" block gets a new line — "plans this week:
@@ -5049,7 +5078,7 @@ class App(tk.Tk):
         (re.compile(r"^=== (THEME|END THEME)"), "theme_block"),
         (re.compile(r"^==="), "day_header"),
         (re.compile(r"^(SIGNAL:|AVOID:|YEAR:|ENERGY:|METRICS:|EXPERIMENT:|"
-                    r"DECIDED:|CAPSULE:|COMMIT:|TODAY:|TODO|SOMEDAY:|"
+                    r"DECIDED:|CAPSULE:|COMMIT:|PLAN:|TODAY:|TODO|SOMEDAY:|"
                     r"WEEK REVIEW|plan today:|focus order today)"),
          "meta_header"),
         (re.compile(r"⚠|^!!!"), "warn_line"),
@@ -7251,24 +7280,105 @@ class App(tk.Tk):
                 added += 1
         return added
 
+    _PLAN_RE = re.compile(
+        r"^PLAN:\s*(.+?)\s+(\d{1,2}\.\d{1,2})\s+([\d:]{2,5})-([\d:]{2,5})\s*$",
+        re.I | re.M)
+
+    def _parse_plan_line(self, name, dm, start_tok, end_tok):
+        """Backlog #163: parses one `PLAN: name DD.MM HHMM-HHMM` line's
+        fields into the exact protected_windows dict shape #161's "Add a
+        plan" dialog already produces (`_quick_add_plan`) — reuses that
+        data shape completely, doesn't reinvent validation. `DD.MM`
+        carries no year (typed in the moment, same as the dialog's own
+        HH:MM fields being un-dated by default) — assumes this year,
+        rolling to next year if that date has already passed, since a
+        plan is by definition something still coming. Times go through
+        the same `_parse_time_loose` the sleep-override dialog already
+        uses (HH:MM, HHMM, or shorthand). Returns the window dict, or
+        None if anything doesn't parse cleanly — a typo in the diary
+        should never error the diary, same lenient-degrade posture as
+        every other pattern-match convention here (CAPSULE, COMMIT)."""
+        name = name.strip()
+        if not name:
+            return None
+        try:
+            day, month = (int(x) for x in dm.split("."))
+            cand = dt.date(self.today.year, month, day)
+        except (ValueError, TypeError):
+            return None
+        if cand < self.today:
+            try:
+                cand = dt.date(self.today.year + 1, month, day)
+            except ValueError:
+                return None
+        st = self._parse_time_loose(start_tok)
+        en = self._parse_time_loose(end_tok)
+        if not st or not en:
+            return None
+        return {"label": name,
+                "start": f"{st[0]:02d}:{st[1]:02d}",
+                "end": f"{en[0]:02d}:{en[1]:02d}",
+                "days": "", "skip": [], "date": cand.isoformat()}
+
+    def _auto_capture_plans(self, text, source):
+        """Backlog #163: the diary-line twin of `_auto_capture_bullets`
+        for #161's "Add a plan" — `PLAN: dinner with X 16.08 1930-2100`
+        typed anywhere in the diary becomes a real one-off protected
+        window (#159) without opening any dialog, the fastest possible
+        capture, same "type it into the diary itself" pattern TODO:/
+        SOMEDAY: already established for the task library. Deduped
+        against existing protected_windows by (label, date, start, end)
+        — the same line gets rescanned on every ~10s autosave tick while
+        still being typed, so without this a plan would multiply once
+        per tick until the line stopped changing. Returns how many were
+        newly added."""
+        added = 0
+        windows = self.settings.setdefault("protected_windows", [])
+        existing = {(w.get("label", "").strip().lower(), w.get("date"),
+                    w.get("start"), w.get("end")) for w in windows}
+        for name, dm, start_tok, end_tok in self._PLAN_RE.findall(text):
+            win = self._parse_plan_line(name, dm, start_tok, end_tok)
+            if not win:
+                continue
+            key = (win["label"].strip().lower(), win["date"],
+                  win["start"], win["end"])
+            if key in existing:
+                continue
+            windows.append(win)
+            existing.add(key)
+            added += 1
+        if added:
+            save_settings(self.settings)
+        return added
+
     def _backfill_task_library(self):
         """Runs every launch (cheap, deduped): sweeps the last 14 days'
         files for TODO:/SOMEDAY: items the parser missed before it
         recognized no-space bullets and same-line 'TODO: text' — old
         writing shouldn't need retyping just because the recognizer
-        got better."""
+        got better. Backlog #163: the same sweep also backfills PLAN:
+        lines into protected_windows — a plan typed on a day before the
+        app was relaunched shouldn't need retyping either, same "the
+        recognizer catches up on old writing" spirit."""
         total = 0
+        plans_total = 0
         for i in range(14):
             d = self.today - dt.timedelta(days=i)
             try:
                 with open(self.diary_path(d), encoding="utf-8") as f:
-                    total += self._auto_capture_bullets(f.read(), f"{d} diary")
+                    text = f.read()
             except OSError:
                 continue
+            total += self._auto_capture_bullets(text, f"{d} diary")
+            plans_total += self._auto_capture_plans(text, f"{d} diary")
+        msgs = []
         if total:
+            msgs.append(f"{total} item(s) into the task library")
+        if plans_total:
+            msgs.append(f"{plans_total} plan(s)")
+        if msgs:
             self.status.config(
-                text=f"Backfilled {total} item(s) into the task library "
-                    "from the last 14 days.")
+                text="Backfilled " + " + ".join(msgs) + " from the last 14 days.")
 
     def _experiment_from_file(self, iso):
         """The EXPERIMENT: line text from ONE day's file, or None — same
@@ -7723,11 +7833,17 @@ class App(tk.Tk):
             # today's diary (not just a themed-writing session) now
             # lands in the task library within ~10s, not "at rollover
             # tomorrow" — that was the actual gap the user hit
-            added = self._auto_capture_bullets(
-                self.diary.get("1.0", "end-1c"), f"{self.today} diary")
+            live_text = self.diary.get("1.0", "end-1c")
+            added = self._auto_capture_bullets(live_text, f"{self.today} diary")
             if added:
                 self.status.config(
                     text=f"+{added} new item(s) → Task library")
+            # backlog #163: PLAN: lines get the same live diary capture
+            added_plans = self._auto_capture_plans(live_text,
+                                                    f"{self.today} diary")
+            if added_plans:
+                self.status.config(
+                    text=f"+{added_plans} plan(s) added from diary")
         if self.state != "idle":
             self._save_state()
         # sleep data lands on the phone after wake-up: re-check ~every 30 min

@@ -65,15 +65,16 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_milestone_progress_line", "_milestone_credit",
         "_waiting_on_lines", "_cost_of_yes_line", "_status_update_text",
         "_status_update_all", "_focus_signature_grid", "_focus_signature_line",
+        "_parse_plan_line", "_auto_capture_plans", "_parse_time_loose",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
         "_planned_hours_from_file", "_planner_realism_factor"}
-STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
+STATIC = {"_match_kws", "_pull_level", "_parse_time_loose"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
                "_WORD_STOPWORDS", "_DECAY_BUCKETS", "_CAPSULE_RE",
-               "_COMMIT_RE", "_FOCUS_SIG_WD", "_WEEKDAY_ABBR"}
+               "_COMMIT_RE", "_FOCUS_SIG_WD", "_WEEKDAY_ABBR", "_PLAN_RE"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -2161,6 +2162,52 @@ def suite_focus_signature():
     assert D._focus_signature_grid(d4, 3) is None
 
 
+def suite_plan_capture():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 7)
+    d = _mk(D, today=TODAY, settings={})
+
+    # ---- _parse_plan_line: valid, same-year date, HHMM tokens ----
+    win = D._parse_plan_line(d, "dinner with X", "20.08", "1930", "2100")
+    assert win == {"label": "dinner with X", "start": "19:30", "end": "21:00",
+                   "days": "", "skip": [], "date": "2026-08-20"}, win
+
+    # ---- a date already passed this year rolls to next year ----
+    win2 = D._parse_plan_line(d, "New Year thing", "01.01", "10:00", "12:00")
+    assert win2["date"] == "2027-01-01", win2
+
+    # ---- HH:MM tokens work too, not just HHMM ----
+    win3 = D._parse_plan_line(d, "call", "10.08", "9:00", "10:30")
+    assert win3["start"] == "09:00" and win3["end"] == "10:30", win3
+
+    # ---- None: empty name, bad month/day, bad time ----
+    assert D._parse_plan_line(d, "  ", "20.08", "19:00", "21:00") is None
+    assert D._parse_plan_line(d, "x", "40.08", "19:00", "21:00") is None
+    assert D._parse_plan_line(d, "x", "20.08", "25:99", "21:00") is None
+
+    # ---- _auto_capture_plans: end-to-end from diary text ----
+    text = ("SIGNAL: thesis\n"
+           "PLAN: dinner with X 20.08 1930-2100\n"
+           "PLAN: bad line missing the time part\n"
+           "PLAN: concert 10.08 1900-2300\n")
+    added = D._auto_capture_plans(d, text, "2026-08-07 diary")
+    assert added == 2, added
+    windows = d.settings["protected_windows"]
+    assert len(windows) == 2, windows
+    assert {w["label"] for w in windows} == {"dinner with X", "concert"}
+
+    # ---- dedup: rescanning the same text (autosave tick) adds nothing ----
+    added2 = D._auto_capture_plans(d, text, "2026-08-07 diary")
+    assert added2 == 0, added2
+    assert len(d.settings["protected_windows"]) == 2
+
+    # ---- a genuinely new plan on a later tick adds just the one ----
+    text2 = text + "PLAN: gym 12.08 0700-0800\n"
+    added3 = D._auto_capture_plans(d, text2, "2026-08-07 diary")
+    assert added3 == 1, added3
+    assert len(d.settings["protected_windows"]) == 3
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2202,7 +2249,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("waiting-on", suite_waiting_on),
           ("cost-of-yes", suite_cost_of_yes),
           ("status-update", suite_status_update),
-          ("focus-signature", suite_focus_signature)]
+          ("focus-signature", suite_focus_signature),
+          ("plan-capture", suite_plan_capture)]
 
 
 def main():

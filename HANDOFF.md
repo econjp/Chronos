@@ -497,6 +497,16 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.29** (#163, 2026-08-07, DONE). `PLAN: dinner with X 16.08
+  1930-2100` typed anywhere in the diary becomes a real one-off
+  protected window (#159) — no dialog, same live-capture + 14-day-
+  backfill pattern TODO:/SOMEDAY: already established, reuses #161's
+  exact data shape so it shows up everywhere a dialog-typed plan
+  already does with zero new code elsewhere. DD.MM with no year rolls
+  to next year if already passed; times via the existing
+  `_parse_time_loose`. Deduped by (label, date, start, end) across
+  repeated autosave ticks. New "plan-capture" selftest suite; 46/46
+  green.
 - **v9.28** (#166, 2026-08-07, DONE). Week-ahead block names real
   plans (#159/#161) concretely — "plans this week: Concert Tue
   11.08 20:00-23:00, Dinner Thu 13.08 19:00-21:00" — fixing a real
@@ -4172,19 +4182,10 @@ polish — the three NOT chosen this round) when continuing this work.
 ~~162. **Multi-week auto-plan, not just the next 7 days.**~~ — FIXED
     v9.27. See the v9.27 version-history entry above.
 
-163. **Diary-line quick-capture for plans, same pattern as TODO:/
-    SOMEDAY: (PLANNING — connects #161's new dialog with the existing
-    task-library auto-capture the owner already lives in daily; new
-    idea 2026-08-07).** #161 gives plans a fast DIALOG, but the
-    fastest possible capture in this app is typing directly into the
-    diary — that's the whole reason TODO:/SOMEDAY: auto-capture into
-    the task library exists (`_backfill_task_library`). A line like
-    "PLAN: dinner with X 16.08 1930-2100" typed anywhere in the diary
-    could be recognized the same way and turned into a real one-off
-    protected window (#159) — reusing #161's own validation logic on
-    the parsed fields, silently skipped (not erroring the diary) if
-    the line doesn't parse cleanly, same lenient-degrade posture as
-    every other pattern-match feature here.
+~~163. **Diary-line quick-capture for plans, same pattern as TODO:/
+    SOMEDAY:.**~~ — DONE v9.29. See the v9.29 version-history entry
+    above. (Connects #161's dialog with the existing task-library
+    auto-capture pattern; proposed and built same-round, 2026-08-07.)
 
 164. **"Upcoming plans" — a dedicated chronological list, separate
     from the mixed Recurring Commitments grid (PLANNING — closes a
