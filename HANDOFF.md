@@ -3414,6 +3414,25 @@ measuring what's already there.
     for the full design (`parse_csv_busy_export`, extension-based
     dispatch, why Power Automate over a custom Graph API app).
 
+117. **RRULE (true recurring events) silently skipped by
+    `parse_ics_intervals` (TRUST, found 2026-08-07 verifying #114
+    against the owner's real published calendar).** Documented as a
+    known limitation since the original .ics import (v8), but never
+    actually checked against real data until now: fetched the
+    owner's real Aalto Outlook publish link (103 events, live HTTP
+    request, not a mock) and confirmed 0 of them were RRULE-based —
+    Outlook's own "Publish calendar" export happens to expand
+    recurring series into individual one-off VEVENT entries, so this
+    limitation didn't bite in practice for this specific export
+    method. Stays real risk for any OTHER calendar source that keeps
+    events in true recurring form (a raw Exchange/CalDAV sync,
+    potentially a different tool than what's configured now) — those
+    would silently under-count busy time with no error, no warning.
+    Not fixed — low priority since it's currently a non-issue for the
+    live source, but the exact trigger condition to watch for if
+    capacity numbers ever look implausibly free during a semester
+    with recurring lectures/meetings.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
