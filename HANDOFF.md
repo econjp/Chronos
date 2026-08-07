@@ -3568,6 +3568,78 @@ measuring what's already there.
     entry above for the full design (lightweight field vs a full
     Deadline object, week/month granularity split, `_month_click_to_day`).
 
+124. **Due-date feasibility warning (TRUST — connects #123's new due-
+    dates, #121's commitments, and #113/#118's capacity math; new
+    idea 2026-08-07).** Nothing currently stops you from setting a
+    task's due date (#123) or a deadline's date to something that's
+    mathematically impossible given everything else already declared
+    — a day fully eaten by recurring commitments (#121) plus real
+    calendar events (#114/#116) plus other locked windows (#113)
+    could have zero realistic free time before a newly-set due date,
+    and nothing says so. Fix: when a due date or deadline date is set
+    (via the calendar right-click, the Tasks window, or the deadline
+    editor), run the same `_avail_hours`/`_day_forecast` math #118
+    already uses and, only if the honest number looks genuinely
+    thin or negative, add one line to the confirmation — "heads up:
+    only ~2.1h of real free time before then" — never blocking the
+    save, matching the standing no-gating precedent (#9). Pure
+    composition of primitives that already exist; the only new part
+    is running the check at the moment a date gets set instead of
+    only when a deadline's own progress view happens to be opened
+    later.
+
+125. **Recurring-commitment drift check (TRUST — the same "declared
+    vs actual" honesty pattern the app already runs elsewhere,
+    applied to #121's new commitments; new idea 2026-08-07).**
+    Recurring commitments (day job, sleep) are declared once and easy
+    to leave stale — a job's hours change, a sleep pattern shifts,
+    and the declared window quietly stops matching reality with
+    nothing to notice. The app already does exactly this kind of
+    check elsewhere (#47's capacity-vs-actual, #99's day audits): add
+    one more — compare a commitment's declared window against what
+    the CSV/health data actually shows during that window (tracked
+    work starting well before/after a declared "Day job" start time;
+    imported sleep data consistently disagreeing with a declared
+    sleep block) and name the gap honestly, gated on enough samples
+    (n>=10 days) to mean something, same honesty-gate shape as every
+    other insight in this app. A real next insight for #86's grouped
+    Insights tab (MOMENTUM & TRENDS or a new theme), not a new
+    surface.
+
+126. **Auto-suggest a sleep commitment from real tracked data (USABILITY
+    — resolves the "auto-set" instinct #121 deliberately deferred, now
+    backed by real data instead of a guess; new idea 2026-08-07).**
+    #121 shipped with sleep left blank on purpose — no concrete bedtime
+    was given, and guessing one would have repeated the #103 mistake
+    (acting on an assumption instead of what was actually said). But
+    the app already tracks real sleep data (`_sleep_h`, `sleep_over`,
+    imported health exports) independently of the commitments feature.
+    Fix: when opening Tools > "Recurring commitments…" with no Sleep
+    entry yet and enough real sleep history (n>=10 nights), pre-fill a
+    suggested Sleep row (median bedtime/wake time from the actual
+    data) rather than leaving it blank — the owner still confirms/
+    edits before it saves, same as every other suggestion-not-
+    decision in this app. Only for Sleep specifically; a day job's
+    hours aren't inferable from existing tracked data the same way, so
+    that scaffold row stays blank as it does today.
+
+127. **Task due-dates feed SIGNAL's urgency-seeded fallback (PLANNING
+    — directly extends #109 with #123's new lightweight due-date
+    concept; new idea 2026-08-07).** #109 seeds SIGNAL from the
+    single most-urgent scoped DEADLINE when nothing carried forward.
+    Task due-dates (#123) are a second, lighter-weight urgency signal
+    that didn't exist when #109 was built — a task due tomorrow with
+    no full Deadline behind it currently has no influence on SIGNAL's
+    auto-fill at all. Fix: when ranking "what's most urgent" for the
+    fallback seed, also consider tasks with a `due` date within a
+    real near-term window (e.g. 7 days), competing on the same
+    urgency footing as scoped deadlines — a task due tomorrow should
+    plausibly outrank a deadline three weeks out. Needs a real design
+    decision on how to compare a bare due-date (no scope, no hours
+    estimate) against a fully-scoped deadline's `_focus_items` ranking
+    on the same footing — flagged, not scoped, since a wrong ranking
+    heuristic here would quietly make SIGNAL worse, not better.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
