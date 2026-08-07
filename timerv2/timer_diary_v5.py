@@ -60,6 +60,23 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.15 (#135 — lock windows for tasks, not just deadlines,
+2026-08-07):
+  - both lock-window entry points (File > "Lock study windows…" and
+    right-click an hour in the calendar's week view) now list task-
+    library items alongside deadlines, not deadlines only. Closes the
+    loop with #123's task due-dates — set a due date on a task, then
+    lock real time for it, using the exact same picker.
+  - a task with a real `due` date searches up to that date, same as a
+    deadline; an undated task gets a plain 7-day window from today so
+    it's never unreachable — labeled "(task, next 7 days)" in the
+    picker so it's clear the window is synthetic, not a real deadline.
+  - `someday`-priority and blocked tasks are left out of both pickers
+    — not yet actionable, so not worth cluttering a locking list over.
+  - `_lock_window_candidates` and `lock_windows_to_ics` are completely
+    unchanged — both already only needed a plain name + date, so a
+    task-shaped dict slots in without touching tested plumbing.
+
 New in v9.14 (#133 — the week-ahead line names its own commitment
 cost, 2026-08-07):
   - the Monday "WEEK AHEAD" block (when it fires at all — overbooked,
@@ -3430,7 +3447,7 @@ class App(tk.Tk):
         filem.add_command(label="Browse for a day file (file picker)…",
                           command=self._open_day_file)
         filem.add_command(label="Export week to calendar (.ics)", command=self._export_ics)
-        filem.add_command(label="Lock study windows for a deadline (.ics)…",
+        filem.add_command(label="Lock study windows (.ics)…",
                           command=self._lock_windows_win)
         filem.add_command(label="Export life record (JSON)…",
                           command=self._export_life_json)
@@ -8274,6 +8291,30 @@ class App(tk.Tk):
         parts = ", ".join(f"{label} {h:.1f}h" for label, h in by_label.items())
         return f"commitments today: {parts} ({total:.1f}h of 24h already spoken for)"
 
+    def _lock_targets(self):
+        """Backlog #135: widens #113/#122's lock-window pickers to also
+        reach task-library items, not just Deadlines — closes the loop
+        with #123's task due-dates ("this task is done by X" naturally
+        continues into "let me lock time for it"). Deadlines keep
+        their own real date range, unchanged; a task uses its own
+        `due` if set, else a plain 7-day default window from today so
+        an undated task is never unreachable — same fallback the
+        backlog note itself proposed. `someday`-priority and blocked
+        tasks are excluded: not yet actionable, so not worth
+        cluttering a locking picker over. Returns dicts shaped like
+        `_lock_window_candidates` already expects (`name`/`date`),
+        plus `kind`/`has_due` for display only."""
+        out = [{"kind": "deadline", "name": d["name"], "date": d.get("date"),
+                "has_due": True} for d in self.deadlines()]
+        for t in self.settings.get("tasks", []):
+            if t.get("priority") == "someday" or t.get("blocked_by"):
+                continue
+            due = t.get("due")
+            out.append({"kind": "task", "name": t["name"],
+                        "date": due or (self.today + dt.timedelta(days=7)).isoformat(),
+                        "has_due": bool(due)})
+        return out
+
     def _lock_window_candidates(self, dl, min_hours=2.0):
         """Backlog #113: which specific upcoming days are actually worth
         locking for a deadline — the concrete next step after
@@ -9303,11 +9344,12 @@ class App(tk.Tk):
         return dt.date(year, month, day_num)
 
     def _calendar_view_win(self):
-        """Backlog #120/#122/#123: the Outlook-like detailed calendar,
-        week/month toggle. Two right-click actions, split by the
-        granularity each view actually has: in WEEK view, right-click
-        an hour cell to lock it for a deadline (#122 — reuses #113's
-        lock_windows_to_ics unchanged); in MONTH view, right-click a
+        """Backlog #120/#122/#123/#135: the Outlook-like detailed
+        calendar, week/month toggle. Two right-click actions, split by
+        the granularity each view actually has: in WEEK view, right-
+        click an hour cell to lock it for a deadline OR a task (#122,
+        widened by #135 — reuses #113's lock_windows_to_ics unchanged);
+        in MONTH view, right-click a
         day cell to set a task's due date (#123 — a lightweight,
         Deadline-object-free "done by" marker, deliberately not a
         full scoped Deadline, so quick ad-hoc due dates don't clutter
@@ -9408,18 +9450,18 @@ class App(tk.Tk):
                 if not slot:
                     return
                 d, s, e = slot
-                dls = self.deadlines()
+                targets = self._lock_targets()
                 menu = tk.Menu(win, tearoff=0)
-                if not dls:
+                if not targets:
                     menu.add_command(
-                        label="No deadlines set — Tools > Deadline countdowns…",
+                        label="No deadlines or tasks set yet",
                         state="disabled")
                 else:
-                    for dl in dls:
+                    for tgt in targets:
                         menu.add_command(
                             label=f"Lock {s:%H:%M}–{e:%H:%M} {d:%a %d.%m} "
-                                 f"for '{dl['name']}'",
-                            command=lambda dl=dl: lock_slot(dl["name"], d, s, e))
+                                 f"for '{tgt['name']}'",
+                            command=lambda tgt=tgt: lock_slot(tgt["name"], d, s, e))
                 menu.tk_popup(event.x_root, event.y_root)
             else:
                 d = self._month_click_to_day(event.x, event.y,
@@ -12392,22 +12434,33 @@ class App(tk.Tk):
             self._open_folder()
 
     def _lock_windows_win(self):
-        """Backlog #113: turn a deadline's abstract 'X hours needed'
-        into concrete real dates worth locking, then export the picked
-        ones as .ics events for Outlook/Google Calendar — the owner's
-        own ask, 2026-08-07. _lock_window_candidates does the ranking;
-        this window is just pick-and-export."""
+        """Backlog #113 + #135: turn a deadline's (or now a task's)
+        abstract 'X hours needed' into concrete real dates worth
+        locking, then export the picked ones as .ics events for
+        Outlook/Google Calendar — the owner's own ask, 2026-08-07.
+        _lock_window_candidates does the ranking; this window is just
+        pick-and-export."""
         win = tk.Toplevel(self)
         win.title("Lock study windows")
         win.geometry("560x420")
 
         top = ttk.Frame(win)
         top.pack(fill="x", padx=8, pady=8)
-        ttk.Label(top, text="Deadline:").pack(side="left")
-        dl_names = [d["name"] for d in self.deadlines()]
-        dl_var = tk.StringVar(value=dl_names[0] if dl_names else "")
+        ttk.Label(top, text="Lock for:").pack(side="left")
+        targets = self._lock_targets()
+        label_for = {}
+        labels = []
+        for t in targets:
+            if t["kind"] == "deadline":
+                lbl = t["name"]
+            else:
+                suffix = "task, due date" if t["has_due"] else "task, next 7 days"
+                lbl = f"{t['name']} ({suffix})"
+            label_for[lbl] = t
+            labels.append(lbl)
+        dl_var = tk.StringVar(value=labels[0] if labels else "")
         combo = ttk.Combobox(top, textvariable=dl_var, state="readonly",
-                             values=dl_names, width=24)
+                             values=labels, width=32)
         combo.pack(side="left", padx=(4, 0))
 
         ttk.Label(win, text="Click a row to pick it, then export.",
@@ -12426,12 +12479,11 @@ class App(tk.Tk):
         def refresh(event=None):
             tree.delete(*tree.get_children())
             picked.clear()
-            dl = next((d for d in self.deadlines() if d["name"] == dl_var.get()),
-                      None)
-            cand["list"] = self._lock_window_candidates(dl) if dl else []
+            tgt = label_for.get(dl_var.get())
+            cand["list"] = self._lock_window_candidates(tgt) if tgt else []
             if not cand["list"]:
                 status.config(text="No open block of 2h+ found before this "
-                             "deadline's due date — nothing to lock.")
+                             "due date — nothing to lock.")
             else:
                 status.config(text="")
             for i, w in enumerate(cand["list"]):
@@ -12462,10 +12514,11 @@ class App(tk.Tk):
                 return
             windows = sorted((cand["list"][int(i)] for i in picked),
                             key=lambda w: w["date"])
-            path, n = lock_windows_to_ics(dl_var.get(), windows)
+            name = label_for[dl_var.get()]["name"]
+            path, n = lock_windows_to_ics(name, windows)
             when = ", ".join(f"{w['date']:%d.%m} {w['start']:%H:%M}-"
                             f"{w['end']:%H:%M}" for w in windows)
-            self._append_text(f"--- Locked {n} window(s) for {dl_var.get()}: "
+            self._append_text(f"--- Locked {n} window(s) for {name}: "
                               f"{when} (exported {os.path.basename(path)})")
             status.config(text=f"Exported {n} window(s) to {path} — "
                          "import that file into Outlook/Google Calendar.")

@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.15 — lock windows for tasks, not just deadlines
+
+The "Lock study windows…" picker (File menu, and right-click an hour
+in the calendar's week view) now lists your task library alongside
+deadlines. Set a task's due date, then lock real time for it — same
+picker, same .ics export. Undated tasks get a plain 7-day search
+window so they're never unreachable; `someday`/blocked tasks stay out
+of the list.
+
 ### v9.14 — the weekly co-pilot names its own commitment cost
 
 The Monday WEEK AHEAD block (see below) already netted your recurring

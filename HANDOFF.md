@@ -497,6 +497,15 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.15** (#135, 2026-08-07, DONE). Both lock-window entry points
+  (File menu picker + right-click an hour in the week calendar) now
+  list task-library items alongside deadlines — closes the loop with
+  #123's task due-dates. A task with a real `due` searches up to it,
+  same as a deadline; an undated task gets a synthetic 7-day window
+  so it's never unreachable. `someday`/blocked tasks excluded.
+  `_lock_window_candidates`/`lock_windows_to_ics` untouched — a
+  task-shaped dict just slots into plumbing that already only needed
+  a name + date.
 - **v9.14** (#133, 2026-08-07, DONE). The Monday "WEEK AHEAD" block
   (fires only when overbooked/tight/behind) now names its own
   commitment cost when >=30min of recurring commitments apply that
@@ -3715,22 +3724,8 @@ measuring what's already there.
     Mostly UI (a date-until picker + a loop), the export/lock
     mechanics underneath don't need to change at all.
 
-135. **Lock windows for standalone TASKS, not just deadlines
-    (PLANNING — closes the loop between #123's task due-dates and
-    #113's locking, directly serves the "grey admin" ask from the
-    very first calendar request; new idea 2026-08-07).** #113's lock-
-    windows picker (and #122's right-click week-view menu) only lists
-    DEADLINES — a lightweight task (the "grey admin" chores — grocery
-    shopping, laundry — the owner's own original example, or a task
-    with a #123 due-date but no full Deadline behind it) currently
-    has no way to get a locked, exportable calendar slot at all. Fix:
-    widen the lock-target list to include task-library items too
-    (name + optional due date instead of a Deadline's real date
-    range), reusing `lock_windows_to_ics` unchanged — it already just
-    takes a name and a list of windows, nothing Deadline-specific
-    about the export itself. The `_lock_window_candidates` date-range
-    math needs a task's `due` date (or a short default window, e.g.
-    "next 7 days") when there's no real Deadline date to anchor to.
+~~135. **Lock windows for standalone TASKS, not just deadlines.**~~
+    — FIXED v9.15. See the v9.15 version-history entry above.
 
 ## How to verify changes without Windows
 
