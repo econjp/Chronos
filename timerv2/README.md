@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.5 — a second calendar path, for when publishing is blocked
+
+File > **"Import calendar CSV (Power Automate export)…"** — if your
+Outlook won't let you publish a calendar link (common on school/work
+accounts), a no-code Power Automate flow can keep a plain CSV file
+current instead. Point the app at that file once; as long as the
+external flow keeps running, it stays current the same way the
+subscribe link does. See
+`private-recommendations/calendar-integration-setup.md` for the
+step-by-step setup (personal, not in this repo).
+
 ### v9.4 — subscribe to a calendar link (no more manual export)
 
 File > **"Subscribe to a calendar link (.ics URL)…"** — paste your

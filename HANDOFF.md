@@ -497,6 +497,24 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.5** (#116, owner's own ask for a redundant path: "try to build
+  also other ways to integrate calendar," 2026-08-07, DONE). A second,
+  independent calendar source alongside #114's subscribe-URL: File >
+  "Import calendar CSV (Power Automate export)…", for when Outlook
+  won't publish a calendar link at all (external sharing disabled by
+  tenant policy — researched via web search, a common EDU/work-tenant
+  restriction, distinct from and more commonly blocked than standard
+  Power Automate connector access). `parse_csv_busy_export`/
+  `csv_busy_data` mirror the .ics parsers' exact output shape, so
+  `_busy_data`/`_busy_intervals` just dispatch by file extension —
+  every capacity view (`_free_slots`, #113's lock windows,
+  `_capacity_lines`) already works with any of the three sources
+  (local .ics, subscribe URL, CSV) with zero further changes. Manual
+  Power Automate flow setup is a genuinely user-side task (no-code,
+  in Microsoft's own UI) — documented step-by-step in
+  `private-recommendations/calendar-integration-setup.md`
+  (gitignored, not this file, since it's personal how-to, not
+  architecture).
 - **v9.4** (#114, closing the gap v9.3 immediately surfaced, 2026-08-07,
   DONE — owner's school/uni Outlook tenant, used for everything
   personal too). File > "Subscribe to a calendar link (.ics URL)…":
@@ -3386,6 +3404,15 @@ measuring what's already there.
     since if it is, neither path works and the honest answer is "your
     IT department has to enable one of these," not more engineering.
     Don't build speculatively — check #114 actually fails first.
+    Superseded in practice by #116 (built instead, before confirming
+    #114 fails) since it needed no admin-consent gamble at all — this
+    stays logged as the harder fallback if #116 ALSO turns out to be
+    blocked somehow.
+
+116. ~~**Power Automate CSV — a second, independent calendar-import
+    path.**~~ — FIXED v9.5. See the v9.5 version-history entry above
+    for the full design (`parse_csv_busy_export`, extension-based
+    dispatch, why Power Automate over a custom Graph API app).
 
 ## How to verify changes without Windows
 

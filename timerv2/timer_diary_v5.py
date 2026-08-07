@@ -60,6 +60,39 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.5 (#116 — Power Automate CSV fallback, in case #114's
+publish link is blocked by a locked-down school/work tenant, owner's
+own ask, 2026-08-07: "try to build also other ways to integrate
+calendar or smthg idkk"):
+  - File > "Import calendar CSV (Power Automate export)…": a second,
+    independent calendar source for when Outlook won't publish a
+    link at all. A no-code Power Automate flow (recurring trigger ->
+    "Get calendar view of events" -> "Create CSV table" -> "Create
+    file" to a OneDrive-synced folder) keeps a plain CSV current; this
+    reads it. Chosen because Power Automate's STANDARD Office 365
+    Outlook connector typically rides on the tenant's existing
+    consent — unlike a custom Azure app registration (#115, Microsoft
+    Graph sign-in), which commonly needs admin approval a student
+    can't grant themselves. Researched, not guessed: EDU/work tenants
+    frequently disable external calendar sharing at the policy level
+    (the likely reason #114 alone might not be enough) but rarely
+    lock down standard first-party Power Automate connectors the same
+    way.
+  - `parse_csv_busy_export`/`csv_busy_data` produce the exact same
+    {date: [(start,end)...]} shape as the .ics parsers — every
+    existing capacity view (_free_slots, #113's lock-window
+    candidates, _capacity_lines) works identically regardless of
+    which of the three sources (local .ics, subscribe URL, CSV) is
+    configured. Dispatched by file extension in _busy_data/
+    _busy_intervals, same settings key as before — one "calendar
+    source" concept, not three parallel settings.
+  - Lenient CSV parsing (ISO datetimes with or without a timezone/Z
+    suffix), overlapping rows merged the same way .ics events already
+    are, malformed/empty rows skipped rather than crashing the import.
+  - See private-recommendations/calendar-integration-setup.md
+    (gitignored) for the step-by-step Power Automate build — that's
+    manual setup work only the owner can do, not something to script.
+
 New in v9.4 (#114 — subscribe to a calendar link, closing the "manual
 export every time" gap the owner hit right after v9.3, 2026-08-07:
 "my outlook cal not working... dont wanna do the manual import"):
@@ -2222,6 +2255,56 @@ def parse_ics_busy(path, start, end):
             for iso, ivs in parse_ics_intervals(path, start, end).items()}
 
 
+def parse_csv_busy_export(path, start, end):
+    """Backlog #116: the fallback path for when Outlook won't publish a
+    calendar link at all (common on locked-down school/work tenants —
+    see #114's own limitation) but Power Automate's STANDARD Office
+    365 Outlook connector still works, because it rides on the
+    tenant's existing consent rather than a custom app registration.
+    A no-code flow (recurring trigger -> "Get calendar view of
+    events" -> "Create CSV table" -> "Create file" to a OneDrive-
+    synced folder) can produce a plain CSV with Start/End[/Subject]
+    columns; this reads it into the exact same {date_iso:
+    [(start_time, end_time), ...]} shape parse_ics_intervals returns,
+    so every existing capacity view (_free_slots, _lock_window_
+    candidates, _capacity_lines...) works identically regardless of
+    which source is configured. Lenient on datetime format (ISO 8601,
+    with or without a timezone/Z suffix — Power Automate's own output
+    is ISO)."""
+    try:
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.DictReader(f))
+    except OSError:
+        return {}
+    raw = {}
+    for r in rows:
+        s_raw = (r.get("Start") or "").strip()
+        e_raw = (r.get("End") or "").strip()
+        if not s_raw or not e_raw:
+            continue
+        try:
+            s_dt = dt.datetime.fromisoformat(s_raw.replace("Z", "+00:00"))
+            e_dt = dt.datetime.fromisoformat(e_raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if s_dt.tzinfo:
+            s_dt = s_dt.astimezone().replace(tzinfo=None)
+        if e_dt.tzinfo:
+            e_dt = e_dt.astimezone().replace(tzinfo=None)
+        d = s_dt.date()
+        if not (start <= d <= end):
+            continue
+        raw.setdefault(d.isoformat(), []).append((s_dt.time(), e_dt.time()))
+    return {iso: _merge_time_intervals(ivs) for iso, ivs in raw.items()}
+
+
+def csv_busy_data(path, start, end):
+    """{date_iso: busy_hours} — the CSV sibling of parse_ics_busy, same
+    thin sum over parse_csv_busy_export."""
+    return {iso: sum(_time_span_hours(s, e) for s, e in ivs)
+            for iso, ivs in parse_csv_busy_export(path, start, end).items()}
+
+
 # ---------------- old-format line builders ----------------
 
 def hms_unpadded(secs):
@@ -3067,6 +3150,8 @@ class App(tk.Tk):
         filem.add_command(label="Calendar busy-time (.ics)…", command=self._set_ics)
         filem.add_command(label="Subscribe to a calendar link (.ics URL)…",
                           command=self._set_ics_url)
+        filem.add_command(label="Import calendar CSV (Power Automate export)…",
+                          command=self._set_csv_busy)
         filem.add_separator()
         filem.add_command(label="Exit", command=self._on_close)
         m.add_cascade(label="File", menu=filem)
@@ -7583,10 +7668,11 @@ class App(tk.Tk):
 
     def _busy_data(self):
         """Calendar busy hours per date, cached on the resolved file's
-        mtime. settings["ics_path"] may be a local file (unchanged) or
-        a subscribe URL — resolve_ics_source turns either into a local
-        path (fetching/caching the URL, refreshed periodically) before
-        anything here has to care which one it is."""
+        mtime. settings["ics_path"] may be a local .ics file
+        (unchanged), a subscribe URL (resolve_ics_source fetches/
+        caches it), or a local .csv (backlog #116 — Power Automate's
+        export, always local/OneDrive-synced already, no fetching
+        needed)."""
         raw = self.settings.get("ics_path")
         if not raw:
             return {}
@@ -7598,17 +7684,19 @@ class App(tk.Tk):
         if cache and cache[0] == key:
             return cache[1]
         # two weeks back so the balance/summary views see past meetings too
-        data = parse_ics_busy(path, dt.date.today() - dt.timedelta(days=14),
-                              dt.date.today() + dt.timedelta(days=90))
+        reader = csv_busy_data if path.lower().endswith(".csv") else parse_ics_busy
+        data = reader(path, dt.date.today() - dt.timedelta(days=14),
+                      dt.date.today() + dt.timedelta(days=90))
         self._busy_cache = (key, data)
         return data
 
     def _busy_intervals(self):
         """Calendar busy TIME RANGES per date — the interval-level
         sibling of _busy_data(), needed for slot-finding instead of just
-        a daily total. Same file (local or subscribe URL, see
-        resolve_ics_source), same cache shape, own cache slot since
-        the two views don't share a dict layout."""
+        a daily total. Same sources (local .ics, subscribe URL, or
+        Power Automate .csv — see resolve_ics_source and #116), same
+        cache shape, own cache slot since the two views don't share a
+        dict layout."""
         raw = self.settings.get("ics_path")
         if not raw:
             return {}
@@ -7619,8 +7707,10 @@ class App(tk.Tk):
         cache = getattr(self, "_busy_intervals_cache", None)
         if cache and cache[0] == key:
             return cache[1]
-        data = parse_ics_intervals(path, dt.date.today() - dt.timedelta(days=14),
-                                   dt.date.today() + dt.timedelta(days=90))
+        reader = (parse_csv_busy_export if path.lower().endswith(".csv")
+                 else parse_ics_intervals)
+        data = reader(path, dt.date.today() - dt.timedelta(days=14),
+                      dt.date.today() + dt.timedelta(days=90))
         self._busy_intervals_cache = (key, data)
         return data
 
@@ -8063,6 +8153,40 @@ class App(tk.Tk):
         self.status.config(text=f"Calendar subscribed — {nxt14:.1f}h of "
                                 "meetings in the next 14 days now reduce "
                                 f"capacity. Refreshes every {ICS_REFRESH_MIN}min.")
+
+    def _set_csv_busy(self):
+        """Backlog #116: the fallback when #114's publish link isn't an
+        option (a locked-down tenant with external sharing disabled) —
+        a plain CSV (Start,End[,Subject] columns), meant to be kept
+        current by an external no-code flow (Power Automate's standard
+        Office 365 Outlook connector, synced to a local/OneDrive
+        folder) rather than manually re-exported. Same settings key as
+        the .ics path — one "calendar source" concept, dispatched by
+        file extension in _busy_data/_busy_intervals."""
+        p = filedialog.askopenfilename(
+            parent=self, filetypes=[("Calendar CSV", "*.csv")],
+            title="Calendar CSV (Start,End columns) — kept current by an "
+                  "external sync, not re-picked manually each time")
+        if not p:
+            return
+        data = csv_busy_data(p, dt.date.today(),
+                             dt.date.today() + dt.timedelta(days=14))
+        if not data:
+            if not messagebox.askyesno(
+                    APP_NAME, "No readable Start/End rows found in the next "
+                    "14 days — the file may be empty, still the wrong "
+                    "columns, or genuinely has no meetings soon. Use it "
+                    "anyway?"):
+                return
+        self.settings["ics_path"] = p
+        save_settings(self.settings)
+        self._busy_cache = None
+        self._busy_intervals_cache = None
+        nxt14 = sum(data.values())
+        self.status.config(text=f"Calendar CSV linked — {nxt14:.1f}h of "
+                                "meetings in the next 14 days now reduce "
+                                "capacity. Keep the external sync running "
+                                "to stay current.")
 
     def _protected_hours(self):
         """Backlog #82: total daily hours claimed by protected windows
