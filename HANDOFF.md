@@ -3800,6 +3800,73 @@ measuring what's already there.
     pile from the original "grey admin" ask is still real and
     growing — not hypothetical.)
 
+141. **Off-dates reachable from deadline planning, not buried in a
+    disconnected "Week plan" setting (PLANNING — grounded in a REAL,
+    still-open task: "plan tuta exam prep schedule, cuz gonna be
+    weekends where no lockin.." written 2026-08-01, still undated as
+    of 2026-08-07; new idea 2026-08-07, re-checking real task-library
+    content at the owner's own request).** `off_dates` (a whole day
+    zeroed for capacity math) already exists and already feeds
+    `_day_capacity`/`_free_slots`/`_lock_window_candidates` — but it
+    lives only in Tools > "Week plan," is currently completely empty
+    in the real settings, and has zero connection to a specific
+    deadline's own planning flow. The TUTA task above is exactly the
+    moment this gap bites: the owner already KNOWS some upcoming
+    weekends won't be real study time, but there's no way to say so
+    from anywhere near the TUTA deadline itself. Fix: surface off-
+    dates editing directly inside the Lock-windows picker (#113/#135)
+    and/or Deadline countdowns — "Mark an upcoming date as off" right
+    next to the candidates it would otherwise affect, so the
+    knowledge and the tool meet at the point of use.
+
+142. **A quiet nudge toward #140's admin batch when the undated pile
+    goes stale (PLANNING — closes the "built the tool, will anyone
+    remember to open it" gap between #140 and the insights engine;
+    new idea 2026-08-07).** #140 gives the grey-admin pile a real
+    lock-to-calendar path, but nothing points at it — the pile has to
+    be noticed and opened manually, same friction #126's sleep-
+    suggestion and #127's drift-check exist specifically to remove
+    elsewhere. Fix: a grouped insight (TIME & FOCUS or a new ADMIN
+    theme), same "insight, never auto-applied" posture as everything
+    else here — "6 admin tasks have sat undated for 2+ weeks (pay
+    rent, buy the blazer, ...) — File > Lock an admin/task batch…" —
+    fires only past a real threshold (n>=5, age>=14d, matching this
+    app's own established honesty-gate sample sizes elsewhere), reuses
+    `_undated_admin_tasks` unchanged, just adds an `added`-date filter
+    and a text line.
+
+143. **Lock-window picker shows a running "X of Yh still needed" as
+    you pick, using #136's now-real locked math (PLANNING — directly
+    extends #136, same session, same underlying number; new idea
+    2026-08-07).** #136 made `remaining_h`/`locked_h` real per-
+    deadline numbers, but the picker itself (#113/#135) still only
+    shows candidate SLOTS, never says whether what you've picked
+    actually adds up to enough — you can lock 2 windows for TUTA and
+    have no idea if that's 4h of the 8h still needed this week or all
+    of it. Fix: as rows get picked/unpicked in `_lock_windows_win`,
+    show a running line under the tree — "picked: 4.0h of 11.0h still
+    needed" — pure arithmetic over `_dl_progress`'s existing
+    `remaining_h` and the already-selected candidates' hours, no new
+    computation, just closing the loop between "I locked something"
+    and "I locked ENOUGH" for a short-horizon deadline like an exam.
+
+144. **A weekly (not just daily) locked-vs-needed check specifically
+    for target_h deadlines like TUTA (PLANNING — TUTA already carries
+    a real `target_h: 8.0` alongside its `total_h`, unused by
+    anything; new idea 2026-08-07, re-checking real deadline data at
+    the owner's own request).** Deadlines optionally set a weekly
+    pace target (`target_h`) separate from the total scope — TUTA's
+    is 8h/week — but nothing currently checks actual + locked hours
+    against THAT number specifically; #133's week-ahead line only
+    knows the straight-line total/days-left pace, not a deliberately
+    chosen weekly rhythm. Fix: when `target_h` is set, add one line to
+    the week-ahead block (or the deadline countdown) — "TUTA: 2.0h
+    logged + 4.0h locked = 6.0h of your own 8.0h/week target" —
+    reusing `_dl_progress`'s `done_h`/`locked_h` plus the existing
+    `target_h` field, no new data model, just a number that already
+    exists finally being checked against the other number that
+    already exists.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
