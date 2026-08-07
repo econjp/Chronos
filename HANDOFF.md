@@ -3724,6 +3724,73 @@ measuring what's already there.
 ~~135. **Lock windows for standalone TASKS, not just deadlines.**~~
     — FIXED v9.15. See the v9.15 version-history entry above.
 
+136. **Locked windows actually count toward a deadline's real
+    progress math (PLANNING — the literal "these shuld ofc affect my
+    DL calcs everythng" ask from the owner's very first scheduling
+    message, still not true; new idea 2026-08-07).** Every scheduling
+    feature built so far (#113/#122/#135 locking, #124 feasibility,
+    #133 week-ahead) treats "hours needed" as if nothing is scheduled
+    yet — locking 3 windows totaling 9h for Thesis doesn't reduce
+    what `_dl_progress`/`_dl_projection`/`_lock_window_candidates`
+    think is still needed, because locked windows are fire-and-export
+    only, never written back to `settings.json`. Fix: keep a light
+    `locked_windows` list per deadline (date/start/end, written the
+    moment `lock_windows_to_ics` runs, not a new UI) and have
+    `_dl_progress` credit committed-but-not-yet-worked hours
+    separately from `done_h` — "20h needed, 9h locked, 11h still
+    needs a home" — so the numbers this app already leans on the most
+    finally know what's already spoken for, not just what's already
+    logged.
+
+137. **Auto-detect a real day off from the subscribed calendar, offer
+    it as a #132 skip (PLANNING — connects #114's real Outlook feed
+    with #132's skip-a-day exception, both already built separately;
+    new idea 2026-08-07).** #132 fixed the DATA MODEL for skipping a
+    commitment on one day, but it's still manual typing. Meanwhile
+    the app already parses real calendar events via `_calendar_events`
+    /`_busy_intervals` (#114/#120) — an all-day or near-all-day event
+    whose text matches obvious PTO/holiday language ("vacation",
+    "loma", "PTO", "out of office", "sick") on a day a commitment like
+    "Day job" would otherwise apply is a strong, cheap signal. Fix: a
+    quiet check (same "insight, never auto-applied" posture as every
+    other suggestion in this app, see #126) that surfaces "Outlook
+    shows 'Loma' on 15.08 — skip 'Day job' that day too?" next to the
+    Recurring commitments editor, one click to add it to `skip`
+    rather than typing the date by hand.
+
+138. **Locked windows render as their own layer in the calendar view,
+    before any Outlook round-trip (PLANNING — closes a real visibility
+    gap between #113/#122/#135's export and #120/#121's own display
+    layers; new idea 2026-08-07).** Right now a locked window is
+    invisible inside TimerDiary itself the moment it's created — it
+    only becomes visible again if you re-import the exported .ics
+    back into Outlook and TimerDiary re-fetches it, which is slow and
+    round-about, and until then it's indistinguishable from any other
+    calendar event anyway (same blue). Directly enabled by #136's
+    `locked_windows` list existing in settings.json in the first
+    place: `_draw_calendar_week` gains a 4th layer (a distinct color,
+    e.g. a solid outline instead of fill, "planned but not yet
+    happened") drawn from that list directly — no waiting on Outlook
+    at all to see what you've already committed to.
+
+139. **"Today's plan" — one composed timeline instead of four separate
+    checks (PLANNING — synthesis of #130's commitments line, #114's
+    calendar, #136/#138's locked windows, and #82's free slots, all
+    already computed separately; new idea 2026-08-07).** The owner's
+    own words across this whole arc — "so much of this... makes lot
+    of sense... just wanna automate and make it so much easier" —
+    keep pointing at wanting ONE glance, not four (morning header
+    commitments line, Calendar view, Lock study windows picker, free-
+    time forecast). Fix: a small window (or a File/View entry) that
+    renders today specifically as one ordered list — "08:30-09:30
+    Morning admin · 09:30-17:00 Day job · 17:30-18:30 free (locked:
+    Thesis) · 18:30-20:00 free · 23:00 Sleep" — built entirely from
+    primitives that already exist (`_protected_intervals_named`,
+    `_calendar_events`, #136's `locked_windows`, `_free_slots`), so
+    it's assembly, not new computation. Lower priority than #136-138
+    since it's presentation over new capability — build those three
+    first, this becomes almost free afterward.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
