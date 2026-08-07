@@ -3628,6 +3628,63 @@ measuring what's already there.
     on the same footing — flagged, not scoped, since a wrong ranking
     heuristic here would quietly make SIGNAL worse, not better.
 
+128. **#124's feasibility check, extended to the deadline editor
+    (TRUST — #124's own deferred half; new idea 2026-08-07).** #124
+    shipped covering only task due-dates (#123's two entry points);
+    the deadline editor's own save() — a bigger, multi-row grid, not
+    a single date field — was explicitly left out. Now that
+    `_due_date_feasibility_line` exists and is tested, wiring it into
+    the deadline editor is mostly plumbing: for each row whose date
+    changed, run the same check against its `total_h` (deadlines
+    already have a real scope, unlike a bare task due-date) and
+    surface any warnings before/alongside the save, same non-blocking
+    shape. The main new question is UX, not math — one deadline's
+    editor saves N rows at once, so warnings need to read as "row 3:
+    ⚠ ..." not one bare line.
+
+129. **One-click "update to actual" on #125's drift insight (USABILITY
+    — closes the loop from noticing to fixing; new idea 2026-08-07).**
+    `_commitment_drift_lines` (#125) names a gap ("declared 09:30 but
+    actually ~10:15") but doing anything about it still means
+    manually reopening Tools > Recurring commitments and retyping the
+    time. A small addition: surface the drift line with an inline
+    action (in the Insights tab, or Data doctor — same "read-only
+    insight + an explicit apply button" shape the Data-doctor Clean
+    action already uses for spelling variants) that rewrites just
+    that one commitment's start time to the suggested value. Still an
+    explicit click, never automatic — matches the same recommend-
+    don't-apply guardrail as everything else, just shortens the
+    distance between "the app noticed" and "it's fixed."
+
+130. **Today's commitment cost, visible in the day file itself (TRUST
+    — the sacred rule applied to #121, which currently violates it;
+    new idea 2026-08-07).** CLAUDE.md's own standing rule: "every
+    feature must leave a visible trace in the day file — a feature
+    that only writes to the csv reads as broken." #121's recurring
+    commitments currently show up ONLY in the Tools editor dialog and
+    the week calendar view — `_new_day_header` never mentions them at
+    all, so a day's own txt file gives no hint that e.g. 7.5h of
+    today is already spoken for by a day job and sleep. Fix: one line
+    in the morning header — "commitments today: Day job 7.5h, sleep
+    9.0h (16.5h of 24h already spoken for)" — reusing `_protected_
+    intervals_named(self.today)`, no new computation, just finally
+    surfacing what #121 already knows in the one place this app's own
+    rules say everything belongs.
+
+131. **Month view: free/busy shading per day cell (USABILITY — merges
+    #118's forecast concept into #120's month view; new idea
+    2026-08-07).** The month calendar (#120) shows named events/due-
+    dates per cell but nothing about how FREE a day actually is at a
+    glance — that's currently only in the separate free-time forecast
+    (#118), which doesn't show event names. A light background tint
+    per day cell (green-to-grey gradient by that day's `_day_capacity`
+    or biggest-free-block, the same number #118 already computes)
+    would let the month view answer both "what's on" and "how open is
+    it" in one glance instead of two separate windows. Purely visual
+    — reuses `_day_forecast`'s own per-day numbers, no new capacity
+    math, just one more `create_rectangle` fill color per cell before
+    the existing text is drawn on top.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
