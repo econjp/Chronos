@@ -67,6 +67,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_status_update_all", "_focus_signature_grid", "_focus_signature_line",
         "_parse_plan_line", "_auto_capture_plans", "_parse_time_loose",
         "_upcoming_plans", "_ics_hint_for_url", "_free_evenings_from_rows",
+        "_social_density_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -76,7 +77,8 @@ CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
                "_WORD_STOPWORDS", "_DECAY_BUCKETS", "_CAPSULE_RE",
                "_COMMIT_RE", "_FOCUS_SIG_WD", "_WEEKDAY_ABBR", "_PLAN_RE",
-               "_ICS_HINT_PATTERNS", "_EVENING_START", "_EVENING_END"}
+               "_ICS_HINT_PATTERNS", "_EVENING_START", "_EVENING_END",
+               "_SOCIAL_DENSITY_THRESHOLD"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -2288,6 +2290,33 @@ def suite_free_evenings():
         min_h=2.0) == []
 
 
+def suite_social_density():
+    D, ns = fresh()
+    d = _mk(D)
+
+    plans = [(dt.date(2026, 7, 14), "Concert", "18:00", "22:00"),
+            (dt.date(2026, 7, 16), "Dinner", "19:00", "21:00")]   # 4h + 2h
+
+    # ---- crosses the 40% threshold -> names the total ----
+    line = D._social_density_line(d, 10.0, plans)
+    assert line == ("  this week is social-heavy: 6.0h of plans vs "
+                    "10.0h total free"), line
+
+    # ---- a behind deadline gets named too ----
+    line2 = D._social_density_line(d, 10.0, plans, behind_names=["Thesis"])
+    assert line2.endswith("— Thesis's pace may slip"), line2
+
+    # ---- silence: below the threshold ----
+    assert D._social_density_line(d, 20.0, plans) is None   # 6/20 = 0.3
+
+    # ---- silence: no free capacity at all (avoid div-by-zero) ----
+    assert D._social_density_line(d, 0.0, plans) is None
+
+    # ---- malformed/missing times are safely skipped, not a crash ----
+    bad_plans = [(dt.date(2026, 7, 14), "X", "", "")]
+    assert D._social_density_line(d, 10.0, bad_plans) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2333,7 +2362,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("plan-capture", suite_plan_capture),
           ("upcoming-plans", suite_upcoming_plans),
           ("ics-hints", suite_ics_hints),
-          ("free-evenings", suite_free_evenings)]
+          ("free-evenings", suite_free_evenings),
+          ("social-density", suite_social_density)]
 
 
 def main():

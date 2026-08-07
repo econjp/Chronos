@@ -60,6 +60,27 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.33 (#168 — social-plan density warning, 2026-08-07: the
+reverse direction of #133's overbooked-deadline check):
+  - #133 already warns when a week is overbooked on DEADLINE hours;
+    nothing warned the other way — a week with several one-off plans
+    (#159/#161) can eat real deep-work capacity without ever getting
+    added up. WEEK AHEAD now names it once it crosses 40% of the
+    week's free capacity: "this week is social-heavy: 12.0h of plans
+    vs 18.0h total free — TUTA's pace may slip" (the deadline name
+    only appears when one is already behind at real pace — same data
+    the "already behind" line above it uses).
+  - new `_social_density_line`: pure function over `_week_ahead_lines`'s
+    own `plans` list ([(date, label, start, end), ...], the same shape
+    v9.28's "plans this week" line already builds) and `total_cap` —
+    no new data, sums the same plan-hours already named concretely.
+    Same honesty-gate posture as every insight here: not a judgment,
+    just the number named, silent below the threshold.
+  - new "social-density" selftest suite (crosses the threshold, a
+    behind-deadline gets named, silence below threshold, silence on
+    zero capacity, malformed/missing plan times safely skipped);
+    50/50 green.
+
 New in v9.32 (#167 — free evenings finder, 2026-08-07: the direct aid
 for "rn often manually just check some event sites... if theres
 anything relevant" — knowing WHICH evenings are open is the actual
@@ -6975,7 +6996,46 @@ class App(tk.Tk):
                 for d, label, s, e in plans if label)
             if plan_txt:
                 lines.append(f"  plans this week: {plan_txt}")
+        density = self._social_density_line(total_cap, plans, behind_names)
+        if density:
+            lines.append(density)
         return lines
+
+    _SOCIAL_DENSITY_THRESHOLD = 0.4
+
+    def _social_density_line(self, total_cap, plans, behind_names=None):
+        """Backlog #168: #133 already warns when a week is overbooked
+        on DEADLINE hours; nothing warned the reverse direction — a
+        week with several one-off plans (#159/#161) can eat real deep-
+        work capacity without ever getting added up. Sums the same
+        plan-hours #166 already names concretely, and names the total
+        against the week's free capacity once it crosses a real share
+        of it — same honesty-gate posture as every insight here: not a
+        judgment, just the number named, silent below the threshold.
+        Pure function over `_week_ahead_lines`'s own `plans` list shape
+        ([(date, label, start, end), ...]) and `total_cap` (already
+        net of recurring commitments) — no new data. `behind_names`
+        (from the same caller) names which deadline's pace to flag,
+        when there is one; the line still fires without it."""
+        plan_hours = 0.0
+        for _d, _label, s, e in plans:
+            if not (s and e):
+                continue
+            try:
+                sh, sm = map(int, s.split(":"))
+                eh, em = map(int, e.split(":"))
+                dur = _time_span_hours(dt.time(sh, sm), dt.time(eh, em))
+            except (ValueError, TypeError):
+                continue
+            if dur > 0:
+                plan_hours += dur
+        if total_cap <= 0 or plan_hours / total_cap <= self._SOCIAL_DENSITY_THRESHOLD:
+            return None
+        line = (f"  this week is social-heavy: {plan_hours:.1f}h of plans "
+               f"vs {total_cap:.1f}h total free")
+        if behind_names:
+            line += f" — {behind_names[0]}'s pace may slip"
+        return line
 
     @staticmethod
     def _verdict(work_min, sig_min, sig_work, declared_cap_h=None):

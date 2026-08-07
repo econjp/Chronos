@@ -4,6 +4,13 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.33 — Social-plan density warning
+
+The reverse of the overbooked-deadline check: WEEK AHEAD now also
+names it when one-off plans eat a big share of the week's free
+capacity — "this week is social-heavy: 12.0h of plans vs 18.0h total
+free." Fires once plans cross 40% of free capacity; silent otherwise.
+
 ### v9.32 — Free evenings finder
 
 View > Planning > "Free evenings…" — the actual first question before

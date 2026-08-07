@@ -497,6 +497,13 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.33** (#168, 2026-08-07, DONE). The reverse of #133's
+  overbooked-deadline check: WEEK AHEAD now names it when one-off
+  plans (#159/#161) eat >40% of the week's free capacity — "this week
+  is social-heavy: 12.0h of plans vs 18.0h total free." New
+  `_social_density_line`: pure function over `_week_ahead_lines`'s own
+  `plans` list and `total_cap` — no new data. New "social-density"
+  selftest suite; 50/50 green.
 - **v9.32** (#167, 2026-08-07, DONE). View > Planning > "Free
   evenings…" — filtered multi-week glance of genuinely open evening
   blocks ("Tue 18-20, Thu 20-23, Sat all day"), reusing #118's
@@ -4230,18 +4237,10 @@ polish — the three NOT chosen this round) when continuing this work.
     just check some event sites... if theres anything relevant," the
     social-planning half of this round's ask; new idea 2026-08-07.)
 
-168. **Social-plan density warning in the week-ahead block (PLANNING —
-    connects the two chokepoints the owner named this round — work
-    planning AND social planning — into one honesty check; new idea
-    2026-08-07).** #133 already warns when a week is overbooked on
-    DEADLINE hours; nothing currently warns the reverse direction — a
-    week with 5+ one-off plans (#161) eating real deep-work capacity
-    without the owner necessarily having added it up. Fix: sum
-    #166's same plan-hours for the week; if it crosses a real
-    threshold (e.g., >40% of total free capacity), one line — "this
-    week is social-heavy: 12.0h of plans vs 18.0h total free — TUTA's
-    pace may slip" — same honesty-gate posture as every insight here,
-    not a judgment, just the number named.
+~~168. **Social-plan density warning in the week-ahead block.**~~ —
+    DONE v9.33. See the v9.33 version-history entry above. (Connects
+    the two chokepoints the owner named this round — work planning AND
+    social planning — into one honesty check; new idea 2026-08-07.)
 
 169. **Detect a one-off plan repeating and offer to make it a real
     recurring commitment (PLANNING — connects #126's "learn from real
