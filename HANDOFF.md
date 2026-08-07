@@ -3317,6 +3317,32 @@ measuring what's already there.
     at any day file shows not just what you DID but what you
     RECONFIGURED. Small, mechanical, one line per editor's save().
 
+113. **Concrete buffer-window recommendation for high-stakes deadlines
+    (PLANNING — owner's own ask, 2026-08-07: "calendar and this
+    software should talk to each other better... so it can assess
+    whether something is realistically possible and, for something
+    like an exam, reserve enough evenings or weekends — REALISTICALLY
+    schedule time with enough buffer").** Real pain behind this: a
+    high-stakes exam declared with real busy weeks already known
+    (a travel-heavy work week, a weekend commitment) but nothing in
+    the app translates "X hours needed" into "THESE specific dates are
+    your real windows — lock them now." Today's capacity math
+    (`_capacity_lines`, `_cost_of_yes_line`) already answers "is there
+    enough total slack" in the abstract; this asks for the concrete
+    next step: given the already-known busy stretches (.ics import,
+    v8's capacity feature; declared WORKBLOCK/protected windows), name
+    the SPECIFIC upcoming weekends/evenings with enough open capacity
+    to matter, ranked, so "lock 15-16.8 and 23-25.8" replaces "you
+    need ~20h before the 26th." Reuses `_free_slots`/`_day_capacity`
+    over the date range between today and the deadline — no new data
+    source, the "assess if something is possible" half already exists
+    in `_avail_hours`; the new part is turning a total into a dated
+    list of the best specific windows and (maybe) a one-click way to
+    turn the top ones into protected windows or a WORKBLOCK-style lock.
+    Needs a real design pass on what "enough capacity to matter"
+    means (a whole free weekend vs a fragmented evening aren't equally
+    useful) before building — flagged, not scoped yet.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
