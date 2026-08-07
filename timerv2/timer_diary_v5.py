@@ -60,6 +60,23 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.20 (#145 — a quiet nudge when a locked window passes
+unworked, 2026-08-07):
+  - #136 deliberately drops a locked window from a deadline's
+    remaining_h credit the moment its date passes, whether or not it
+    actually got worked — correct math, but silent: the only sign was
+    remaining_h quietly creeping back up weeks later with no
+    explanation. Now named directly: a new grouped insight (TIME &
+    FOCUS) flags a past locked window with no real WORK session (a
+    break overlapping it doesn't count as it happening) overlapping
+    it at all — "TUTA's locked 09:00-13:00 (08.08) doesn't look like
+    it happened — still relevant, or worth re-locking?"
+  - only the last 14 days are checked — a missed lock from months ago
+    is stale news, not something worth re-raising forever. Future
+    locked windows are never flagged (they haven't happened yet).
+  - same "insight, never auto-applied" posture as every other nudge
+    in this app — nothing gets re-locked or cleared automatically.
+
 New in v9.19 (#141 — off-dates finally reach the scheduler, and reach
 it from where the need actually shows up, 2026-08-07: grounded in a
 real, still-open task — "plan tuta exam prep schedule, cuz gonna be
@@ -8363,6 +8380,57 @@ class App(tk.Tk):
         the labeled version."""
         return [(s, e) for s, e, _label in self._protected_intervals_named(d)]
 
+    def _missed_lock_lines(self, lookback_days=14):
+        """Backlog #145: #136 silently drops a locked window from a
+        deadline's remaining_h credit the moment its date passes,
+        whether or not it actually got worked — correct math, but
+        silent: the owner would only notice weeks later when
+        remaining_h has quietly crept back up, with no explanation why.
+        This names the ones that look like they didn't happen — a past
+        locked window with no real WORK session (not break — a break
+        overlapping the slot doesn't count as it happening) overlapping
+        it at all. Only the last `lookback_days` are surfaced; a missed
+        lock from months ago is stale news, not something worth
+        re-raising forever. Same "insight, never auto-applied" posture
+        as every other nudge here."""
+        cutoff = self.today - dt.timedelta(days=lookback_days)
+        work_ivs_by_day = {}
+        out = []
+        for dl in self.deadlines():
+            for w in dl.get("locked_windows", []):
+                try:
+                    d = dt.date.fromisoformat(w["date"])
+                except (KeyError, ValueError):
+                    continue
+                if not (cutoff <= d < self.today):
+                    continue
+                try:
+                    sh, sm = map(int, w["start"].split(":"))
+                    eh, em = map(int, w["end"].split(":"))
+                    s, e = dt.time(sh, sm), dt.time(eh, em)
+                except (KeyError, ValueError):
+                    continue
+                iso = d.isoformat()
+                if iso not in work_ivs_by_day:
+                    ivs = []
+                    for r in read_rows():
+                        if r[0] != iso or r[1] != "work":
+                            continue
+                        try:
+                            wsh, wsm = map(int, r[2].split(":"))
+                            weh, wem = map(int, r[3].split(":"))
+                            ivs.append((dt.time(wsh, wsm), dt.time(weh, wem)))
+                        except (ValueError, IndexError):
+                            continue
+                    work_ivs_by_day[iso] = ivs
+                overlap = any(s < e2 and s2 < e
+                             for s2, e2 in work_ivs_by_day[iso])
+                if not overlap:
+                    out.append(f"{dl['name']}'s locked {s:%H:%M}-{e:%H:%M} "
+                               f"({d:%d.%m}) doesn't look like it happened "
+                               "— still relevant, or worth re-locking?")
+        return out
+
     def _locked_intervals(self, d):
         """Backlog #136: (start, end) tuples already locked for ANY
         deadline on date `d` — one more "busy" source merged into
@@ -12098,6 +12166,7 @@ class App(tk.Tk):
         out += [("MOMENTUM & TRENDS", l) for l in self._trajectory_lines()]
         out += [("MOMENTUM & TRENDS", l) for l in self._signal_tier_insight()]
         out += [("TIME & FOCUS", l) for l in self._commitment_drift_lines()]
+        out += [("TIME & FOCUS", l) for l in self._missed_lock_lines()]
         return out
 
     def _signal_tier_insight(self, days=60):

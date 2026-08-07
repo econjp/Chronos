@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.20 — a nudge when a locked window passes unworked
+
+Locked time that quietly doesn't happen used to just vanish — the
+deadline math correctly stopped counting it, but nothing ever told
+you. Now a new insight flags it directly: "TUTA's locked 09:00-13:00
+(08.08) doesn't look like it happened — still relevant, or worth
+re-locking?" Only checks the last 14 days, never flags the future,
+and a break overlapping the slot doesn't count as it happening.
+
 ### v9.19 — off-dates now actually work, and reach the scheduler
 
 Fixed a real bug: marking a day "off" only ever zeroed the hours

@@ -497,6 +497,14 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.20** (#145, 2026-08-07, DONE). A new grouped insight (TIME &
+  FOCUS) flags a locked window whose date has passed with no real
+  WORK session overlapping it — "TUTA's locked 09:00-13:00 (08.08)
+  doesn't look like it happened — still relevant, or worth re-
+  locking?" Closes #136's own silent-drop behavior into something
+  actually visible; a break overlapping the slot doesn't count as it
+  happening, only the last 14 days are checked, future windows never
+  flagged.
 - **v9.19** (#141, 2026-08-07, DONE). Real bug fixed: `off_dates`
   only ever zeroed `_day_capacity`'s aggregate hours — `_free_slots`
   (what every lock-window picker/scheduler actually routes through)
@@ -3864,22 +3872,8 @@ measuring what's already there.
     exists finally being checked against the other number that
     already exists.
 
-145. **A quiet nudge when a locked window passes unworked (PLANNING —
-    closes #136's own silent-drop behavior into something the owner
-    actually sees; new idea 2026-08-07).** #136 deliberately drops a
-    locked window from `remaining_h` credit the moment its date
-    passes, whether or not it actually got worked — correct math, but
-    silent: if TUTA's locked 09:00-13:00 today never happens, nothing
-    says so, the owner only notices weeks later when `remaining_h`
-    has quietly crept back up with no explanation. Fix: a grouped
-    insight, same posture as #125/#127's drift checks — compare each
-    deadline's locked windows whose date is in the past against real
-    logged sessions that day/keyword; a locked window with no matching
-    work gets named once — "TUTA's locked 09:00-13:00 (04.08) doesn't
-    look like it happened — still on for today, or worth re-locking?"
-    Reuses `_locked_hours`'s own date-cutoff logic and `matched_minutes`
-    (already #4157's own `_dl_progress` primitive), no new matching
-    engine.
+~~145. **A quiet nudge when a locked window passes unworked.**~~ —
+    FIXED v9.20. See the v9.20 version-history entry above.
 
 146. **Lock-window candidates ranked energy-aware, not just biggest-
     block-first (PLANNING — connects two subsystems built independently
