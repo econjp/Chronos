@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.8 — recurring commitments (day job, sleep, admin)
+
+Tools > **"Recurring commitments (lunch, day job, sleep, admin)…"**
+(the old "Protected time windows," extended) — now supports which
+days a block applies to ("Mon-Fri" for a day job, blank for every
+day) and windows that cross midnight (sleep, e.g. 23:00-08:30). These
+reduce your real available capacity everywhere — deadline math,
+lock-windows, the free-time forecast — without ever touching your
+real Outlook calendar. Shows up as a background layer in the week
+calendar view (v9.7).
+
 ### v9.7 — a real week/month calendar view
 
 View > Planning > **"Calendar (week/month)…"** — an Outlook-shaped

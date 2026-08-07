@@ -60,7 +60,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_carry_year", "_on_this_day_line", "_lifetime_ledger_line",
         "_due_capsules", "_capsule_lines", "_commit_from_text",
         "_commitment_reliability", "_commitment_reliability_line",
-        "_protected_intervals", "_milestone_progress_line", "_milestone_credit",
+        "_protected_intervals", "_protected_intervals_named", "_parse_weekdays",
+        "_milestone_progress_line", "_milestone_credit",
         "_waiting_on_lines", "_cost_of_yes_line", "_status_update_text",
         "_status_update_all", "_focus_signature_grid", "_focus_signature_line",
         "_estimate_factor", "_deadline_postmortem_lines",
@@ -71,7 +72,7 @@ STATIC = {"_match_kws", "_pull_level"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
                "_WORD_STOPWORDS", "_DECAY_BUCKETS", "_CAPSULE_RE",
-               "_COMMIT_RE", "_FOCUS_SIG_WD"}
+               "_COMMIT_RE", "_FOCUS_SIG_WD", "_WEEKDAY_ABBR"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -1912,6 +1913,34 @@ def suite_protected_windows():
     # ---- a missing key is skipped, not a crash ----
     d3 = _mk(D, settings={"protected_windows": [{"label": "half"}]})
     assert D._protected_intervals(d3) == []
+
+    # ---- backlog #121: weekday-restricted windows ("Mon-Fri" a day job,
+    # blank = every day) only apply on the matching days ----
+    d4 = _mk(D, settings={"protected_windows": [
+        {"label": "Day job", "start": "09:30", "end": "17:00", "days": "Mon-Fri"},
+        {"label": "Lunch", "start": "12:00", "end": "12:30", "days": ""},
+    ]})
+    monday = dt.date(2026, 8, 10)     # a real Monday
+    saturday = dt.date(2026, 8, 15)   # a real Saturday
+    mon_out = D._protected_intervals(d4, monday)
+    sat_out = D._protected_intervals(d4, saturday)
+    assert (time(9, 30), time(17, 0)) in mon_out
+    assert (time(9, 30), time(17, 0)) not in sat_out
+    assert (time(12, 0), time(12, 30)) in mon_out
+    assert (time(12, 0), time(12, 30)) in sat_out
+
+    # ---- #121: a genuine overnight window (sleep, <=14h wrapped span)
+    # splits into two same-day pieces; a >14h "start>end" stays treated
+    # as invalid (a typo, not real intent) exactly like before #121 ----
+    d5 = _mk(D, settings={"protected_windows": [
+        {"label": "Sleep", "start": "23:00", "end": "08:30", "days": ""},
+        {"label": "typo, not really overnight", "start": "15:00", "end": "14:00"},
+    ]})
+    named = D._protected_intervals_named(d5, monday)
+    assert (time(0, 0), time(8, 30), "Sleep") in named
+    assert (time(23, 0), time(23, 59, 59), "Sleep") in named
+    assert not any(lbl.startswith("typo") for _s, _e, lbl in named)
+    assert len(named) == 2
 
 
 def suite_milestones():

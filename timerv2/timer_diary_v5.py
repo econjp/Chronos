@@ -60,6 +60,39 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.8 (#121 — recurring commitments: day job, sleep, admin,
+owner's own follow-up, 2026-08-07: "this softw doesnt have the...
+realistic blocks... adding like sleep, eating blocks, work work
+blocks... dont wanna fill my outlook with that kind of neurotic
+stuff... these shuld ofc affect my DL calcs everythng"):
+  - Tools > "Recurring commitments (lunch, day job, sleep, admin)…"
+    (renamed from "Protected time windows," same settings key,
+    fully backward compatible) — now supports a `Days` column
+    ("Mon-Fri", blank = every day) and windows that cross midnight
+    (sleep, e.g. 23:00-08:30), on top of the original lunch/wind-down
+    use case. Bumped from 4 to 8 rows.
+  - `_protected_intervals`/`_protected_hours` are now weekday-aware
+    (`_parse_weekdays`) — a day-job block only reduces capacity on
+    the days it's declared for, not every day. A window with
+    start > end is only treated as a deliberate overnight block when
+    the wrapped span is <=14h — a typo like "15:00-14:00" (23h) stays
+    treated as invalid, same safe-degrade as before this feature,
+    rather than silently eating almost the whole day's capacity.
+  - These blocks already fed #82's aggregate-hours model AND
+    #113/#118's `_free_slots`-based views (lock-windows, free-time
+    forecast) automatically, since both already routed through
+    `_protected_intervals`/`_protected_hours` — no new capacity-math
+    code needed, just making the existing primitive weekday-aware.
+  - The week calendar view (#120) now renders these as a background
+    layer (neutral tan, labeled) — "realistic blocks" made visible,
+    the specific thing asked for, without ever touching a real
+    Outlook calendar.
+  - Applied directly: the owner's own stated day-job (09:30-17:00)
+    and morning-admin/commute (08:30-09:30) hours, both Mon-Fri, per
+    what they wrote in this exact request — sleep and grey-admin
+    left blank since no concrete times were given for those, rather
+    than guessed.
+
 New in v9.7 (#120 — a real week/month calendar view, owner's own
 follow-up ask, 2026-08-07: "proper monthly or weekly calendar
 views... event or stuff names there... similar to outlooks monthly
@@ -3408,7 +3441,7 @@ class App(tk.Tk):
         toolsm.add_command(label="Daily target…", command=self._set_target)
         toolsm.add_command(label="Work-day window (free-slot finder)…",
                            command=self._set_work_window)
-        toolsm.add_command(label="Protected time windows (lunch, wind-down)…",
+        toolsm.add_command(label="Recurring commitments (lunch, day job, sleep, admin)…",
                            command=self._set_protected_windows)
         m.add_cascade(label="Tools", menu=toolsm)
 
@@ -4049,24 +4082,35 @@ class App(tk.Tk):
         save_settings(self.settings)
 
     def _set_protected_windows(self):
-        """Backlog #50: named daily-recurring windows the scheduler must
-        never claim — lunch, a wind-down hour — subtracted from
-        _free_slots exactly like calendar busy-time already is. Same
-        small-grid-of-entries dialog pattern as Goals/Deadlines."""
+        """Backlog #50/#121: named recurring windows subtracted from
+        _free_slots (and, via #82's _protected_hours, the aggregate
+        capacity model too) exactly like calendar busy-time already
+        is — lunch, a wind-down hour, but also now a day job, sleep,
+        morning admin, grey admin/chores: the "realistic blocks" a
+        real day has that you don't want cluttering an actual Outlook
+        calendar but still want counted honestly against capacity.
+        `Days` optionally restricts a window to specific weekdays
+        ("Mon-Fri", blank = every day); a window can cross midnight
+        (sleep, e.g. 23:00-08:30) — both handled by _protected_
+        intervals, not this dialog. Same small-grid-of-entries pattern
+        as Goals/Deadlines."""
         win = tk.Toplevel(self)
-        win.title("Protected time windows")
+        win.title("Recurring commitments (lunch, day job, sleep, admin...)")
         win.resizable(False, False)
         win.grab_set()
-        cols = ("Label (empty = off)", "Start (HH:MM)", "End (HH:MM)")
+        cols = ("Label (empty = off)", "Start (HH:MM)", "End (HH:MM)",
+                "Days (blank=every day, e.g. Mon-Fri)")
         for c, lbl in enumerate(cols):
             ttk.Label(win, text=lbl).grid(row=0, column=c, padx=4, pady=(8, 2))
         cur = self.settings.get("protected_windows", [])
+        n_rows = max(8, len(cur))
         grid = []
-        for i in range(4):
+        for i in range(n_rows):
             w = cur[i] if i < len(cur) else {}
             row = []
-            for c, key in enumerate(("label", "start", "end")):
-                e = ttk.Entry(win, width=20 if c == 0 else 10)
+            for c, key in enumerate(("label", "start", "end", "days")):
+                width = 26 if c == 0 else (10 if c in (1, 2) else 16)
+                e = ttk.Entry(win, width=width)
                 e.insert(0, w.get(key, ""))
                 e.grid(row=i + 1, column=c, padx=4, pady=2)
                 row.append(e)
@@ -4077,6 +4121,7 @@ class App(tk.Tk):
             for row in grid:
                 label = row[0].get().strip()
                 start, end = row[1].get().strip(), row[2].get().strip()
+                days = row[3].get().strip()
                 if not label:
                     continue
                 try:
@@ -4087,13 +4132,14 @@ class App(tk.Tk):
                     messagebox.showerror(
                         APP_NAME, f"Use HH:MM for '{label}'.", parent=win)
                     return
-                out.append({"label": label, "start": start, "end": end})
+                out.append({"label": label, "start": start, "end": end,
+                           "days": days})
             self.settings["protected_windows"] = out
             save_settings(self.settings)
             win.destroy()
 
         ttk.Button(win, text="Save", command=save).grid(
-            row=5, column=2, sticky="e", padx=4, pady=8)
+            row=n_rows + 1, column=3, sticky="e", padx=4, pady=8)
 
     def _set_target(self):
         cur = self.settings.get("target_min", 0)
@@ -5408,6 +5454,9 @@ class App(tk.Tk):
                              # one rank down)
     CAL_EVENT = "#6c8ebf"    # backlog #120: imported calendar events
     CAL_WORK = "#4a6fa5"     # backlog #120: tracked work sessions (= TL_WORK)
+    CAL_COMMIT = "#b8b0a0"  # backlog #121: recurring commitments (sleep,
+                             # day job, admin) — neutral/tan, deliberately
+                             # unlike the blues used for real events/work
     WORKOUT_DOT_MIN = 10   # minutes — filters Apple Watch's auto-detected
                             # "Other" activity blips from a real workout
 
@@ -7927,25 +7976,90 @@ class App(tk.Tk):
                 continue
         return _merge_time_intervals(ivs)
 
-    def _protected_intervals(self):
-        """Backlog #50: named daily-recurring windows (lunch, wind-
-        down) the scheduler must never claim — subtracted from
-        _free_slots exactly like calendar busy-time already is, one
-        more "busy" source merged into the same primitive, not a new
-        concept. Malformed HH:MM entries are skipped rather than
+    _WEEKDAY_ABBR = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4,
+                     "sat": 5, "sun": 6}
+
+    def _parse_weekdays(self, text):
+        """Backlog #121: '' -> unrestricted (every day, None sentinel);
+        'Mon-Fri' or 'Mon,Wed,Fri' -> {0,1,2,3,4}. Case-insensitive,
+        first 3 letters of each weekday name. Malformed tokens are
+        skipped, not fatal — same lenient-degrade shape as the HH:MM
+        validation next to it."""
+        text = (text or "").strip()
+        if not text:
+            return None
+        days = set()
+        for part in text.split(","):
+            part = part.strip().lower()
+            if "-" in part:
+                a, b = (p.strip()[:3] for p in part.split("-", 1))
+                a, b = self._WEEKDAY_ABBR.get(a), self._WEEKDAY_ABBR.get(b)
+                if a is None or b is None:
+                    continue
+                d = a
+                while True:
+                    days.add(d)
+                    if d == b:
+                        break
+                    d = (d + 1) % 7
+            else:
+                wd = self._WEEKDAY_ABBR.get(part[:3])
+                if wd is not None:
+                    days.add(wd)
+        return days or None
+
+    def _protected_intervals_named(self, d=None):
+        """Backlog #50/#121: [(start, end, label), ...] — named
+        recurring windows (lunch, wind-down, a day job, sleep...) on
+        day `d`. `d` filters by weekday when a window declares one
+        (`days`, e.g. "Mon-Fri"); omitted/blank `days` means every
+        day — the original #50 behavior, unchanged, and what a caller
+        gets by leaving `d` unset too. A window crossing midnight
+        (sleep, 23:00-08:30) contributes to TWO calendar days — the
+        tail of last night on `d`'s early morning, and the start of
+        tonight on `d`'s late evening — both computed for whichever
+        single day `d` is, since callers only ever ask about one day
+        at a time. Malformed HH:MM entries are skipped rather than
         raising, so a bad manual edit degrades to "one window
-        ignored," not a crash."""
+        ignored," not a crash. Only treats start > end as a deliberate
+        overnight window when the wrapped span is <=14h (generous for
+        real sleep, but a typo like "15:00-14:00" — nearly 23h — stays
+        treated as invalid, same as before this feature existed,
+        rather than silently eating almost the whole day). `_protected_
+        intervals` (below) is the plain-tuple version every interval-
+        math caller actually uses; this labeled version exists for the
+        calendar view (#120) to render WHAT a busy block actually is,
+        not just when."""
         out = []
+        wd = d.weekday() if d is not None else None
         for w in self.settings.get("protected_windows", []):
+            days = self._parse_weekdays(w.get("days", ""))
+            if days is not None and wd is not None and wd not in days:
+                continue
             try:
                 sh, sm = map(int, w["start"].split(":"))
                 eh, em = map(int, w["end"].split(":"))
                 s, e = dt.time(sh, sm), dt.time(eh, em)
-                if s < e:
-                    out.append((s, e))
             except (ValueError, KeyError, AttributeError, TypeError):
                 continue
+            label = w.get("label", "")
+            if s < e:
+                out.append((s, e, label))
+            elif s > e:                        # possibly crosses midnight
+                span_min = (24 * 60 - (s.hour * 60 + s.minute)) + (e.hour * 60 + e.minute)
+                if span_min <= 14 * 60:
+                    out.append((dt.time(0, 0), e, label))        # tail of last night
+                    out.append((s, dt.time(23, 59, 59), label))  # start of tonight
         return out
+
+    def _protected_intervals(self, d=None):
+        """Backlog #50/#121: named recurring windows subtracted from
+        _free_slots exactly like calendar busy-time already is, one
+        more "busy" source merged into the same primitive — plain
+        (start, end) tuples, no label. See _protected_intervals_named
+        for the full behavior (weekday filter, midnight-crossing) and
+        the labeled version."""
+        return [(s, e) for s, e, _label in self._protected_intervals_named(d)]
 
     def _free_slots(self, d):
         """Free time-of-day ranges on date d: the work window minus
@@ -7956,7 +8070,7 @@ class App(tk.Tk):
         are dropped so it reads as usable blocks, not calendar noise."""
         win_start, win_end = self._work_window()
         busy = list(self._busy_intervals().get(d.isoformat(), []))
-        busy += self._protected_intervals()
+        busy += self._protected_intervals(d)
         if d == dt.date.today():
             busy += self._logged_intervals(d)
         slots = _free_from_busy(win_start, win_end, busy)
@@ -8372,25 +8486,27 @@ class App(tk.Tk):
                                 "capacity. Keep the external sync running "
                                 "to stay current.")
 
-    def _protected_hours(self):
-        """Backlog #82: total daily hours claimed by protected windows
-        (lunch, wind-down) — same intervals _free_slots already
+    def _protected_hours(self, d=None):
+        """Backlog #82/#121: total daily hours claimed by protected/
+        recurring windows (lunch, wind-down, a day job, sleep...) on
+        day `d` — same weekday-aware intervals _free_slots already
         subtracts from the scheduler, summed to a plain hour figure so
         _day_capacity's separate aggregate-hours model can subtract
         them too. Without this, declaring a lunch window stops the
         scheduler from booking over it but the capacity dashboard and
         cost-of-yes preview kept quietly counting that hour as
         available — two capacity models disagreeing."""
-        return sum(_time_span_hours(s, e) for s, e in self._protected_intervals())
+        return sum(_time_span_hours(s, e) for s, e in self._protected_intervals(d))
 
     def _day_capacity(self, d):
         """Net available hours on one date: weekday capacity minus
-        calendar busy time minus protected windows; zero on off days."""
+        calendar busy time minus protected/recurring windows; zero on
+        off days."""
         if d.isoformat() in self.settings.get("off_dates", []):
             return 0.0
         return max(0.0, self._capacity()[d.weekday()]
                    - self._busy_data().get(d.isoformat(), 0.0)
-                   - self._protected_hours())
+                   - self._protected_hours(d))
 
     def _avail_hours(self, until):
         """Net capacity hours from today through `until` (inclusive)."""
@@ -8751,10 +8867,11 @@ class App(tk.Tk):
         or weekly calendar views... event or stuff names there...
         similar to outlooks monthly setup... exact time slots"). An
         hour-gridded week, 7 day columns — real Outlook-week shape.
-        Calendar events (named, from _calendar_events) in one color,
-        tracked work sessions (named, from _work_sessions_by_day) in
-        another — both positioned by real clock time, not just
-        counted."""
+        Three layers, drawn back to front: recurring commitments
+        (#121 — sleep, day job, admin, neutral tan) as background
+        context, then calendar events (named, from _calendar_events)
+        and tracked work sessions (named, from _work_sessions_by_day)
+        on top — all positioned by real clock time, not just counted."""
         cv.delete("all")
         days = [monday + dt.timedelta(days=i) for i in range(7)]
         hdr_h, pad_l, col_w = 26, 46, 96
@@ -8795,6 +8912,14 @@ class App(tk.Tk):
                            fill="#2e6da4" if d == self.today else "#333333",
                            font=("Segoe UI", 8, "bold"))
             cv.create_line(x0, 0, x0, H, fill="#eeeeee")
+            for s, e, label in self._protected_intervals_named(d):
+                y0, y1 = y_for(s), max(y_for(e), y_for(s) + 9)
+                cv.create_rectangle(x0 + 2, y0, x0 + col_w - 2, y1,
+                                    fill=self.CAL_COMMIT, outline="")
+                if label:
+                    cv.create_text(x0 + 4, y0 + 1, anchor="nw",
+                                   text=self._cal_truncate(label, col_w - 6),
+                                   font=("Segoe UI", 6), fill="#555544")
             for s, e, name in ev_by_day.get(d, []):
                 y0, y1 = y_for(s), max(y_for(e), y_for(s) + 11)
                 cv.create_rectangle(x0 + 2, y0, x0 + col_w - 2, y1,

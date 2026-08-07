@@ -497,6 +497,27 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.8** (#121, owner's own follow-up, 2026-08-07, DONE: "realistic
+  blocks... sleep, eating, work blocks... dont wanna fill my outlook
+  with that... shuld ofc affect my DL calcs everythng"). Extended
+  #50's protected-windows mechanism (same settings key, fully
+  backward compatible) rather than building a parallel system: added
+  a `Days` field (`_parse_weekdays`, "Mon-Fri" style) so a day-job
+  block doesn't also eat weekend capacity, and midnight-crossing
+  support for sleep — capped at a 14h wrapped span so a genuine typo
+  (e.g. "15:00-14:00", 23h) still degrades to "ignored" rather than
+  silently eating almost the whole day, preserving the pre-#121
+  safety behavior the existing selftest suite already locked in
+  (caught this BEFORE shipping by re-running that suite, not after —
+  worth remembering as a case where a routine regression check found
+  a real design gap, not just a mechanical break). `_protected_
+  intervals`/`_protected_hours` becoming weekday-aware means #82's
+  capacity model and #113/#118's `_free_slots`-based views all
+  inherited the fix automatically, zero new capacity-math code.
+  Rendered as a labeled background layer in #120's week view. Applied
+  directly: owner's stated day-job (09:30-17:00) and morning-admin
+  (08:30-09:30) hours, both Mon-Fri, from their own words in the
+  request — sleep/grey-admin left blank, no concrete times given.
 - **v9.7** (#120, owner's own follow-up, 2026-08-07, DONE: "proper
   monthly or weekly calendar views... event or stuff names there...
   similar to outlooks monthly setup"). View > Planning > "Calendar
@@ -3506,6 +3527,33 @@ measuring what's already there.
     already nets out WORKBLOCK/protected windows/real calendar busy
     time correctly, since the calendar view's own "free" reads agree
     with what #113/#118 already showed.
+
+121. ~~**Recurring commitments — weekday-aware, midnight-crossing
+    protected windows (day job, sleep, admin).**~~ — FIXED v9.8. See
+    the v9.8 version-history entry above for the full design
+    (`_parse_weekdays`, the 14h overnight-vs-typo sanity cap, why it
+    extends #50 rather than a new parallel mechanism).
+
+122. **Interactive scheduling on the calendar view (PLANNING —
+    owner's own next-step ask, 2026-08-07: "shuld also be able to
+    schedule or add events or tasks there like already... option to
+    set DL or just sort of set the working windows for it").** The
+    natural extension of #120's now-read-only week/month view: click
+    (or otherwise select) an open slot and either (a) attach a task/
+    deadline to it with a "done by" framing, or (b) lock it as a
+    working window for a deadline — #113's own lock-windows concept,
+    but placed directly on the calendar instead of through its
+    separate picker dialog. Real UX design question before building,
+    flagged rather than guessed at (see #103's lesson — a wrong guess
+    on a similar-scale decision cost a full redo): what's the actual
+    interaction model — click an empty cell then a dialog appears;
+    drag a task from the Tasks window onto a slot; right-click menu
+    on a slot? Each has different build complexity and a different
+    feel, and the owner explicitly asked for this to feel like
+    "building with legos... simple efficient, easy" — worth getting
+    the interaction shape right rather than shipping a technically-
+    working but clunky first guess. Not built this round — the
+    owner was asked directly which model fits before starting.
 
 ## How to verify changes without Windows
 
