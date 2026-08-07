@@ -4,6 +4,13 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.10 — task due-dates via the calendar
+
+Right-click a day in the calendar's month view → **"Set task due
+date…"** → pick a task from the library. Shows up as a ⚑ marker on
+that day, and as a `Due` column in the Tasks window (⚠ if overdue).
+Lightweight on purpose — not a full deadline, just a "done by" flag.
+
 ### v9.9 — right-click a calendar slot to lock it
 
 In the calendar's week view (v9.7), right-click any hour cell → pick

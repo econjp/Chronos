@@ -60,6 +60,31 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.10 (#123 — task due-dates via the calendar, the other half
+of the owner's original scheduling ask, 2026-08-07: "option to set
+DL or just sort of set the working windows for it"):
+  - Right-click a DAY cell in the calendar's month view → "Set task
+    due date to <date>…" → pick a task from the library. A
+    lightweight "done by" marker on the task itself, deliberately NOT
+    a full scoped Deadline object — quick ad-hoc due dates don't
+    clutter the deadlines list or need a total-hours estimate to mean
+    something.
+  - Tasks window (View > Tasks/backlog) gets a `Due` column, right-
+    click → "Set due date…" as an alternative to the calendar; an
+    overdue task shows a ⚠ marker.
+  - Month view itself now shows a ⚑ marker with the task name on its
+    due date, drawn before events/work so it's the first thing you
+    see in a cell.
+  - `_month_click_to_day` inverts `_draw_calendar_month`'s own cell
+    layout (shared class constants, same pattern as #122's
+    `_week_click_to_slot`/week view).
+  - Setting a due date appends the same visible day-file trace every
+    other calendar action here does.
+  - Split cleanly from #122's week-view "lock an hour for a
+    deadline": week view is hour-precise (working windows), month
+    view is day-precise (due dates) — each right-click action matches
+    the granularity its own view actually has.
+
 New in v9.9 (#122 — right-click to lock a calendar slot, owner's own
 chosen interaction model, 2026-08-07: "shuld also be able to schedule
 or add events or tasks there... option to set... the working windows
@@ -8890,6 +8915,8 @@ class App(tk.Tk):
                                                  # so a right-click inverts
                                                  # exactly the same layout
                                                  # _draw_calendar_week uses
+    _CAL_MONTH_CELL_W, _CAL_MONTH_CELL_H = 104, 78   # backlog #123: shared
+    _CAL_MONTH_HDR_H, _CAL_MONTH_PAD = 20, 4         # with _month_click_to_day
 
     def _draw_calendar_week(self, cv, monday):
         """Backlog #120 (owner's own ask, 2026-08-07: "proper monthly
@@ -9001,7 +9028,8 @@ class App(tk.Tk):
         days_in_month = (next_month - first).days
         weeks = -(-(start_col + days_in_month) // 7)
 
-        cell_w, cell_h, hdr_h, pad = 104, 78, 20, 4
+        cell_w, cell_h, hdr_h, pad = (self._CAL_MONTH_CELL_W, self._CAL_MONTH_CELL_H,
+                                      self._CAL_MONTH_HDR_H, self._CAL_MONTH_PAD)
         W = pad * 2 + 7 * cell_w
         H = hdr_h + pad * 2 + weeks * cell_h
         cv.config(width=W, height=H)
@@ -9018,6 +9046,17 @@ class App(tk.Tk):
         work_end = min(range_end, self.today)
         work_by_day = (self._work_sessions_by_day(first, work_end)
                       if work_end >= first else {})
+        due_by_day = {}
+        for t in self.settings.get("tasks", []):
+            due = t.get("due")
+            if not due:
+                continue
+            try:
+                dd = dt.date.fromisoformat(due)
+            except ValueError:
+                continue
+            if first <= dd <= range_end:
+                due_by_day.setdefault(dd, []).append(t["name"])
 
         for day_num in range(1, days_in_month + 1):
             d = dt.date(year, month, day_num)
@@ -9032,9 +9071,19 @@ class App(tk.Tk):
                            font=("Segoe UI", 8, "bold" if d == self.today
                                  else "normal"),
                            fill="#2e6da4" if d == self.today else "#333333")
+            line_y = y0 + 16
+            due_color = "#c0392b" if d < self.today else "#b8621b"
+            for name in due_by_day.get(d, []):
+                if line_y > y0 + cell_h - 9:
+                    break
+                cv.create_text(x0 + 4, line_y, anchor="nw",
+                               text=self._cal_truncate(f"⚑ {name}",
+                                                       cell_w - 8),
+                               font=("Segoe UI", 6, "bold"), fill=due_color)
+                line_y += 10
             items = sorted(ev_by_day.get(d, []) +
                           [(s, n) for s, e, n in work_by_day.get(d, [])])
-            line_y, shown = y0 + 16, 0
+            shown = 0
             for s, name in items:
                 if line_y > y0 + cell_h - 9:
                     break
@@ -9050,18 +9099,40 @@ class App(tk.Tk):
                                text=f"+{remaining} more",
                                font=("Segoe UI", 6), fill="#999999")
 
+    def _month_click_to_day(self, x, y, year, month):
+        """Backlog #123: the inverse of _draw_calendar_month's own
+        cell layout — a canvas click (x, y) -> the calendar date it
+        landed in, or None outside the grid or past the month's real
+        days (the trailing empty cells in the last week row)."""
+        first = dt.date(year, month, 1)
+        start_col = first.weekday()
+        next_month = (dt.date(year + 1, 1, 1) if month == 12
+                     else dt.date(year, month + 1, 1))
+        days_in_month = (next_month - first).days
+        cell_w, cell_h, hdr_h, pad = (self._CAL_MONTH_CELL_W, self._CAL_MONTH_CELL_H,
+                                      self._CAL_MONTH_HDR_H, self._CAL_MONTH_PAD)
+        if y < hdr_h + pad or x < pad:
+            return None
+        col = int((x - pad) // cell_w)
+        row = int((y - hdr_h - pad) // cell_h)
+        if not (0 <= col <= 6) or row < 0:
+            return None
+        day_num = row * 7 + col - start_col + 1
+        if not (1 <= day_num <= days_in_month):
+            return None
+        return dt.date(year, month, day_num)
+
     def _calendar_view_win(self):
-        """Backlog #120/#122: the Outlook-like detailed calendar, week/
-        month toggle — complements #118's glance-only free/busy bars
-        with real event names and exact time slots, "looking at free
-        slots differently" per the owner's own framing. Right-click an
-        hour cell in week view to lock it for a deadline (#122 —
-        owner's own chosen interaction model, picked over drag-and-
-        drop or a click-then-dialog flow) — reuses #113's
-        lock_windows_to_ics unchanged, just a new entry point into
-        already-tested plumbing. Month view and everything else here
-        stays read-only, same standing guardrail as every other
-        planning view."""
+        """Backlog #120/#122/#123: the Outlook-like detailed calendar,
+        week/month toggle. Two right-click actions, split by the
+        granularity each view actually has: in WEEK view, right-click
+        an hour cell to lock it for a deadline (#122 — reuses #113's
+        lock_windows_to_ics unchanged); in MONTH view, right-click a
+        day cell to set a task's due date (#123 — a lightweight,
+        Deadline-object-free "done by" marker, deliberately not a
+        full scoped Deadline, so quick ad-hoc due dates don't clutter
+        the deadlines list). Everything else here stays read-only,
+        same standing guardrail as every other planning view."""
         win = tk.Toplevel(self)
         win.title("Calendar")
         top = ttk.Frame(win)
@@ -9104,28 +9175,74 @@ class App(tk.Tk):
             self.status.config(text=f"Locked {s:%H:%M}-{e:%H:%M} on {d:%d.%m} "
                                     f"for {dl_name} — exported {path}")
 
-        def on_right_click(event):
-            if mode_var.get() != "week":
-                return
-            monday = state["anchor"] - dt.timedelta(
-                days=state["anchor"].weekday())
-            slot = self._week_click_to_slot(event.x, event.y, monday)
-            if not slot:
-                return
-            d, s, e = slot
-            dls = self.deadlines()
-            menu = tk.Menu(win, tearoff=0)
-            if not dls:
-                menu.add_command(
-                    label="No deadlines set — Tools > Deadline countdowns…",
-                    state="disabled")
+        def set_task_due(name, d):
+            for t in self.settings.get("tasks", []):
+                if t["name"] == name:
+                    t["due"] = d.isoformat()
+                    break
             else:
-                for dl in dls:
+                return
+            save_settings(self.settings)
+            self._append_text(f"--- Task due date set: '{name}' due {d:%d.%m.%Y}")
+            self.status.config(text=f"'{name}' due {d:%d.%m.%Y}")
+            render()
+
+        def pick_task_due(d):
+            names = [t["name"] for t in self.settings.get("tasks", [])]
+            if not names:
+                messagebox.showinfo(APP_NAME, "No tasks in the library yet — "
+                                    "type TODO: anywhere in a day file first.",
+                                    parent=win)
+                return
+            pop = tk.Toplevel(win)
+            pop.title("Set task due date")
+            pop.resizable(False, False)
+            pop.grab_set()
+            ttk.Label(pop, text=f"Due {d:%A %d.%m.%Y}:").grid(
+                row=0, column=0, padx=8, pady=(8, 2), sticky="w")
+            var = tk.StringVar()
+            ttk.Combobox(pop, textvariable=var, state="readonly", values=names,
+                        width=50).grid(row=1, column=0, padx=8, pady=(0, 8))
+
+            def ok():
+                if var.get():
+                    set_task_due(var.get(), d)
+                pop.destroy()
+
+            ttk.Button(pop, text="Set", command=ok).grid(
+                row=2, column=0, pady=(0, 8))
+
+        def on_right_click(event):
+            if mode_var.get() == "week":
+                monday = state["anchor"] - dt.timedelta(
+                    days=state["anchor"].weekday())
+                slot = self._week_click_to_slot(event.x, event.y, monday)
+                if not slot:
+                    return
+                d, s, e = slot
+                dls = self.deadlines()
+                menu = tk.Menu(win, tearoff=0)
+                if not dls:
                     menu.add_command(
-                        label=f"Lock {s:%H:%M}–{e:%H:%M} {d:%a %d.%m} "
-                             f"for '{dl['name']}'",
-                        command=lambda dl=dl: lock_slot(dl["name"], d, s, e))
-            menu.tk_popup(event.x_root, event.y_root)
+                        label="No deadlines set — Tools > Deadline countdowns…",
+                        state="disabled")
+                else:
+                    for dl in dls:
+                        menu.add_command(
+                            label=f"Lock {s:%H:%M}–{e:%H:%M} {d:%a %d.%m} "
+                                 f"for '{dl['name']}'",
+                            command=lambda dl=dl: lock_slot(dl["name"], d, s, e))
+                menu.tk_popup(event.x_root, event.y_root)
+            else:
+                d = self._month_click_to_day(event.x, event.y,
+                                             state["anchor"].year,
+                                             state["anchor"].month)
+                if not d:
+                    return
+                menu = tk.Menu(win, tearoff=0)
+                menu.add_command(label=f"Set task due date to {d:%a %d.%m}…",
+                                 command=lambda: pick_task_due(d))
+                menu.tk_popup(event.x_root, event.y_root)
 
         ttk.Radiobutton(top, text="Week", variable=mode_var, value="week",
                        command=render).pack(side="left")
@@ -9142,9 +9259,11 @@ class App(tk.Tk):
         cv.bind("<Button-3>", on_right_click)
         render()
         ttk.Label(win, text="blue = imported calendar events · darker = "
-                 "your tracked work sessions · right-click an hour "
-                 "(week view) to lock it for a deadline",
-                 foreground="#777777").pack(anchor="w", padx=8, pady=(0, 8))
+                 "your tracked work sessions · ⚑ = a task due that day · "
+                 "right-click an hour (week) to lock it for a deadline, "
+                 "or a day (month) to set a task's due date",
+                 foreground="#777777", wraplength=700, justify="left"
+                 ).pack(anchor="w", padx=8, pady=(0, 8))
 
     def _outlook_win(self):
         win = tk.Toplevel(self)
@@ -9232,11 +9351,12 @@ class App(tk.Tk):
         win.geometry("780x420")
         density_lbl = ttk.Label(win, foreground="#777777", font=("Segoe UI", 9))
         density_lbl.pack(fill="x", padx=8, pady=(8, 0))
-        cols = ("pri", "task", "est", "actual", "goal", "deadline", "source")
+        cols = ("pri", "task", "est", "actual", "goal", "deadline", "due", "source")
         heads = {"pri": "!", "task": "task", "est": "est", "actual": "actual",
-                 "goal": "goal", "deadline": "deadline", "source": "from"}
-        widths = {"pri": 26, "task": 220, "est": 50, "actual": 65,
-                  "goal": 100, "deadline": 90, "source": 140}
+                 "goal": "goal", "deadline": "deadline", "due": "due",
+                 "source": "from"}
+        widths = {"pri": 26, "task": 200, "est": 50, "actual": 65,
+                  "goal": 100, "deadline": 90, "due": 60, "source": 120}
         tree = ttk.Treeview(win, columns=cols, show="headings")
         for c in cols:
             tree.heading(c, text=heads[c])
@@ -9266,12 +9386,19 @@ class App(tk.Tk):
                 tag = "blocked" if t.get("blocked_by") else pri
                 name = (f"⛔ {t['name']} (blocked by: {t['blocked_by']})"
                        if t.get("blocked_by") else t["name"])
+                due_txt = "—"
+                if t.get("due"):
+                    try:
+                        due_d = dt.date.fromisoformat(t["due"])
+                        due_txt = ("⚠ " if due_d < self.today else "") + f"{due_d:%d.%m}"
+                    except ValueError:
+                        due_txt = t["due"]
                 tree.insert("", "end", iid=str(i), tags=(tag,), values=(
                     self._PRI_ICON.get(pri, "○"), name,
                     f"{est:g}h" if est else "—",
                     f"{self._task_actual_h(t['name'], t['added']):.2f}h",
                     t.get("goal") or "—", t.get("deadline") or "—",
-                    t.get("source") or "—"))
+                    due_txt, t.get("source") or "—"))
             # rebuilding the tree drops selection unless we restore it — a
             # priority click on row 2 must not silently un-pick row 2
             keep = [iid for iid in sel if tree.exists(iid)]
@@ -9400,11 +9527,37 @@ class App(tk.Tk):
             save_settings(self.settings)
             refresh(keep_selection=[str(i)])
 
+        def set_due():
+            i = picked()
+            if i is None:
+                return
+            cur = self.settings["tasks"][i].get("due") or ""
+            v = simpledialog.askstring(
+                APP_NAME, "Due date (YYYY-MM-DD, empty clears it). Backlog "
+                          "#123: a lightweight 'done by' marker — not a full "
+                          "scoped Deadline, doesn't add to the deadlines "
+                          "list. Also settable by right-clicking a day in "
+                          "the Calendar view's month mode.",
+                initialvalue=cur, parent=win)
+            if v is None:
+                return
+            v = v.strip()
+            if v:
+                try:
+                    dt.date.fromisoformat(v)
+                except ValueError:
+                    messagebox.showerror(APP_NAME, "Use YYYY-MM-DD.", parent=win)
+                    return
+            self.settings["tasks"][i]["due"] = v or None
+            save_settings(self.settings)
+            refresh(keep_selection=[str(i)])
+
         menu = tk.Menu(tree, tearoff=0)
         menu.add_command(label="Set goal…", command=lambda: set_link(
             "goal", [g["name"] for g in self.goals()]))
         menu.add_command(label="Set deadline…", command=lambda: set_link(
             "deadline", [d["name"] for d in self.deadlines()]))
+        menu.add_command(label="Set due date…", command=set_due)
         menu.add_command(label="Set blocked by…", command=set_blocked_by)
 
         def right_click(event):

@@ -497,6 +497,18 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.10** (#123, the other half of the original calendar-scheduling
+  ask, 2026-08-07, DONE). Right-click a day in the calendar's month
+  view → "Set task due date…" — a lightweight due-date field directly
+  on task-library items, deliberately NOT a full scoped Deadline (no
+  total_h estimate needed, doesn't clutter the deadlines list for a
+  quick ad-hoc "done by X"). Tasks window gets a `Due` column
+  (overdue = ⚠) and the same action via right-click, for anyone who'd
+  rather not open the calendar. Month view shows a ⚑ marker on the
+  due date itself. Cleanly split from #122 by granularity: week view
+  (hour-precise) locks working windows, month view (day-precise)
+  sets due dates — each action matches what its own view can actually
+  resolve a click to.
 - **v9.9** (#122, owner's own chosen interaction model, 2026-08-07,
   DONE). Right-click an hour cell in the calendar's week view → pick
   a deadline from the context menu → locks that exact hour for it —
@@ -3548,16 +3560,13 @@ measuring what's already there.
 
 122. ~~**Interactive scheduling on the calendar view — right-click
     to lock a slot (mode (b), "working windows").**~~ — FIXED v9.9.
-    See the v9.9 version-history entry above. Mode (a) — attach a
-    task to a "done by" date, creating/updating a lightweight
-    deadline from a right-click rather than locking a specific hour
-    — is DELIBERATELY not part of this fix; tasks currently only
-    link to an EXISTING named Deadline object, and quick-creating one
-    from a slot click raises its own questions (does it clutter the
-    deadlines list with one-off ad-hoc entries? does a task need a
-    lighter-weight standalone due-date field instead?) that weren't
-    part of what got asked/answered this round. Worth a fresh ask if
-    that mode is still wanted.
+    Mode (a) (attach a task to a "done by" date) — FIXED v9.10, see
+    #123. Both halves of the original ask are now done.
+
+123. ~~**Task due-dates via the calendar (mode (a) from #122's
+    original ask).**~~ — FIXED v9.10. See the v9.10 version-history
+    entry above for the full design (lightweight field vs a full
+    Deadline object, week/month granularity split, `_month_click_to_day`).
 
 ## How to verify changes without Windows
 
