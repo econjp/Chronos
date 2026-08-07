@@ -497,6 +497,19 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.6** (#118, owner's own ask, 2026-08-07, DONE: "calendar
+  view... very simple... easier to visually inspect free slots").
+  View > Planning > "Free-time forecast (calendar)…": one green/grey
+  bar per day, next 3 weeks, green = free — `_day_forecast` +
+  `_draw_forecast_bars`, both reusing `_free_slots` (so this view,
+  #113's lock-window picker, and the day scheduler can never
+  disagree with each other about what's actually free). Deliberately
+  glance-only, no actions — matches the standing "views, never
+  compliance-tracked actions" guardrail. Backlog #119 (automated
+  schedule building — auto-drafting a placement across ALL deadlines
+  over multiple days, not just today) logged as the owner's own
+  follow-on idea, explicitly flagged as a future project, not built
+  this round.
 - **v9.5** (#116, owner's own ask for a redundant path: "try to build
   also other ways to integrate calendar," 2026-08-07, DONE). A second,
   independent calendar source alongside #114's subscribe-URL: File >
@@ -3432,6 +3445,43 @@ measuring what's already there.
     live source, but the exact trigger condition to watch for if
     capacity numbers ever look implausibly free during a semester
     with recurring lectures/meetings.
+
+118. ~~**Free-time forecast — a simple visual calendar view (owner's
+    own ask, 2026-08-07: "calendar view... very simple... easier to
+    visually inspect free slots").**~~ — FIXED v9.6. View > Planning >
+    "Free-time forecast (calendar)…": one green/grey horizontal bar
+    per day for the next 3 weeks, green = free (calendar busy time +
+    protected windows already netted out via `_free_slots`, the same
+    primitive #113's lock-window picker and the scheduler both use).
+    Deliberately glance-only, no actions — #113 already owns "pick
+    and lock windows for a deadline" as its own flow, this is just
+    the wide-angle view underneath it.
+
+119. **Automated schedule building (PLANNING — owner's own new idea,
+    2026-08-07, explicitly flagged as a backlog idea not a build-now
+    ask).** The natural next step past #118's glance-only view and
+    #113's per-deadline lock-window picker: given ALL scoped
+    deadlines/goals at once (not one at a time) and the real free-time
+    forecast, auto-DRAFT a placement — which task/deadline work goes
+    in which open block, across the next N days, not just today
+    (`_day_schedule_lines`/`_energy_place` already do this for TODAY
+    only, tier c of the planning engine). Real design questions before
+    building, not just scaling up today's version: (a) multi-day
+    placement needs to balance competing deadlines against each other
+    over the WHOLE window, not greedily fill today first and hope
+    tomorrow works out — a genuinely different algorithm shape than
+    the existing single-day greedy pass; (b) should a draft schedule
+    write anywhere (task-library due-soon flags, a diary block, an
+    .ics export via #113's own export machinery) or stay read-only
+    like every other planning view — the standing no-accept/reject-UI,
+    no-compliance-tracking guardrail (see #59/#60 precedent) argues
+    for read-only, a proposal to glance at and ignore or follow, not a
+    committed plan; (c) how does it handle a day that's ALREADY
+    partially spoken for (WORKBLOCK, protected windows, real calendar
+    busy time from #114/#116) — probably fine already, since
+    `_free_slots` already nets all of that out, worth confirming
+    rather than assuming. Flagged, not scoped — a real next-round
+    project once the design questions have real answers.
 
 ## How to verify changes without Windows
 

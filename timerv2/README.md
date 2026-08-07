@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.6 — free-time forecast (a simple visual calendar view)
+
+View > Planning > **"Free-time forecast (calendar)…"** — one green/
+grey bar per day for the next 3 weeks. Green = free, already netting
+out any calendar you've linked (v9.4/v9.5) and protected windows.
+Glance-only, no clicking or picking — for that, use "Lock study
+windows for a deadline" (v9.3).
+
 ### v9.5 — a second calendar path, for when publishing is blocked
 
 File > **"Import calendar CSV (Power Automate export)…"** — if your

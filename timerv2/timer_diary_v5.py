@@ -60,6 +60,31 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.6 (#118 — free-time forecast, a simple visual calendar view,
+owner's own ask, 2026-08-07: "calendar view.. like smthg very
+simple!.. easier to visually like inspect free slots"):
+  - View > Planning > "Free-time forecast (calendar)…": one green/
+    grey horizontal bar per day for the next 3 weeks. Green = free,
+    already netting out calendar busy time (#114/#116) and protected
+    windows, via `_free_slots` — the exact same primitive #113's
+    lock-window picker and the day scheduler both already use, so
+    this view can't disagree with either of them.
+  - Deliberately glance-only — no actions, no picking, no locking.
+    #113 already owns "pick specific windows for a deadline"; this is
+    the wide-angle view underneath it, for when you just want to see
+    what the next few weeks actually look like.
+  - `_day_forecast(days=21)` is the data half (a list of (date,
+    free_slots, free_hours) — reusable if a future view wants the
+    same numbers); `_draw_forecast_bars` is pure rendering, no new
+    computation.
+  - Logged backlog #119 (automated schedule building — auto-drafting
+    a multi-day placement across ALL deadlines at once, not just
+    today) as the owner's own next idea, explicitly NOT built this
+    round — real design questions first (multi-day balancing across
+    competing deadlines is a different algorithm than today's greedy
+    single-day pass; should a draft ever write anywhere, or stay
+    read-only like every other planning view here).
+
 New in v9.5 (#116 — Power Automate CSV fallback, in case #114's
 publish link is blocked by a locked-down school/work tenant, owner's
 own ask, 2026-08-07: "try to build also other ways to integrate
@@ -3169,6 +3194,8 @@ class App(tk.Tk):
         viewm.add_separator()
 
         planm = tk.Menu(viewm, tearoff=0)
+        planm.add_command(label="Free-time forecast (calendar)…",
+                          command=self._tracked("Free-time forecast", self._forecast_win))
         planm.add_command(label="Week plan / capacity…",
                           command=self._tracked("Capacity planner", self._capacity_win))
         planm.add_command(label="Outlook — weeks ahead…",
@@ -8486,6 +8513,74 @@ class App(tk.Tk):
                          f"{p['needed_per_day']:.1f}h/day — too little recent "
                          "tracked time to project a real pace yet")
         return lines
+
+    def _day_forecast(self, days=21):
+        """Backlog #118: per-day free-time forecast — the same
+        _free_slots primitive #113's lock-window picker uses, but for
+        every upcoming day (not filtered to one deadline's date
+        range), so it's a general-purpose "what does my calendar
+        actually look like" glance. Returns [(date, free_slots,
+        free_hours), ...], today first."""
+        win_start, win_end = self._work_window()
+        out = []
+        d = self.today
+        for _ in range(days):
+            slots = self._free_slots(d)
+            free_h = sum(_time_span_hours(s, e) for s, e in slots)
+            out.append((d, slots, free_h))
+            d += dt.timedelta(days=1)
+        return out
+
+    def _draw_forecast_bars(self, cv, rows):
+        cv.delete("all")
+        win_start, win_end = self._work_window()
+        win_span = _time_span_hours(win_start, win_end)
+        pad_l, pad_r, row_h, bar_w = 92, 56, 20, 380
+        W = pad_l + bar_w + pad_r
+        for i, (d, slots, free_h) in enumerate(rows):
+            y = 6 + i * row_h
+            weekend = d.weekday() >= 5
+            label_color = "#000000" if weekend else "#444444"
+            if d == self.today:
+                label_color = "#2e6da4"
+            cv.create_text(6, y + row_h / 2, anchor="w",
+                           text=f"{d:%a %d.%m}", fill=label_color,
+                           font=("Segoe UI", 9, "bold" if weekend else "normal"))
+            cv.create_rectangle(pad_l, y + 2, pad_l + bar_w, y + row_h - 4,
+                                fill="#e4e7ec", outline="")
+            for s, e in slots:
+                x0 = pad_l + bar_w * (_time_span_hours(win_start, s) / win_span)
+                x1 = pad_l + bar_w * (_time_span_hours(win_start, e) / win_span)
+                cv.create_rectangle(x0, y + 2, max(x1, x0 + 1), y + row_h - 4,
+                                    fill="#5fa85f", outline="")
+            cv.create_text(pad_l + bar_w + 8, y + row_h / 2, anchor="w",
+                           text=f"{free_h:.1f}h", fill="#555555",
+                           font=("Segoe UI", 9))
+        cv.create_text(pad_l, 6 + len(rows) * row_h + 6, anchor="nw",
+                       text=f"{win_start:%H:%M}", fill="#999999",
+                       font=("Segoe UI", 7))
+        cv.create_text(pad_l + bar_w, 6 + len(rows) * row_h + 6, anchor="ne",
+                       text=f"{win_end:%H:%M}", fill="#999999",
+                       font=("Segoe UI", 7))
+        cv.config(width=W, height=6 + len(rows) * row_h + 22)
+
+    def _forecast_win(self):
+        """Backlog #118 (owner's own ask, 2026-08-07: "calendar view...
+        very simple... easier to visually inspect free slots"). Green
+        = free (calendar busy time + protected windows already
+        subtracted, via _free_slots — the same math #113's lock-window
+        picker and the scheduler both already use), grey = busy or
+        outside the work window. Deliberately just a glance, no
+        actions here — #113 already covers "pick and lock windows for
+        a deadline" as its own flow."""
+        win = tk.Toplevel(self)
+        win.title("Free-time forecast — next 3 weeks")
+        rows = self._day_forecast(21)
+        cv = tk.Canvas(win, background="white", highlightthickness=0)
+        cv.pack(padx=8, pady=8)
+        self._draw_forecast_bars(cv, rows)
+        ttk.Label(win, text="green = free · grey = busy/outside work hours",
+                 foreground="#777777").pack(anchor="w", padx=8, pady=(0, 8))
 
     def _outlook_win(self):
         win = tk.Toplevel(self)
