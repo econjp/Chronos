@@ -4204,6 +4204,56 @@ polish — the three NOT chosen this round) when continuing this work.
     have an .ics under Group settings > Export" style hints) — a
     small, honest assist, not scraping the page itself.
 
+166. **Week-ahead block also lists #161's one-off plans, not just
+    locked deadline windows (PLANNING — one glance covering BOTH the
+    work side and the social side the owner named as separate
+    chokepoints; new idea 2026-08-07).** #133's week-ahead line names
+    locked STUDY windows (#136/#148's still-open concrete-list idea);
+    #161's one-off plans (dinners, events) live in the same
+    `protected_windows` data but never surface there. Fix: one more
+    line — "plans this week: Dinner Wed 19:30, HGW Thu 08:30-17:00" —
+    a plain iteration over the week's `protected_windows` entries that
+    carry a one-off `date`, same primitive #133 already walks.
+
+167. **"Free evenings" finder — a filtered multi-week glance of
+    genuinely open evening blocks (PLANNING — direct aid for "rn often
+    manually just check some event sites... if theres anything
+    relevant," the social-planning half of this round's ask; new idea
+    2026-08-07).** Knowing WHICH evenings are actually free is the
+    first question before checking any event listing — right now
+    that means mentally cross-referencing the week/month calendar.
+    Fix: a small view (reuses #118's `_day_forecast` machinery,
+    filtered to evening hours specifically, across N weeks via #162's
+    same span control) — "Free evenings: Tue 18-23, Thu 19-23, Sat
+    all day" — no new capacity math, a filtered read of what already
+    exists.
+
+168. **Social-plan density warning in the week-ahead block (PLANNING —
+    connects the two chokepoints the owner named this round — work
+    planning AND social planning — into one honesty check; new idea
+    2026-08-07).** #133 already warns when a week is overbooked on
+    DEADLINE hours; nothing currently warns the reverse direction — a
+    week with 5+ one-off plans (#161) eating real deep-work capacity
+    without the owner necessarily having added it up. Fix: sum
+    #166's same plan-hours for the week; if it crosses a real
+    threshold (e.g., >40% of total free capacity), one line — "this
+    week is social-heavy: 12.0h of plans vs 18.0h total free — TUTA's
+    pace may slip" — same honesty-gate posture as every insight here,
+    not a judgment, just the number named.
+
+169. **Detect a one-off plan repeating and offer to make it a real
+    recurring commitment (PLANNING — connects #126's "learn from real
+    data" pattern with #159/#161's one-off entries; new idea
+    2026-08-07).** If "Dinner" gets added via #161 on a Wednesday
+    three weeks running, that's not really one-off anymore — it's a
+    pattern the owner is re-typing by hand each week. Fix: a quiet
+    check (n>=3 same-weekday, same-ish time, matching label, same
+    honesty-gate sample size this app already uses elsewhere) that
+    offers, next time the Recurring Commitments editor opens — "your
+    last 3 Wednesdays all had a 'Dinner' entry around 19:00 — make it
+    recurring instead of re-adding it each week?" — never auto-
+    converted, same "suggest, don't auto-apply" posture as #126 itself.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
