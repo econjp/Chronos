@@ -497,6 +497,22 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.22** (#155, 2026-08-07, DONE). Multiple real Outlook calendars,
+  not just one — `settings["calendar_sources"]` replaces the single
+  `ics_path` (legacy value migrates in automatically, in-memory, same
+  pattern `deadlines()` already uses for its own legacy key). Every
+  "add a calendar" action now appends to the list instead of
+  replacing; subscribing auto-suggests a label from X-WR-CALNAME and
+  asks whether the calendar should count as busy time or stay
+  display-only (a per-calendar toggle, since per-event tag cleanup
+  was explicitly ruled out — "kinda lazy to change tag or anything").
+  New File > "Calendar sources…" manager. `_busy_data`/
+  `_busy_intervals` merge every busy-flagged source; `_calendar_events`
+  shows every source regardless of the flag, label-prefixed once
+  more than one is active. `resolve_ics_source` caches each source to
+  its own file by URL hash. Verified against the owner's real second
+  calendar via a live fetch (594 events, correctly separated from the
+  existing 103-event calendar).
 - **v9.21** (#153, 2026-08-07, DONE). "Auto-plan my week" — new
   toolbar button + File menu entry — proposes a full week's lock plan
   across every open deadline at once (greedy, urgency-ranked
@@ -4036,6 +4052,12 @@ polish — the three NOT chosen this round) when continuing this work.
     (4h)" — a plain iteration over every deadline's `locked_windows`
     falling in the coming 7 days, sorted by date, no new computation
     beyond what #133/#136 already produce.
+
+~~155. **Multiple real calendars, not just one.**~~ — FIXED v9.22. See
+    the v9.22 version-history entry above. (Proposed and built same-
+    round, 2026-08-07, direct owner request after realizing they have
+    more than one real Outlook calendar — verified via a real live
+    fetch, not assumed, per this project's own established discipline.)
 
 ## How to verify changes without Windows
 

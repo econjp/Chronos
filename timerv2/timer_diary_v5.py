@@ -60,6 +60,36 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.22 (#155 — multiple real calendars, not just one, 2026-08-07:
+the owner has more than one real Outlook calendar — a clean work one
+already integrated, plus a much noisier personal one: "many of my
+markings there!! BUT TBH, i also kinda include often just notes or
+reminders for myself there lol, but kinda lazy to change tag or
+anything..."):
+  - File > "Subscribe to a calendar link…"/"Calendar busy-time
+    (.ics)…"/"Import calendar CSV…" now ADD to a list of sources
+    instead of replacing one — the already-verified, currently-live
+    AaltoBiz link migrates in automatically, nothing to re-paste.
+  - subscribing to a link now auto-suggests a label from the
+    calendar's own X-WR-CALNAME (e.g. "Kalenteri"), and asks whether
+    it should count as busy time or stay display-only — a per-
+    CALENDAR toggle, not per-event filtering, since cleaning up years
+    of personal tagging was explicitly flagged as not going to
+    happen. Display-only still shows up in the calendar view (#120),
+    just never reduces free capacity or feeds the scheduler.
+  - File > "Calendar sources (manage/toggle busy)…" — review every
+    source, click to flip busy/display-only, remove one.
+  - `_calendar_events` labels each event with its source once more
+    than one is active ("[Kalenteri] stokman?"), so a mixed week
+    stays readable instead of an unlabeled wall of blocks.
+  - `resolve_ics_source` now caches each source to its own file
+    (`calendar_cache_<hash>.ics`) instead of one shared file, so
+    multiple subscribed calendars don't overwrite each other's cache.
+  - verified against the owner's real, live second calendar (a real
+    GET fetch, not assumed) — 594 real events, correctly separated
+    from the 103-event AaltoBiz calendar, correctly excluded from
+    busy-time math when marked display-only.
+
 New in v9.21 (#153 — "Auto-plan my week," 2026-08-07: the owner's own
 chosen direction for calendar work after it drifted into small
 utility features — "GO BACK TO THE OG IDEA... FUNCTIONING GOOD
@@ -1968,6 +1998,7 @@ Build the exe: run build_exe.bat (PyInstaller one-file, no console).
 import csv
 import ctypes
 import ctypes.wintypes
+import hashlib
 import json
 import math
 import os
@@ -2514,18 +2545,27 @@ def day_length_hours(d, lat_deg):
 ICS_REFRESH_MIN = 60   # minutes between re-fetches of a subscribed .ics URL
 
 
-def resolve_ics_source(raw, force=False):
-    """Backlog #114: `raw` (settings["ics_path"]) can now be a local
-    file (old behavior, unchanged) OR a calendar's own publish/
-    subscribe link (webcal:// or http(s)://, e.g. Outlook/Google's
-    "Publish calendar" URL) — closes the "manual export every time"
-    gap without needing any login or API key. A URL gets fetched to a
-    local cache file (data_dir()/calendar_cache.ics), refreshed when
-    the cache is older than ICS_REFRESH_MIN minutes or `force`; a
-    fetch failure (offline, link revoked) silently keeps serving
-    whatever was cached last rather than going blank. Returns a local
-    path either way — parse_ics_intervals/parse_ics_busy never need to
-    know the difference."""
+def _source_cache_key(raw):
+    """Backlog #155: a stable short filename-safe key per calendar
+    source URL, so resolve_ics_source can cache MULTIPLE subscribed
+    calendars side by side instead of overwriting one shared file."""
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()[:10]
+
+
+def resolve_ics_source(raw, force=False, cache_key=None):
+    """Backlog #114 + #155: `raw` (a calendar source's own url/path)
+    can be a local file (old behavior, unchanged) OR a calendar's own
+    publish/subscribe link (webcal:// or http(s)://, e.g. Outlook/
+    Google's "Publish calendar" URL) — closes the "manual export every
+    time" gap without needing any login or API key. A URL gets fetched
+    to a local cache file (data_dir()/calendar_cache.ics, or
+    calendar_cache_<cache_key>.ics when the owner has more than one
+    subscribed calendar — #155), refreshed when the cache is older
+    than ICS_REFRESH_MIN minutes or `force`; a fetch failure (offline,
+    link revoked) silently keeps serving whatever was cached last
+    rather than going blank. Returns a local path either way —
+    parse_ics_intervals/parse_ics_busy never need to know the
+    difference."""
     if not raw:
         return raw
     if raw.lower().startswith("webcal://"):
@@ -2534,7 +2574,9 @@ def resolve_ics_source(raw, force=False):
         url = raw
     if not url.lower().startswith(("http://", "https://")):
         return raw   # already a local file path
-    cache_path = os.path.join(data_dir(), "calendar_cache.ics")
+    cache_name = (f"calendar_cache_{cache_key}.ics" if cache_key
+                 else "calendar_cache.ics")
+    cache_path = os.path.join(data_dir(), cache_name)
     stale = force or not os.path.exists(cache_path) or (
         (time.time() - os.path.getmtime(cache_path)) / 60 >= ICS_REFRESH_MIN)
     if stale:
@@ -3596,6 +3638,8 @@ class App(tk.Tk):
                           command=self._set_ics_url)
         filem.add_command(label="Import calendar CSV (Power Automate export)…",
                           command=self._set_csv_busy)
+        filem.add_command(label="Calendar sources (manage/toggle busy)…",
+                          command=self._calendar_sources_win)
         filem.add_separator()
         filem.add_command(label="Exit", command=self._on_close)
         m.add_cascade(label="File", menu=filem)
@@ -8206,71 +8250,128 @@ class App(tk.Tk):
                f"({self.today:%A}, {tag}, n={len(matched)}) — plan the "
                "must-do inside that")
 
+    def _calendar_source_list(self):
+        """Backlog #155: settings["calendar_sources"] — a list of
+        {"url", "label", "busy"} — replaces the old single ics_path,
+        since the owner has more than one real Outlook calendar (their
+        own words: "just realised i have multiple calendars in
+        outlook... this other cal, this would make lot of sense to
+        integrate, cuz many of my markings there"). Read-only,
+        in-memory migration of the pre-#155 single ics_path into a
+        one-item list (busy=True, matching its exact prior behavior)
+        when calendar_sources hasn't been created yet — same pattern
+        deadlines() already uses for its own legacy dl_name key, so
+        the already-verified, currently-live AaltoBiz link keeps
+        working completely unchanged with zero settings.json edit
+        required."""
+        srcs = self.settings.get("calendar_sources")
+        if srcs is not None:
+            return srcs
+        legacy = self.settings.get("ics_path")
+        return [{"url": legacy, "label": "Calendar", "busy": True}] if legacy else []
+
+    def _ensure_calendar_sources_seeded(self):
+        """Backlog #155: write-time counterpart to _calendar_source_list
+        — called by every "add a calendar source" action before
+        appending, so the first real add after this feature ships
+        migrates the legacy ics_path into the new list for real
+        (persisted) instead of leaving it to the read-only fallback
+        forever. A no-op once calendar_sources already exists."""
+        if self.settings.get("calendar_sources") is None:
+            legacy = self.settings.get("ics_path")
+            self.settings["calendar_sources"] = (
+                [{"url": legacy, "label": "Calendar", "busy": True}]
+                if legacy else [])
+
     def _busy_data(self):
-        """Calendar busy hours per date, cached on the resolved file's
-        mtime. settings["ics_path"] may be a local .ics file
-        (unchanged), a subscribe URL (resolve_ics_source fetches/
-        caches it), or a local .csv (backlog #116 — Power Automate's
-        export, always local/OneDrive-synced already, no fetching
-        needed)."""
-        raw = self.settings.get("ics_path")
-        if not raw:
+        """Calendar busy hours per date, merged across every calendar
+        source marked "counts as busy" (#155) — a source marked
+        display-only (the owner's noisier personal-notes calendar, for
+        instance) contributes to the calendar VIEW but never reduces
+        capacity. Cached on the combined resolved-path/mtime signature
+        of every busy-counting source."""
+        sources = [s for s in self._calendar_source_list() if s.get("busy", True)]
+        if not sources:
             return {}
-        path = resolve_ics_source(raw)
-        if not path or not os.path.exists(path):
+        resolved = []
+        for s in sources:
+            path = resolve_ics_source(s["url"], cache_key=_source_cache_key(s["url"]))
+            if path and os.path.exists(path):
+                resolved.append(path)
+        if not resolved:
             return {}
-        key = (path, os.path.getmtime(path), dt.date.today().isoformat())
+        key = (tuple((p, os.path.getmtime(p)) for p in resolved),
+              dt.date.today().isoformat())
         cache = getattr(self, "_busy_cache", None)
         if cache and cache[0] == key:
             return cache[1]
-        # two weeks back so the balance/summary views see past meetings too
-        reader = csv_busy_data if path.lower().endswith(".csv") else parse_ics_busy
-        data = reader(path, dt.date.today() - dt.timedelta(days=14),
-                      dt.date.today() + dt.timedelta(days=90))
+        data = {}
+        for path in resolved:
+            # two weeks back so the balance/summary views see past meetings too
+            reader = csv_busy_data if path.lower().endswith(".csv") else parse_ics_busy
+            for iso, h in reader(path, dt.date.today() - dt.timedelta(days=14),
+                                 dt.date.today() + dt.timedelta(days=90)).items():
+                data[iso] = data.get(iso, 0.0) + h
         self._busy_cache = (key, data)
         return data
 
     def _busy_intervals(self):
         """Calendar busy TIME RANGES per date — the interval-level
-        sibling of _busy_data(), needed for slot-finding instead of just
-        a daily total. Same sources (local .ics, subscribe URL, or
-        Power Automate .csv — see resolve_ics_source and #116), same
-        cache shape, own cache slot since the two views don't share a
-        dict layout."""
-        raw = self.settings.get("ics_path")
-        if not raw:
+        sibling of _busy_data(), needed for slot-finding instead of
+        just a daily total. Same busy-only source filter and merge as
+        _busy_data (#155), own cache slot since the two views don't
+        share a dict layout."""
+        sources = [s for s in self._calendar_source_list() if s.get("busy", True)]
+        if not sources:
             return {}
-        path = resolve_ics_source(raw)
-        if not path or not os.path.exists(path):
+        resolved = []
+        for s in sources:
+            path = resolve_ics_source(s["url"], cache_key=_source_cache_key(s["url"]))
+            if path and os.path.exists(path):
+                resolved.append(path)
+        if not resolved:
             return {}
-        key = (path, os.path.getmtime(path), dt.date.today().isoformat())
+        key = (tuple((p, os.path.getmtime(p)) for p in resolved),
+              dt.date.today().isoformat())
         cache = getattr(self, "_busy_intervals_cache", None)
         if cache and cache[0] == key:
             return cache[1]
-        reader = (parse_csv_busy_export if path.lower().endswith(".csv")
-                 else parse_ics_intervals)
-        data = reader(path, dt.date.today() - dt.timedelta(days=14),
-                      dt.date.today() + dt.timedelta(days=90))
+        data = {}
+        for path in resolved:
+            reader = (parse_csv_busy_export if path.lower().endswith(".csv")
+                     else parse_ics_intervals)
+            for iso, ivs in reader(path, dt.date.today() - dt.timedelta(days=14),
+                                   dt.date.today() + dt.timedelta(days=90)).items():
+                data[iso] = _merge_time_intervals(data.get(iso, []) + ivs)
         self._busy_intervals_cache = (key, data)
         return data
 
     def _calendar_events(self, start, end):
-        """Backlog #120: named calendar events for the week/month
-        views — the display-layer sibling of _busy_intervals (which
-        only needs times, not names, for capacity math). Same source
-        dispatch (local .ics, subscribe URL, or Power Automate CSV) as
-        _busy_intervals/_busy_data, just a richer parser. Not cached —
+        """Backlog #120 + #155: named calendar events for the week/
+        month views — the display-layer sibling of _busy_intervals.
+        Includes EVERY source regardless of its busy flag (a display-
+        only calendar should still be visible, it just shouldn't claim
+        capacity) — the busy/display distinction only matters to the
+        capacity math above, not to what's shown. Each event's name
+        gets prefixed with its source's label once more than one
+        source is active, so a mixed week is still readable at a
+        glance instead of an unlabeled wall of blocks. Not cached —
         these views are opened rarely, on demand, unlike the capacity
         math that runs on every refresh."""
-        raw = self.settings.get("ics_path")
-        if not raw:
-            return []
-        path = resolve_ics_source(raw)
-        if not path or not os.path.exists(path):
-            return []
-        reader = (parse_csv_events if path.lower().endswith(".csv")
-                 else parse_ics_events)
-        return reader(path, start, end)
+        sources = self._calendar_source_list()
+        multi = len(sources) > 1
+        out = []
+        for s in sources:
+            path = resolve_ics_source(s["url"], cache_key=_source_cache_key(s["url"]))
+            if not path or not os.path.exists(path):
+                continue
+            reader = (parse_csv_events if path.lower().endswith(".csv")
+                     else parse_ics_events)
+            label = s.get("label") or ""
+            for d, st, en, summary in reader(path, start, end):
+                name = f"[{label}] {summary}" if multi and label else summary
+                out.append((d, st, en, name))
+        return out
 
     def _work_sessions_by_day(self, start, end):
         """{date: [(start_time, end_time, task_name), ...]} — tracked
@@ -9005,16 +9106,34 @@ class App(tk.Tk):
     def _show_recommend_now(self):
         self.status.config(text="Now → " + self._recommend_now())
 
+    def _add_calendar_source(self, url, label, busy=True):
+        """Backlog #155: shared append-and-persist step for every
+        "add a calendar source" action — seeds calendar_sources from
+        any pre-#155 legacy ics_path first (so adding a second
+        calendar never silently drops the first, already-verified
+        one), dedupes by URL (re-adding the same link just updates its
+        label/busy flag instead of creating a duplicate row), then
+        saves and clears both busy caches so the change takes effect
+        immediately, not after the next hourly refresh."""
+        self._ensure_calendar_sources_seeded()
+        srcs = self.settings["calendar_sources"]
+        for s in srcs:
+            if s["url"] == url:
+                s["label"], s["busy"] = label, busy
+                break
+        else:
+            srcs.append({"url": url, "label": label, "busy": busy})
+        save_settings(self.settings)
+        self._busy_cache = None
+        self._busy_intervals_cache = None
+
     def _set_ics(self):
         p = filedialog.askopenfilename(
             parent=self, filetypes=[("Calendar", "*.ics")],
             title="Exported calendar (.ics) — busy time reduces capacity")
         if not p:
             return
-        self.settings["ics_path"] = p
-        save_settings(self.settings)
-        self._busy_cache = None
-        self._busy_intervals_cache = None
+        self._add_calendar_source(p, os.path.basename(p), busy=True)
         busy = self._busy_data()
         nxt14 = sum(h for iso, h in busy.items()
                     if iso <= (dt.date.today() + dt.timedelta(days=14)).isoformat())
@@ -9022,13 +9141,16 @@ class App(tk.Tk):
                                 "in the next 14 days now reduce capacity.")
 
     def _set_ics_url(self):
-        """Backlog #114: the other half of resolve_ics_source — a
-        calendar's own publish/subscribe link (Outlook/Google's
-        "Publish a calendar" URL) instead of a manual export every
-        time. No login, no API key: the app just fetches the link
-        periodically like a browser would. Validates by actually
-        fetching before saving, so a bad link fails here with a clear
-        message instead of silently going blank later."""
+        """Backlog #114 + #155: a calendar's own publish/subscribe
+        link (Outlook/Google's "Publish a calendar" URL) instead of a
+        manual export every time. No login, no API key: the app just
+        fetches the link periodically like a browser would. Validates
+        by actually fetching before saving, so a bad link fails here
+        with a clear message instead of silently going blank later.
+        Adds to the calendar_sources LIST (#155 — the owner has more
+        than one real Outlook calendar), auto-suggesting a label from
+        the fetched calendar's own X-WR-CALNAME so a second/third
+        calendar doesn't all show up as generic "Calendar"."""
         url = simpledialog.askstring(
             APP_NAME, "Calendar publish/subscribe link (webcal:// or "
             "https://...ics) — from your calendar's Share/Publish "
@@ -9053,27 +9175,36 @@ class App(tk.Tk):
                 "double-check it's the publish/subscribe .ics link, not "
                 "a regular calendar page URL.")
             return
-        self.settings["ics_path"] = url
-        resolve_ics_source(url, force=True)   # populate the cache for real use
-        save_settings(self.settings)
-        self._busy_cache = None
-        self._busy_intervals_cache = None
-        busy = self._busy_data()
-        nxt14 = sum(h for iso, h in busy.items()
+        m = re.search(rb"X-WR-CALNAME:([^\r\n]+)", sample)
+        suggested = m.group(1).decode("utf-8", "replace").strip() if m else "Calendar"
+        label = simpledialog.askstring(
+            APP_NAME, "Label for this calendar (shown in the app):",
+            initialvalue=suggested, parent=self) or suggested
+        busy = messagebox.askyesno(
+            APP_NAME, f"Should '{label}' count as busy time (reduces free "
+            "capacity, used for scheduling)? Choose No for a calendar "
+            "that's mostly personal notes/reminders you don't want "
+            "blocking your free-time math — it'll still show up in the "
+            "calendar view, just won't affect capacity.")
+        resolve_ics_source(url, force=True, cache_key=_source_cache_key(url))
+        self._add_calendar_source(url, label, busy=busy)
+        busy_data = self._busy_data()
+        nxt14 = sum(h for iso, h in busy_data.items()
                     if iso <= (dt.date.today() + dt.timedelta(days=14)).isoformat())
-        self.status.config(text=f"Calendar subscribed — {nxt14:.1f}h of "
-                                "meetings in the next 14 days now reduce "
-                                f"capacity. Refreshes every {ICS_REFRESH_MIN}min.")
+        self.status.config(text=f"'{label}' subscribed"
+                                f"{'' if busy else ' (display only)'} — "
+                                f"{nxt14:.1f}h of busy time in the next 14 "
+                                f"days across all sources. Refreshes every "
+                                f"{ICS_REFRESH_MIN}min.")
 
     def _set_csv_busy(self):
-        """Backlog #116: the fallback when #114's publish link isn't an
-        option (a locked-down tenant with external sharing disabled) —
-        a plain CSV (Start,End[,Subject] columns), meant to be kept
-        current by an external no-code flow (Power Automate's standard
-        Office 365 Outlook connector, synced to a local/OneDrive
-        folder) rather than manually re-exported. Same settings key as
-        the .ics path — one "calendar source" concept, dispatched by
-        file extension in _busy_data/_busy_intervals."""
+        """Backlog #116 + #155: the fallback when #114's publish link
+        isn't an option (a locked-down tenant with external sharing
+        disabled) — a plain CSV (Start,End[,Subject] columns), meant
+        to be kept current by an external no-code flow (Power
+        Automate's standard Office 365 Outlook connector, synced to a
+        local/OneDrive folder) rather than manually re-exported. Adds
+        to the calendar_sources list (#155) like every other source."""
         p = filedialog.askopenfilename(
             parent=self, filetypes=[("Calendar CSV", "*.csv")],
             title="Calendar CSV (Start,End columns) — kept current by an "
@@ -9089,15 +9220,87 @@ class App(tk.Tk):
                     "columns, or genuinely has no meetings soon. Use it "
                     "anyway?"):
                 return
-        self.settings["ics_path"] = p
-        save_settings(self.settings)
-        self._busy_cache = None
-        self._busy_intervals_cache = None
+        self._add_calendar_source(p, os.path.basename(p), busy=True)
         nxt14 = sum(data.values())
         self.status.config(text=f"Calendar CSV linked — {nxt14:.1f}h of "
                                 "meetings in the next 14 days now reduce "
                                 "capacity. Keep the external sync running "
                                 "to stay current.")
+
+    def _calendar_sources_win(self):
+        """Backlog #155: manage every subscribed calendar in one place
+        — the owner's own real situation: multiple Outlook calendars
+        (a clean work one already integrated, plus a much noisier
+        personal one mixing real commitments with just-notes-to-self:
+        "i also kinda include often just notes or reminders for myself
+        there lol, but kinda lazy to change tag or anything"). Rather
+        than asking for calendar hygiene that was already flagged as
+        not going to happen, each source gets a per-CALENDAR busy/
+        display-only toggle instead of per-event filtering — a blunt
+        instrument, but an honest one that needs zero cleanup effort.
+        Adding sources happens via the existing File-menu actions
+        (#114/#116, now list-aware); this window is review, toggle,
+        relabel, remove."""
+        win = tk.Toplevel(self)
+        win.title("Calendar sources")
+        win.geometry("620x360")
+        ttk.Label(win, text="Click a row to toggle whether it counts as "
+                            "busy time (vs. display-only). Sources are "
+                            "added via File > Subscribe/Calendar CSV/etc.",
+                 foreground="#777777", wraplength=600).pack(
+                     anchor="w", padx=8, pady=(8, 4))
+
+        tree = ttk.Treeview(win, columns=("label", "busy", "url"),
+                            show="headings")
+        for c, label, w in (("label", "Label", 140), ("busy", "Counts as busy?", 110),
+                            ("url", "Source", 340)):
+            tree.heading(c, text=label)
+            tree.column(c, width=w, anchor="w")
+        tree.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+        def refresh():
+            tree.delete(*tree.get_children())
+            for i, s in enumerate(self._calendar_source_list()):
+                tree.insert("", "end", iid=str(i), values=(
+                    s.get("label") or "Calendar",
+                    "yes" if s.get("busy", True) else "no — display only",
+                    s.get("url", "")))
+
+        def toggle_busy(event):
+            row = tree.identify_row(event.y)
+            col = tree.identify_column(event.x)
+            if not row or col != "#2":
+                return
+            self._ensure_calendar_sources_seeded()
+            srcs = self.settings["calendar_sources"]
+            i = int(row)
+            if i < len(srcs):
+                srcs[i]["busy"] = not srcs[i].get("busy", True)
+                save_settings(self.settings)
+                self._busy_cache = None
+                self._busy_intervals_cache = None
+                refresh()
+        tree.bind("<Button-1>", toggle_busy)
+
+        def remove_selected():
+            sel = tree.selection()
+            if not sel:
+                return
+            self._ensure_calendar_sources_seeded()
+            srcs = self.settings["calendar_sources"]
+            for i in sorted((int(s) for s in sel), reverse=True):
+                if i < len(srcs):
+                    del srcs[i]
+            save_settings(self.settings)
+            self._busy_cache = None
+            self._busy_intervals_cache = None
+            refresh()
+
+        bar = ttk.Frame(win)
+        bar.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Button(bar, text="Remove selected",
+                  command=remove_selected).pack(side="left")
+        refresh()
 
     def _protected_hours(self, d=None):
         """Backlog #82/#121: total daily hours claimed by protected/

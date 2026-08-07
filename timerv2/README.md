@@ -4,6 +4,16 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.22 — multiple real calendars, not just one
+
+If you have more than one Outlook calendar, subscribe to each one —
+File > "Subscribe to a calendar link…" now adds to a list instead of
+replacing. Each one gets its own label (auto-suggested from the
+calendar's own name) and a busy/display-only choice: a noisier
+personal calendar full of your own quick notes can stay visible in
+the calendar view without ever reducing your free time. Manage them
+all from File > "Calendar sources…".
+
 ### v9.21 — Auto-plan my week
 
 New 🗓️+ toolbar button (and File > "Auto-plan my week…") — one click
