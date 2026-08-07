@@ -60,6 +60,36 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.21 (#153 — "Auto-plan my week," 2026-08-07: the owner's own
+chosen direction for calendar work after it drifted into small
+utility features — "GO BACK TO THE OG IDEA... FUNCTIONING GOOD
+CALENDAR... helps me to predict, automate etc ANYTHING"):
+  - one new toolbar button (🗓️+, next to the 📅 calendar button) and
+    File > "Auto-plan my week…" — proposes a full week's lock plan
+    across EVERY open deadline at once, instead of #113/#135's
+    one-deadline-at-a-time picker.
+  - `_auto_plan_week` does a greedy, explainable allocation: deadlines
+    ranked by urgency (`needed_per_day`, already net of #136's locked
+    credit and #141's off-date fix — both route through
+    `_dl_progress`/`_free_slots`, so the plan is automatically honest
+    about what's already spoken for), each gets first pick of the
+    week's real free time in priority order up to its own weekly need
+    (#133's own target). A single proposed block is capped at 4h so
+    one deadline doesn't swallow an entire afternoon.
+  - the review window shows every proposed row (date, window, hours,
+    deadline) with a running summary — "Proposed: 24.2h across 2
+    deadline(s) — TUTA 13.1h, Thesis 11.1h" — click a row to drop it,
+    nothing gets locked until "Lock accepted plan" is clicked.
+  - locking reuses `lock_windows_to_ics`/`_add_locked_windows`
+    completely unchanged, grouped per deadline — same tested plumbing
+    every other lock entry point already uses, just called once per
+    deadline instead of once per manual pick.
+  - surfaced (not fixed, out of scope for this feature): `_dl_progress`'s
+    `left` field uses real `dt.date.today()` directly instead of
+    `self.today`, unlike every other field in that same function — a
+    pre-existing inconsistency, logged as a new backlog item rather
+    than patched as a drive-by fix.
+
 New in v9.20 (#145 — a quiet nudge when a locked window passes
 unworked, 2026-08-07):
   - #136 deliberately drops a locked window from a deadline's
@@ -3547,6 +3577,8 @@ class App(tk.Tk):
         filem.add_command(label="Browse for a day file (file picker)…",
                           command=self._open_day_file)
         filem.add_command(label="Export week to calendar (.ics)", command=self._export_ics)
+        filem.add_command(label="Auto-plan my week (.ics)…",
+                          command=self._auto_plan_win)
         filem.add_command(label="Lock study windows (.ics)…",
                           command=self._lock_windows_win)
         filem.add_command(label="Lock an admin/task batch (.ics)…",
@@ -4501,6 +4533,10 @@ class App(tk.Tk):
             self.top, text="📅", width=3,
             command=self._tracked("Calendar view", self._calendar_view_win))
         self.calendar_btn.pack(side="right", padx=(0, 4))
+        self.auto_plan_btn = ttk.Button(
+            self.top, text="🗓️+", width=4,
+            command=self._tracked("Auto-plan my week", self._auto_plan_win))
+        self.auto_plan_btn.pack(side="right", padx=(0, 4))
         self.reset_btn = ttk.Button(self.top, text="Reset", width=7,
                                     command=self._reset, state="disabled")
         self.reset_btn.pack(side="right", padx=(0, 4))
@@ -8625,6 +8661,76 @@ class App(tk.Tk):
             d += dt.timedelta(days=1)
         out.sort(key=lambda w: -w["hours"])
         return out
+
+    def _auto_plan_week(self, start=None, max_block_h=4.0):
+        """Backlog #153: "auto-plan my week" — the owner's own chosen
+        direction after the calendar work drifted into small
+        connect-the-dots utility features instead of the actual
+        calendar experience ("GO BACK TO THE OG IDEA... FUNCTIONING
+        GOOD CALENDAR... helps me to predict, automate etc ANYTHING").
+        #113/#135's picker locks ONE deadline at a time; this proposes
+        a plan across EVERY open deadline at once. Greedy, explainable
+        allocation — no optimizer, no ML: deadlines ranked by urgency
+        (`needed_per_day`, already net of #136's locked-hour credit
+        and #141's off-date fix, since both route through
+        `_dl_progress`/`_free_slots`), each gets first pick of the
+        week's free time in priority order up to its own weekly need
+        (#133's own `min(needed_per_day*7, remaining_h)` target), so
+        the most time-pressured deadline never gets crowded out by one
+        that already has slack. A single proposed block is capped at
+        `max_block_h` so one deadline doesn't swallow an entire free
+        afternoon in one sitting — several distinct blocks read better
+        and edit more easily than one giant one. Returns
+        [{"dl_name", "date", "start", "end", "hours"}, ...] — a pure
+        PREVIEW, nothing is locked or written; the picker UI turns
+        accepted rows into real locks only on explicit confirm, same
+        posture as every other suggestion in this app."""
+        start = start or self.today
+        week = [start + dt.timedelta(days=i) for i in range(7)]
+        remaining = {d: list(self._free_slots(d)) for d in week}
+
+        needs = []
+        for dl in self.deadlines():
+            try:
+                p = self._dl_progress(dl)
+            except (KeyError, ValueError, ZeroDivisionError):
+                continue
+            if not p.get("total_h") or p["remaining_h"] <= 0 or p["left"] < 0:
+                continue
+            week_need = min(p["needed_per_day"] * 7, p["remaining_h"])
+            if week_need > 0.05:
+                needs.append({"name": dl["name"],
+                             "needed_per_day": p["needed_per_day"],
+                             "week_need": week_need})
+        needs.sort(key=lambda n: -n["needed_per_day"])
+
+        proposals = []
+        for n in needs:
+            left = n["week_need"]
+            for d in week:
+                if left <= 0.05:
+                    break
+                slots = remaining[d]
+                i = 0
+                while i < len(slots) and left > 0.05:
+                    s, e = slots[i]
+                    avail = _time_span_hours(s, e)
+                    if avail < 0.5:
+                        i += 1
+                        continue
+                    take = min(avail, left, max_block_h)
+                    take_end = _add_hours(s, take)
+                    proposals.append({"dl_name": n["name"], "date": d,
+                                      "start": s, "end": take_end,
+                                      "hours": take})
+                    left -= take
+                    if take >= avail - 0.01:
+                        slots.pop(i)
+                    else:
+                        slots[i] = (take_end, e)
+                        i += 1
+        proposals.sort(key=lambda p: (p["date"], p["start"]))
+        return proposals
 
     def _day_fragmentation_tax(self, meetings, win_start, win_end):
         """Backlog #21: the marginal deep-capacity cost of EACH meeting
@@ -12872,6 +12978,96 @@ class App(tk.Tk):
         ttk.Button(win, text="Export selected to .ics",
                   command=export).pack(anchor="e", padx=8, pady=(0, 8))
         refresh()
+
+    def _auto_plan_win(self):
+        """Backlog #153: "auto-plan my week" — one button proposing a
+        full week's lock plan across every open deadline at once,
+        instead of #113/#135's one-deadline-at-a-time picker. The
+        owner's own chosen direction for the calendar work after it
+        drifted into small utility features: "GO BACK TO THE OG
+        IDEA... FUNCTIONING GOOD CALENDAR... helps me to predict,
+        automate etc ANYTHING." `_auto_plan_week` does the greedy
+        allocation; this window is review-and-confirm — every row
+        starts picked, click to drop one you don't want, nothing gets
+        locked until you say so, same "recommend, never auto-apply"
+        posture as every suggestion in this app."""
+        win = tk.Toplevel(self)
+        win.title("Auto-plan my week")
+        win.geometry("620x480")
+
+        plan = self._auto_plan_week()
+        summary = ttk.Label(win, foreground="#2e6da4", wraplength=580,
+                            justify="left")
+        summary.pack(fill="x", padx=8, pady=(8, 4))
+        if not plan:
+            summary.config(text="No open deadlines with real hours needed, "
+                                "or no free time left this week — nothing "
+                                "to propose.")
+            return
+
+        by_dl = {}
+        for p in plan:
+            by_dl[p["dl_name"]] = by_dl.get(p["dl_name"], 0.0) + p["hours"]
+        total_h = sum(by_dl.values())
+        breakdown = ", ".join(f"{n} {h:.1f}h" for n, h in by_dl.items())
+        summary.config(text=f"Proposed: {total_h:.1f}h across "
+                            f"{len(by_dl)} deadline(s) this week — {breakdown}. "
+                            "Click a row to drop it, then lock the rest.")
+
+        tree = ttk.Treeview(win, columns=("date", "window", "hours", "dl"),
+                            show="headings")
+        for c, label, w in (("date", "Date", 100), ("window", "Window", 120),
+                            ("hours", "Hours", 60), ("dl", "Deadline", 140)):
+            tree.heading(c, text=label)
+            tree.column(c, width=w, anchor="w")
+        tree.pack(fill="both", expand=True, padx=8, pady=(4, 8))
+        tree.tag_configure("dropped", foreground="#aaaaaa")
+        dropped = set()
+        for i, p in enumerate(plan):
+            tree.insert("", "end", iid=str(i), values=(
+                f"{p['date']:%a %d.%m}", f"{p['start']:%H:%M}-{p['end']:%H:%M}",
+                f"{p['hours']:.1f}h", p["dl_name"]))
+
+        def toggle(event):
+            row = tree.identify_row(event.y)
+            if not row:
+                return
+            if row in dropped:
+                dropped.discard(row)
+                tree.item(row, tags=())
+            else:
+                dropped.add(row)
+                tree.item(row, tags=("dropped",))
+        tree.bind("<Button-1>", toggle)
+
+        status = ttk.Label(win, foreground="#2e6da4", wraplength=580,
+                           justify="left")
+        status.pack(fill="x", padx=8, pady=(0, 4))
+
+        def lock_plan():
+            accepted = [p for i, p in enumerate(plan) if str(i) not in dropped]
+            if not accepted:
+                status.config(text="Nothing picked — every row was dropped.")
+                return
+            grouped = {}
+            for p in accepted:
+                grouped.setdefault(p["dl_name"], []).append(
+                    {"date": p["date"], "start": p["start"], "end": p["end"]})
+            paths = []
+            for name, windows in grouped.items():
+                path, n = lock_windows_to_ics(name, windows)
+                self._add_locked_windows(name, windows)
+                paths.append(os.path.basename(path))
+            total = sum(p["hours"] for p in accepted)
+            names = ", ".join(f"{n} ({len(w)})" for n, w in grouped.items())
+            self._append_text(f"--- Auto-planned week locked: {total:.1f}h "
+                              f"across {names} (exported {', '.join(paths)})")
+            status.config(text=f"Locked {len(accepted)} window(s), "
+                         f"{total:.1f}h total — import the exported .ics "
+                         "file(s) into Outlook/Google Calendar.")
+
+        ttk.Button(win, text="Lock accepted plan",
+                  command=lock_plan).pack(anchor="e", padx=8, pady=(0, 8))
 
     def _admin_batch_win(self):
         """Backlog #140: the real "grey admin" pile — pay rent, buy a

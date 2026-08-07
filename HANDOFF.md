@@ -497,6 +497,18 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.21** (#153, 2026-08-07, DONE). "Auto-plan my week" — new
+  toolbar button + File menu entry — proposes a full week's lock plan
+  across every open deadline at once (greedy, urgency-ranked
+  allocation via `_auto_plan_week`, capped at 4h/block), review each
+  row and drop what you don't want, then lock the rest in one go.
+  Reuses `lock_windows_to_ics`/`_add_locked_windows` unchanged, one
+  call per deadline. The owner's own chosen direction after calendar
+  work had drifted into small utility nudges instead of the actual
+  calendar experience — see the scope-correction note in the backlog
+  section below. Surfaced (not fixed): `_dl_progress`'s `left` field
+  uses real `dt.date.today()` instead of `self.today`, logged as
+  #154, not patched as a drive-by.
 - **v9.20** (#145, 2026-08-07, DONE). A new grouped insight (TIME &
   FOCUS) flags a locked window whose date has passed with no real
   WORK session overlapping it — "TUTA's locked 09:00-13:00 (08.08)
@@ -3940,6 +3952,45 @@ measuring what's already there.
     already guards against it — flagged as PLANNING specifically
     because it needs verification before a fix, not blind trust either
     way.
+
+**Scope correction, 2026-08-07** — after #141/#145/#149-152, the
+owner flagged that calendar work had drifted into small "connect the
+dots" utility features instead of the actual calendar experience:
+"GO BACK TO THE OG IDEA!!! so building like FUNCTIONING GOOD CALENDAR
+INSIDE THE APP!!!! that just helps me to predict, automate etc
+ANYTHING!!!!! LIKE THE MOST STATE OF ART CALENDAR APP!!!" — floating
+the full standing vision: Timer + Diary + Calendar + (possibly)
+Health, one integrated app. Asked to prioritize among interactive
+editing / a day-agenda view / auto-plan-my-week / visual polish —
+chose **auto-plan-my-week**, built as #153 below. #147/#149-152 (the
+small-nudge-style items from the prior round) remain logged but
+should NOT be the default next pick — prefer the core-calendar-
+experience direction (interactive editing, day/agenda view, visual
+polish — the three NOT chosen this round) when continuing this work.
+
+~~153. **"Auto-plan my week" — propose a full week's lock plan across
+    every open deadline at once.**~~ — FIXED v9.21. See the v9.21
+    version-history entry above.
+
+154. **`_dl_progress`'s `left` field uses real `dt.date.today()`
+    instead of `self.today` (PLANNING — a real pre-existing bug,
+    surfaced while building/testing #153, not introduced by it; new
+    idea 2026-08-07).** Every other field in `_dl_progress` (`done_h`
+    via `matched_minutes`/`day_index`, the `behind` elapsed-fraction
+    calc) is computed against `self.today` — the one mockable,
+    consistent "what day is it" reference this whole app is built
+    around (confirmed: `dt.date.today()` appears directly at ~15
+    other call sites too, not just here). `left` alone uses real
+    `dt.date.today()`. In normal live usage the two are almost always
+    the same value, so this has likely never visibly misbehaved — but
+    it's a real inconsistency, and if `self.today` and real-today
+    ever diverge (a midnight-rollover edge case, or anything that
+    deliberately advances `self.today` without a matching real-clock
+    tick) `needed_per_day`/`behind` would be computed from two
+    different reference dates within the same function. Fix: swap
+    `dt.date.today()` for `self.today` at line ~4277 specifically (the
+    other ~14 sites are a separate, much bigger cleanup — out of scope
+    here, don't drive-by fix them under this item).
 
 146. **Lock-window candidates ranked energy-aware, not just biggest-
     block-first (PLANNING — connects two subsystems built independently

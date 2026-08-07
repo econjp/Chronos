@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.21 — Auto-plan my week
+
+New 🗓️+ toolbar button (and File > "Auto-plan my week…") — one click
+proposes a full week's lock plan across every open deadline at once,
+not just one at a time. Ranked by urgency, capped at 4h a block, shown
+as a review list you can drop rows from before locking anything —
+"Proposed: 24.2h across 2 deadlines — TUTA 13.1h, Thesis 11.1h."
+Nothing gets locked until you click "Lock accepted plan."
+
 ### v9.20 — a nudge when a locked window passes unworked
 
 Locked time that quietly doesn't happen used to just vanish — the
