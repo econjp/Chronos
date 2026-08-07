@@ -66,7 +66,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_waiting_on_lines", "_cost_of_yes_line", "_status_update_text",
         "_status_update_all", "_focus_signature_grid", "_focus_signature_line",
         "_parse_plan_line", "_auto_capture_plans", "_parse_time_loose",
-        "_upcoming_plans",
+        "_upcoming_plans", "_ics_hint_for_url",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -75,7 +75,8 @@ STATIC = {"_match_kws", "_pull_level", "_parse_time_loose"}  # extraction drops 
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
                "_WORD_STOPWORDS", "_DECAY_BUCKETS", "_CAPSULE_RE",
-               "_COMMIT_RE", "_FOCUS_SIG_WD", "_WEEKDAY_ABBR", "_PLAN_RE"}
+               "_COMMIT_RE", "_FOCUS_SIG_WD", "_WEEKDAY_ABBR", "_PLAN_RE",
+               "_ICS_HINT_PATTERNS"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -2242,6 +2243,24 @@ def suite_upcoming_plans():
     assert D._upcoming_plans(d3) == []
 
 
+def suite_ics_hints():
+    D, ns = fresh()
+    d = _mk(D)
+
+    assert "Group Settings" in D._ics_hint_for_url(
+        d, "https://www.meetup.com/some-group/") or "Export" in D._ics_hint_for_url(
+        d, "https://www.meetup.com/some-group/")
+    assert "individual events" in D._ics_hint_for_url(
+        d, "https://www.eventbrite.com/o/some-org")
+    assert "no legitimate link" in D._ics_hint_for_url(
+        d, "https://www.facebook.com/events/12345")
+    # case-insensitive
+    assert D._ics_hint_for_url(d, "HTTPS://MEETUP.COM/x") is not None
+
+    # ---- silence: unrecognized domain, never guesses ----
+    assert D._ics_hint_for_url(d, "https://random-venue.example/calendar") is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2285,7 +2304,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("status-update", suite_status_update),
           ("focus-signature", suite_focus_signature),
           ("plan-capture", suite_plan_capture),
-          ("upcoming-plans", suite_upcoming_plans)]
+          ("upcoming-plans", suite_upcoming_plans),
+          ("ics-hints", suite_ics_hints)]
 
 
 def main():

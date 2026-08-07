@@ -497,6 +497,13 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.31** (#165, 2026-08-07, DONE). A bad calendar-subscribe link
+  now gets a real hint instead of just a generic error: Meetup
+  (Group Settings > Calendar > Export), Eventbrite (per-event only,
+  not a whole organizer page), Facebook Events (no usable feed exists
+  at all). New `_ics_hint_for_url`/`_ICS_HINT_PATTERNS`: pure URL
+  match, silent for any domain it doesn't recognize — never scrapes
+  the page itself. New "ics-hints" selftest suite; 48/48 green.
 - **v9.30** (#164, 2026-08-07, DONE). View > Planning > "Upcoming
   plans…" — every one-off plan (#159/#161/#163) still ahead, sorted
   chronologically, each with a quick Cancel. New `_upcoming_plans`:
@@ -4200,18 +4207,10 @@ polish — the three NOT chosen this round) when continuing this work.
     gap #161 itself introduces; proposed and built same-round,
     2026-08-07.)
 
-165. **Helpful hints when a pasted calendar link isn't a real ICS feed
-    (PLANNING — the legitimate, non-scraping answer to this round's
-    "scraper for event sites" ask, made concrete; new idea
-    2026-08-07).** #155's "Subscribe to a calendar link" already
-    accepts any real ICS/RSS feed a source publishes — many community/
-    venue/event-platform calendars DO publish one, just not always
-    obviously. Right now a non-ICS link just fails with a generic
-    error. Fix: recognize a few common event-platform URL shapes
-    (Meetup group pages, Eventbrite organizer pages, a city site) and
-    suggest where their real feed usually lives ("Meetup groups often
-    have an .ics under Group settings > Export" style hints) — a
-    small, honest assist, not scraping the page itself.
+~~165. **Helpful hints when a pasted calendar link isn't a real ICS
+    feed.**~~ — DONE v9.31. See the v9.31 version-history entry above.
+    (The legitimate, non-scraping answer to this round's "scraper for
+    event sites" ask, made concrete; new idea 2026-08-07.)
 
 ~~166. **Week-ahead block also lists #161's one-off plans, not just
     locked deadline windows.**~~ — FIXED v9.28. See the v9.28

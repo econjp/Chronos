@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.31 — ICS-feed discovery hints
+
+A bad calendar-subscribe link used to just fail with a generic error.
+Now a few common event-platform URL shapes get a real hint: Meetup
+groups usually have a feed under Group Settings > Calendar > Export,
+Eventbrite only exposes one per individual event (not a whole
+organizer page), and Facebook Events no longer publish a usable feed
+at all. Unrecognized domains stay silent rather than guessing — this
+is the honest, non-scraping answer to "gather event info
+automatically."
+
 ### v9.30 — Upcoming plans list
 
 View > Planning > "Upcoming plans…" — every one-off plan you've added

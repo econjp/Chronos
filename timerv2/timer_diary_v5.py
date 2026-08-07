@@ -60,6 +60,26 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.31 (#165 — ICS-feed discovery hints, 2026-08-07: the
+legitimate, non-scraping answer to this round's "gather event info
+automatically" ask):
+  - "Subscribe to a calendar link" already accepts any real ICS/RSS
+    feed a source publishes — many event/venue/community calendars DO
+    publish one, just not always obviously. A bad link used to fail
+    with only a generic error; now a few common event-platform URL
+    shapes get recognized and pointed at where their real feed (or
+    honest lack of one) usually lives — Meetup groups often have one
+    under Group Settings > Calendar > Export; Eventbrite only exposes
+    one per individual event, not a whole organizer page; Facebook
+    Events no longer publish a usable feed at all, said plainly.
+  - new `_ics_hint_for_url`/`_ICS_HINT_PATTERNS`: pure URL-pattern
+    match, stays silent (no hint) for any domain it doesn't actually
+    recognize rather than guessing — never scrapes the page itself,
+    same declined-scraper stance as #161's own note.
+  - new "ics-hints" selftest suite (Meetup/Eventbrite/Facebook hints,
+    case-insensitive match, silence on an unrecognized domain); 48/48
+    green.
+
 New in v9.30 (#164 — "Upcoming plans" dedicated list, 2026-08-07:
 closes a real visibility gap #161/#163 themselves introduce):
   - View > Planning > "Upcoming plans…" — a small read-only-ish window
@@ -9746,6 +9766,37 @@ class App(tk.Tk):
         self.status.config(text=f"Calendar linked — {nxt14:.1f}h of meetings "
                                 "in the next 14 days now reduce capacity.")
 
+    _ICS_HINT_PATTERNS = [
+        (re.compile(r"meetup\.com", re.I),
+         "Meetup groups often publish one under Group Settings > "
+         "Calendar > Export, or try adding '/events/ical/' to the "
+         "group's URL."),
+        (re.compile(r"eventbrite\.", re.I),
+         "Eventbrite doesn't publish one feed for a whole organizer "
+         "page — only individual events have an 'Add to Calendar > "
+         "iCal' link, one event at a time."),
+        (re.compile(r"facebook\.com", re.I),
+         "Facebook Events no longer publish a usable calendar feed — "
+         "there's no legitimate link to subscribe to here."),
+    ]
+
+    def _ics_hint_for_url(self, url):
+        """Backlog #165: the legitimate, non-scraping answer to this
+        round's "gather event info automatically" ask — #155's
+        calendar-link subscription already accepts any real ICS/RSS
+        feed a source publishes, and many event platforms DO publish
+        one, just not always obviously. A failed fetch/validate used to
+        be a dead end with only a generic error; this recognizes a few
+        common event-platform URL shapes and points at where their real
+        feed (or honest lack of one) usually lives — a small, honest
+        assist, never scraping the page itself. Returns a hint string,
+        or None for an unrecognized domain (stays silent rather than
+        guessing at sites it doesn't actually know about)."""
+        for pattern, hint in self._ICS_HINT_PATTERNS:
+            if pattern.search(url):
+                return hint
+        return None
+
     def _set_ics_url(self):
         """Backlog #114 + #155: a calendar's own publish/subscribe
         link (Outlook/Google's "Publish a calendar" URL) instead of a
@@ -9770,16 +9821,22 @@ class App(tk.Tk):
             with urllib.request.urlopen(fetch_url, timeout=10) as resp:
                 sample = resp.read(4096)
         except (urllib.error.URLError, OSError, ValueError) as e:
-            messagebox.showerror(
-                APP_NAME, f"Couldn't fetch that link ({e}). Check it's a "
-                "real publish/subscribe URL (not a login page) and that "
-                "your calendar allows publishing.")
+            msg = (f"Couldn't fetch that link ({e}). Check it's a real "
+                  "publish/subscribe URL (not a login page) and that "
+                  "your calendar allows publishing.")
+            hint = self._ics_hint_for_url(url)
+            if hint:
+                msg += f"\n\n{hint}"
+            messagebox.showerror(APP_NAME, msg)
             return
         if b"BEGIN:VCALENDAR" not in sample:
-            messagebox.showerror(
-                APP_NAME, "That link didn't return a calendar file — "
-                "double-check it's the publish/subscribe .ics link, not "
-                "a regular calendar page URL.")
+            msg = ("That link didn't return a calendar file — "
+                  "double-check it's the publish/subscribe .ics link, not "
+                  "a regular calendar page URL.")
+            hint = self._ics_hint_for_url(url)
+            if hint:
+                msg += f"\n\n{hint}"
+            messagebox.showerror(APP_NAME, msg)
             return
         m = re.search(rb"X-WR-CALNAME:([^\r\n]+)", sample)
         suggested = m.group(1).decode("utf-8", "replace").strip() if m else "Calendar"
