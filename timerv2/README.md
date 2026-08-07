@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.36 — Bug fix: deadline "days left" used the wrong clock
+
+`_dl_progress`'s `left` field (days remaining on a deadline) used the
+real wall-clock date instead of the app's own internal "today" —
+every other number in the same function used the right one. Almost
+never visible in normal use since the two are nearly always equal,
+but a real inconsistency, now fixed.
+
 ### v9.35 — Dark mode for the calendar/timeline views
 
 Dark mode (v9.23) recolored the main window but left the calendar,

@@ -60,6 +60,32 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.36 (#154 — a real pre-existing bug, `_dl_progress`'s `left`
+field used real `dt.date.today()` instead of `self.today`, 2026-08-07):
+  - every other field in `_dl_progress` (`done_h`, the `behind`
+    elapsed-fraction calc) is computed against `self.today` — the one
+    mockable, consistent "what day is it" reference this whole app is
+    built around. `left` alone used real `dt.date.today()`. In normal
+    live usage the two are almost always the same value, so this
+    likely never visibly misbehaved — but a real inconsistency: if
+    `self.today` and real-today ever diverge (a midnight-rollover edge
+    case, anything that deliberately advances `self.today` without a
+    matching real-clock tick), `needed_per_day`/`behind` would be
+    computed from two different reference dates within the same
+    function. Fixed at the one line this bug lives on; the other ~14
+    real `dt.date.today()` call sites across the file are a separate,
+    much bigger cleanup, deliberately out of scope here.
+  - fixing this exposed a matching latent bug in the test suite
+    itself: `_due()` (the selftest helper building "due in N days"
+    deadline dates) also used real `dt.date.today()`, and had been
+    silently getting away with it only because both sides of the old
+    buggy subtraction canceled out. Now anchored to `_mk`'s own fixed
+    default `today` (2026-07-13) instead, so the suite's "due in N
+    days" means what it says regardless of which real day it runs on
+    — a strictly more correct test, not just a workaround.
+  - 51/51 green (no new suite — existing suites now exercise the
+    corrected, self.today-consistent behavior directly).
+
 New in v9.35 (#157 — dark mode for the canvas views, 2026-08-07: the
 explicit, known gap #156 itself left open):
   - #156's dark mode recolored the main window (toolbar, diary text,
@@ -4661,7 +4687,7 @@ class App(tk.Tk):
             done = sum(rec["work"] for iso, rec in idx.items()
                       if lo_iso <= iso <= self.today.isoformat())
         out = {"due": due, "start": start, "done_h": done / 60,
-               "left": (due - dt.date.today()).days}
+               "left": (due - self.today).days}
         total = float(dl.get("total_h") or 0)
         if total:
             rem = max(0.0, total - done / 60)

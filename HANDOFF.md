@@ -497,6 +497,13 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.36** (#154, 2026-08-07, DONE). `_dl_progress`'s `left` field
+  used real `dt.date.today()` instead of `self.today` — every other
+  field in the function used the right one. Fixed at the one line;
+  the other ~14 real-clock call sites across the file stay a separate,
+  out-of-scope cleanup. Exposed a matching latent bug in the selftest
+  helper `_due()` (same real-clock dependency), now anchored to `_mk`'s
+  fixed default today instead. 51/51 green.
 - **v9.35** (#157, 2026-08-07, DONE). The explicit gap #156 itself
   left open: every Canvas-drawing view (calendar week/month, day
   timeline, trend, burndown, heatmap, year rhythm, forecast bars,
@@ -4098,25 +4105,10 @@ polish — the three NOT chosen this round) when continuing this work.
     every open deadline at once.**~~ — FIXED v9.21. See the v9.21
     version-history entry above.
 
-154. **`_dl_progress`'s `left` field uses real `dt.date.today()`
-    instead of `self.today` (PLANNING — a real pre-existing bug,
-    surfaced while building/testing #153, not introduced by it; new
-    idea 2026-08-07).** Every other field in `_dl_progress` (`done_h`
-    via `matched_minutes`/`day_index`, the `behind` elapsed-fraction
-    calc) is computed against `self.today` — the one mockable,
-    consistent "what day is it" reference this whole app is built
-    around (confirmed: `dt.date.today()` appears directly at ~15
-    other call sites too, not just here). `left` alone uses real
-    `dt.date.today()`. In normal live usage the two are almost always
-    the same value, so this has likely never visibly misbehaved — but
-    it's a real inconsistency, and if `self.today` and real-today
-    ever diverge (a midnight-rollover edge case, or anything that
-    deliberately advances `self.today` without a matching real-clock
-    tick) `needed_per_day`/`behind` would be computed from two
-    different reference dates within the same function. Fix: swap
-    `dt.date.today()` for `self.today` at line ~4277 specifically (the
-    other ~14 sites are a separate, much bigger cleanup — out of scope
-    here, don't drive-by fix them under this item).
+~~154. **`_dl_progress`'s `left` field uses real `dt.date.today()`
+    instead of `self.today`.**~~ — DONE v9.36. See the v9.36 version-
+    history entry above. (A real pre-existing bug, surfaced while
+    building/testing #153, not introduced by it; new idea 2026-08-07.)
 
 146. **Lock-window candidates ranked energy-aware, not just biggest-
     block-first (PLANNING — connects two subsystems built independently

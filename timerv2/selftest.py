@@ -150,7 +150,16 @@ THESIS = [row(d0, m, "thesis: ch4") for d0, m in
 
 
 def _due(days):
-    return (dt.date.today() + dt.timedelta(days=days)).isoformat()
+    """Relative to _mk's own default `today` (2026-07-13), NOT the
+    real wall-clock date — v9.36 fixed a real bug where _dl_progress's
+    `left` field used real dt.date.today() instead of self.today
+    (backlog #154); this helper predates that fix and used to get
+    away with also using real dt.date.today() only because BOTH sides
+    of the old buggy subtraction canceled out. Every caller here uses
+    _mk's untouched default today, so anchoring here keeps 'due in N
+    days' meaning what it says regardless of which real day the suite
+    happens to run on."""
+    return (dt.date(2026, 7, 13) + dt.timedelta(days=days)).isoformat()
 
 
 def _mk(D, **attrs):
