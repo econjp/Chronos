@@ -4,6 +4,22 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.4 — subscribe to a calendar link (no more manual export)
+
+File > **"Subscribe to a calendar link (.ics URL)…"** — paste your
+calendar's own publish/subscribe link (Outlook or Google's "Publish a
+calendar" URL) once, and the app fetches it automatically from then
+on (refreshed every 60 minutes). No login, no API key. Falls back to
+the last-known calendar if a refresh fails, so a flaky connection
+doesn't blank out your capacity numbers. The old manual "Calendar
+busy-time (.ics)…" file import still works too, for anyone who'd
+rather not.
+
+If your calendar doesn't support publishing (common on locked-down
+school/work accounts), that's a real limitation for now — see
+HANDOFF.md #115 for the Microsoft Graph API sign-in fallback, not
+built yet.
+
 ### v9.3 — lock study windows for a deadline
 
 File > **"Lock study windows for a deadline (.ics)…"** — picks a

@@ -60,6 +60,35 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.4 (#114 — subscribe to a calendar link, closing the "manual
+export every time" gap the owner hit right after v9.3, 2026-08-07:
+"my outlook cal not working... dont wanna do the manual import"):
+  - File > "Subscribe to a calendar link (.ics URL)…": paste a
+    calendar's own publish/subscribe link (Outlook/Google's "Publish
+    a calendar" URL, webcal:// or https://) instead of exporting and
+    re-importing a file by hand every time. No login, no API key —
+    the app just fetches the link periodically (every 60min) like a
+    browser would.
+  - `resolve_ics_source` is the seam: settings["ics_path"] can now be
+    a local file (unchanged, old behavior) or a URL — resolved to a
+    local cache file (data_dir()/calendar_cache.ics) before
+    parse_ics_intervals/parse_ics_busy ever see it, so neither of
+    those needed to change at all. A failed refresh (offline, link
+    revoked) keeps serving the last good cache instead of going
+    blank; a totally new link that never worked signals failure
+    clearly so it can be reported, not silently swallowed.
+  - Validated on save by actually fetching + checking for
+    "BEGIN:VCALENDAR" before the link is stored — a bad/wrong link
+    fails immediately with a clear message, not three days later as
+    an empty calendar.
+  - This directly feeds v9.3's "lock study windows" (and every other
+    capacity view) — once subscribed, busy time updates itself.
+  - Requires the owner's Outlook to allow calendar publishing; a
+    locked-down school/work tenant may block it — Microsoft Graph
+    API sign-in is the fallback if so, not built this round (bigger
+    lift: OAuth, token storage — deliberately not built speculatively
+    before knowing the simple option even works).
+
 New in v9.3 (#113 — lock study windows for a deadline, owner's own
 top-priority ask, 2026-08-07: "calendar and this software should talk
 to each other better... realistically schedule time with enough
@@ -1562,6 +1591,8 @@ import shutil
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 import datetime as dt
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog
@@ -2092,6 +2123,43 @@ def day_length_hours(d, lat_deg):
     if cos_h >= 1:
         return 0.0       # polar night
     return 2 * math.degrees(math.acos(cos_h)) / 15
+
+
+ICS_REFRESH_MIN = 60   # minutes between re-fetches of a subscribed .ics URL
+
+
+def resolve_ics_source(raw, force=False):
+    """Backlog #114: `raw` (settings["ics_path"]) can now be a local
+    file (old behavior, unchanged) OR a calendar's own publish/
+    subscribe link (webcal:// or http(s)://, e.g. Outlook/Google's
+    "Publish calendar" URL) — closes the "manual export every time"
+    gap without needing any login or API key. A URL gets fetched to a
+    local cache file (data_dir()/calendar_cache.ics), refreshed when
+    the cache is older than ICS_REFRESH_MIN minutes or `force`; a
+    fetch failure (offline, link revoked) silently keeps serving
+    whatever was cached last rather than going blank. Returns a local
+    path either way — parse_ics_intervals/parse_ics_busy never need to
+    know the difference."""
+    if not raw:
+        return raw
+    if raw.lower().startswith("webcal://"):
+        url = "https://" + raw[len("webcal://"):]
+    else:
+        url = raw
+    if not url.lower().startswith(("http://", "https://")):
+        return raw   # already a local file path
+    cache_path = os.path.join(data_dir(), "calendar_cache.ics")
+    stale = force or not os.path.exists(cache_path) or (
+        (time.time() - os.path.getmtime(cache_path)) / 60 >= ICS_REFRESH_MIN)
+    if stale:
+        try:
+            with urllib.request.urlopen(url, timeout=10) as resp:
+                data = resp.read()
+            with open(cache_path, "wb") as f:
+                f.write(data)
+        except (urllib.error.URLError, OSError, ValueError):
+            pass   # keep serving the last good cache, if any
+    return cache_path if os.path.exists(cache_path) else raw
 
 
 def parse_ics_intervals(path, start, end):
@@ -2997,6 +3065,8 @@ class App(tk.Tk):
         filem.add_command(label="Change diary folder…", command=self._change_diary_dir)
         filem.add_command(label="Health import folder…", command=self._set_health_dir)
         filem.add_command(label="Calendar busy-time (.ics)…", command=self._set_ics)
+        filem.add_command(label="Subscribe to a calendar link (.ics URL)…",
+                          command=self._set_ics_url)
         filem.add_separator()
         filem.add_command(label="Exit", command=self._on_close)
         m.add_cascade(label="File", menu=filem)
@@ -7512,8 +7582,15 @@ class App(tk.Tk):
                "must-do inside that")
 
     def _busy_data(self):
-        """Calendar busy hours per date, cached on the ics file's mtime."""
-        path = self.settings.get("ics_path")
+        """Calendar busy hours per date, cached on the resolved file's
+        mtime. settings["ics_path"] may be a local file (unchanged) or
+        a subscribe URL — resolve_ics_source turns either into a local
+        path (fetching/caching the URL, refreshed periodically) before
+        anything here has to care which one it is."""
+        raw = self.settings.get("ics_path")
+        if not raw:
+            return {}
+        path = resolve_ics_source(raw)
         if not path or not os.path.exists(path):
             return {}
         key = (path, os.path.getmtime(path), dt.date.today().isoformat())
@@ -7529,9 +7606,13 @@ class App(tk.Tk):
     def _busy_intervals(self):
         """Calendar busy TIME RANGES per date — the interval-level
         sibling of _busy_data(), needed for slot-finding instead of just
-        a daily total. Same file, same cache shape, own cache slot since
+        a daily total. Same file (local or subscribe URL, see
+        resolve_ics_source), same cache shape, own cache slot since
         the two views don't share a dict layout."""
-        path = self.settings.get("ics_path")
+        raw = self.settings.get("ics_path")
+        if not raw:
+            return {}
+        path = resolve_ics_source(raw)
         if not path or not os.path.exists(path):
             return {}
         key = (path, os.path.getmtime(path), dt.date.today().isoformat())
@@ -7932,11 +8013,56 @@ class App(tk.Tk):
         self.settings["ics_path"] = p
         save_settings(self.settings)
         self._busy_cache = None
+        self._busy_intervals_cache = None
         busy = self._busy_data()
         nxt14 = sum(h for iso, h in busy.items()
                     if iso <= (dt.date.today() + dt.timedelta(days=14)).isoformat())
         self.status.config(text=f"Calendar linked — {nxt14:.1f}h of meetings "
                                 "in the next 14 days now reduce capacity.")
+
+    def _set_ics_url(self):
+        """Backlog #114: the other half of resolve_ics_source — a
+        calendar's own publish/subscribe link (Outlook/Google's
+        "Publish a calendar" URL) instead of a manual export every
+        time. No login, no API key: the app just fetches the link
+        periodically like a browser would. Validates by actually
+        fetching before saving, so a bad link fails here with a clear
+        message instead of silently going blank later."""
+        url = simpledialog.askstring(
+            APP_NAME, "Calendar publish/subscribe link (webcal:// or "
+            "https://...ics) — from your calendar's Share/Publish "
+            "settings, not the manual export file:", parent=self)
+        if not url:
+            return
+        url = url.strip()
+        fetch_url = ("https://" + url[len("webcal://"):]
+                    if url.lower().startswith("webcal://") else url)
+        try:
+            with urllib.request.urlopen(fetch_url, timeout=10) as resp:
+                sample = resp.read(4096)
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            messagebox.showerror(
+                APP_NAME, f"Couldn't fetch that link ({e}). Check it's a "
+                "real publish/subscribe URL (not a login page) and that "
+                "your calendar allows publishing.")
+            return
+        if b"BEGIN:VCALENDAR" not in sample:
+            messagebox.showerror(
+                APP_NAME, "That link didn't return a calendar file — "
+                "double-check it's the publish/subscribe .ics link, not "
+                "a regular calendar page URL.")
+            return
+        self.settings["ics_path"] = url
+        resolve_ics_source(url, force=True)   # populate the cache for real use
+        save_settings(self.settings)
+        self._busy_cache = None
+        self._busy_intervals_cache = None
+        busy = self._busy_data()
+        nxt14 = sum(h for iso, h in busy.items()
+                    if iso <= (dt.date.today() + dt.timedelta(days=14)).isoformat())
+        self.status.config(text=f"Calendar subscribed — {nxt14:.1f}h of "
+                                "meetings in the next 14 days now reduce "
+                                f"capacity. Refreshes every {ICS_REFRESH_MIN}min.")
 
     def _protected_hours(self):
         """Backlog #82: total daily hours claimed by protected windows

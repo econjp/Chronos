@@ -497,6 +497,23 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.4** (#114, closing the gap v9.3 immediately surfaced, 2026-08-07,
+  DONE — owner's school/uni Outlook tenant, used for everything
+  personal too). File > "Subscribe to a calendar link (.ics URL)…":
+  `resolve_ics_source` lets `settings["ics_path"]` be a local file
+  (unchanged) or a publish/subscribe URL, resolved to a local cache
+  (`data_dir()/calendar_cache.ics`, refreshed every 60min) before
+  `parse_ics_intervals`/`parse_ics_busy` ever see it — neither of
+  those changed at all. Failed refresh keeps serving the last good
+  cache rather than going blank; a link that's never worked signals
+  failure so `_set_ics_url` can report it clearly (validated by an
+  actual fetch + content check before saving, not just a URL-shape
+  check). Chosen over Microsoft Graph API sign-in as the FIRST thing
+  to try — no login/token complexity, works for personal-tier
+  accounts; Graph API is the documented fallback (see #115 below) if
+  the owner's school tenant turns out to block calendar publishing,
+  which many EDU tenants do — not built speculatively before knowing
+  the simple path even works.
 - **v9.3** (#113, owner's own top-priority ask, 2026-08-07, DONE).
   File > "Lock study windows for a deadline (.ics)…": `_lock_window_
   candidates` walks today through a deadline's due date, ranks each
@@ -3343,6 +3360,32 @@ measuring what's already there.
     WORKBLOCK) turned out to be the right mechanism since the owner
     wants these in their REAL calendar (Outlook/Google), not just
     inside this app.
+
+114. ~~**Subscribe to a calendar link (.ics URL), no manual export.**~~
+    — FIXED v9.4. See the v9.4 version-history entry above for the
+    full design (`resolve_ics_source`, cache/refresh, validation).
+
+115. **Microsoft Graph API calendar sign-in (PLANNING — the documented
+    fallback to #114, not built, only needed if the simple path
+    fails).** #114's publish/subscribe link is the low-effort first
+    try; if the owner's school/work Microsoft 365 tenant blocks
+    calendar publishing (common in EDU tenants — an admin-level
+    setting a student can't override), the fallback is a real sign-in:
+    device-code OAuth flow (no client secret needed for a public-
+    client app, no redirect URI/local web server either — the user
+    visits a Microsoft URL and enters a code, good fit for a desktop
+    app), then calls to Microsoft Graph's `/me/calendarview` endpoint
+    via `urllib.request` (stdlib-only, no new dependency) for the
+    same busy-time data #114 gets from a static link. Real new
+    surface for this app: stored tokens (refresh token needs to live
+    somewhere — settings.json, or its own file), token refresh logic,
+    network calls that can fail in new ways. Also: EDU tenants often
+    require ADMIN CONSENT for even basic Calendars.Read delegated
+    permissions, which a student can't grant themselves — worth
+    confirming that isn't ALSO blocked before investing in this,
+    since if it is, neither path works and the honest answer is "your
+    IT department has to enable one of these," not more engineering.
+    Don't build speculatively — check #114 actually fails first.
 
 ## How to verify changes without Windows
 
