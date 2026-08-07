@@ -4,6 +4,13 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.37 — "Locked this week" concrete list
+
+WEEK AHEAD now names every locked window falling in the coming 7 days
+concretely — "locked this week: TUTA Wed 14:00-18:00 (4.0h), Thesis
+Fri 09:00-13:00 (4.0h)" — instead of that time being invisible until
+you open the calendar separately.
+
 ### v9.36 — Bug fix: deadline "days left" used the wrong clock
 
 `_dl_progress`'s `left` field (days remaining on a deadline) used the

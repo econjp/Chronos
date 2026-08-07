@@ -68,6 +68,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_parse_plan_line", "_auto_capture_plans", "_parse_time_loose",
         "_upcoming_plans", "_ics_hint_for_url", "_free_evenings_from_rows",
         "_social_density_line", "_repeating_plan_suggestion",
+        "_locked_this_week_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -2370,6 +2371,32 @@ def suite_repeating_plan():
     assert D._repeating_plan_suggestion(d4) is None
 
 
+def suite_locked_this_week():
+    D, ns = fresh()
+    week = [dt.date(2026, 7, 13) + dt.timedelta(days=i) for i in range(7)]
+    d = _mk(D, deadlines=lambda: [
+        {"name": "TUTA", "locked_windows": [
+            {"date": "2026-07-15", "start": "14:00", "end": "18:00"},
+            {"date": "2026-08-01", "start": "09:00", "end": "10:00"},  # outside week
+            {"date": "2026-07-14", "start": "bad", "end": "10:00"}]},  # malformed
+        {"name": "Thesis", "locked_windows": [
+            {"date": "2026-07-18", "start": "09:00", "end": "13:00"}]},
+    ])
+    line = D._locked_this_week_line(d, week)
+    d1, d2 = dt.date(2026, 7, 15), dt.date(2026, 7, 18)
+    assert line == (f"  locked this week: TUTA {d1:%a} 14:00-18:00 (4.0h), "
+                    f"Thesis {d2:%a} 09:00-13:00 (4.0h)"), line
+
+    # ---- silence: nothing locked this week ----
+    d2_ = _mk(D, deadlines=lambda: [{"name": "TUTA", "locked_windows": [
+        {"date": "2026-08-01", "start": "09:00", "end": "10:00"}]}])
+    assert D._locked_this_week_line(d2_, week) is None
+
+    # ---- silence: no deadlines at all ----
+    d3 = _mk(D, deadlines=lambda: [])
+    assert D._locked_this_week_line(d3, week) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2417,7 +2444,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("ics-hints", suite_ics_hints),
           ("free-evenings", suite_free_evenings),
           ("social-density", suite_social_density),
-          ("repeating-plan", suite_repeating_plan)]
+          ("repeating-plan", suite_repeating_plan),
+          ("locked-this-week", suite_locked_this_week)]
 
 
 def main():

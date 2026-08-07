@@ -497,6 +497,13 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.37** (#148, 2026-08-07, DONE). WEEK AHEAD now names every
+  locked window (#136) falling in the coming 7 days concretely —
+  "locked this week: TUTA Wed 14:00-18:00 (4.0h)". Correction: the
+  original note claimed a locked-hours number already existed
+  somewhere; checking the code, `locked_h` is computed but never
+  actually surfaced anywhere — this is the first visible surfacing,
+  not an upgrade. New "locked-this-week" selftest suite; 52/52 green.
 - **v9.36** (#154, 2026-08-07, DONE). `_dl_progress`'s `left` field
   used real `dt.date.today()` instead of `self.today` — every other
   field in the function used the right one. Fixed at the one line;
@@ -4141,19 +4148,11 @@ polish — the three NOT chosen this round) when continuing this work.
     the due-date ⚑ it already draws — no new data, purely a second
     glyph on an existing pass.
 
-148. **"Locked this week" as a concrete visible list, not just an
-    hour total, in the week-ahead block (PLANNING — turns #133's
-    already-built commitment-cost line into something actually
-    actionable, using #136's now-real `locked_windows` data; new idea
-    2026-08-07).** #133 already names HOW MANY hours are locked this
-    week (inherited free from #136, verified this session), but only
-    as a number — the owner still can't see WHAT's locked without
-    opening the calendar separately. Fix: when locked hours apply
-    this week, list them concretely under the existing line — "locked
-    this week: TUTA Wed 14:00-18:00 (4h), Thesis Fri 09:00-13:00
-    (4h)" — a plain iteration over every deadline's `locked_windows`
-    falling in the coming 7 days, sorted by date, no new computation
-    beyond what #133/#136 already produce.
+~~148. **"Locked this week" as a concrete visible list, not just an
+    hour total, in the week-ahead block.**~~ — DONE v9.37. See the
+    v9.37 version-history entry above (including a correction to this
+    note's original premise — no such number was actually surfaced
+    anywhere before this). (PLANNING; new idea 2026-08-07.)
 
 ~~155. **Multiple real calendars, not just one.**~~ — FIXED v9.22. See
     the v9.22 version-history entry above. (Proposed and built same-

@@ -60,6 +60,28 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.37 (#148 — "locked this week" as a concrete visible list,
+2026-08-07):
+  - WEEK AHEAD now names every locked window (#136) falling in the
+    coming 7 days concretely — "locked this week: TUTA Wed 14:00-18:00
+    (4.0h), Thesis Fri 09:00-13:00 (4.0h)" — instead of leaving it
+    invisible. Plain iteration over every deadline's own
+    `locked_windows`, sorted by date; no new computation.
+  - correction to the original backlog note: it claimed "#133 already
+    names how many hours are locked this week, but only as a number"
+    — checking the actual code, `locked_h` is computed in
+    `_dl_progress` (net into `remaining_h`/`needed_per_day`) but
+    nothing anywhere actually surfaces it, as a number or otherwise.
+    This is the FIRST visible surfacing of locked windows, not an
+    upgrade of an existing line.
+  - a week with locked windows and nothing else stressful now also
+    shows the WEEK AHEAD block on its own — same "seeing what's
+    already committed has its own value" reasoning v9.28 already
+    established for one-off plans.
+  - new "locked-this-week" selftest suite (concrete formatting across
+    two deadlines, an out-of-week window excluded, a malformed window
+    safely skipped, both silence paths); 52/52 green.
+
 New in v9.36 (#154 — a real pre-existing bug, `_dl_progress`'s `left`
 field used real `dt.date.today()` instead of `self.today`, 2026-08-07):
   - every other field in `_dl_progress` (`done_h`, the `behind`
@@ -7151,7 +7173,9 @@ class App(tk.Tk):
                 plans.append((wd, w.get("label", ""), w.get("start", ""),
                              w.get("end", "")))
         plans.sort()
-        if not (overbooked or real_tight_day or behind_names or plans):
+        locked_line = self._locked_this_week_line(week)
+        if not (overbooked or real_tight_day or behind_names or plans
+               or locked_line):
             return []                # a normal week — nothing to flag
         lines = ["", f"WEEK AHEAD: {total_cap:.1f}h free across the next "
                     f"7 days · deadlines need ~{total_need:.1f}h"]
@@ -7185,10 +7209,47 @@ class App(tk.Tk):
                 for d, label, s, e in plans if label)
             if plan_txt:
                 lines.append(f"  plans this week: {plan_txt}")
+        if locked_line:
+            lines.append(locked_line)
         density = self._social_density_line(total_cap, plans, behind_names)
         if density:
             lines.append(density)
         return lines
+
+    def _locked_this_week_line(self, week):
+        """Backlog #148: concrete, visible locked windows falling in
+        the coming 7 days — not just a number. `_dl_progress` already
+        computes `locked_h` per deadline (#136, net of it in
+        `remaining_h`/`needed_per_day`) but nothing actually surfaces
+        it anywhere in the app; the original backlog note's premise
+        ("#133 already names it as a number") didn't match the real
+        code once checked, so this is the FIRST visible surfacing of
+        locked windows, not an upgrade of an existing line — same
+        "correct the record, don't silently implement the wrong
+        premise" discipline used elsewhere in this project. Plain
+        iteration over every deadline's own `locked_windows`, no new
+        computation. `week` is the same [monday..sunday]-shaped 7-date
+        list `_week_ahead_lines` already builds. Returns a formatted
+        line, or None if nothing's locked this week."""
+        items = []
+        for dl in self.deadlines():
+            for w in dl.get("locked_windows", []):
+                try:
+                    d = dt.date.fromisoformat(w["date"])
+                    sh, sm = map(int, w["start"].split(":"))
+                    eh, em = map(int, w["end"].split(":"))
+                except (KeyError, ValueError, TypeError):
+                    continue
+                if d not in week:
+                    continue
+                hrs = _time_span_hours(dt.time(sh, sm), dt.time(eh, em))
+                items.append((d, dl.get("name", ""), w["start"], w["end"], hrs))
+        if not items:
+            return None
+        items.sort()
+        txt = ", ".join(f"{name} {d:%a} {s}-{e} ({hrs:.1f}h)"
+                        for d, name, s, e, hrs in items)
+        return f"  locked this week: {txt}"
 
     _SOCIAL_DENSITY_THRESHOLD = 0.4
 
