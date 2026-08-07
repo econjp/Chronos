@@ -60,6 +60,33 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.43 (#139 — "Today's plan," one composed timeline instead
+of four separate checks, 2026-08-07):
+  - "so much of this... just wanna automate and make it so much
+    easier" kept meaning checking FOUR separate views (the morning
+    header's commitments line, the Calendar view, the Lock study
+    windows picker, the free-time forecast) just to see what today
+    actually looks like. View > Planning > "Today's plan…" now
+    renders it as one ordered list: "06:00-08:00 free · 08:00-08:30
+    Standup · 09:30-17:00 Day job · 17:00-18:30 free · 18:30-20:30
+    locked: Thesis · 20:30-23:00 free" — built entirely from
+    primitives that already exist (`_protected_intervals_named`,
+    `_calendar_events`, every deadline's `locked_windows`,
+    `_free_slots`); pure assembly, no new computation. This was
+    directly enabled by tonight's earlier #136-138 work (locked
+    windows counting toward progress, visible in the calendar,
+    exportable) — presentation over new capability, exactly as the
+    backlog note anticipated.
+  - split into `_todays_plan_from_segments` (pure merge/sort of
+    already-gathered segments) and `_todays_plan_lines` (the real
+    fetch wrapper) — same split #137/#138/#167 already established.
+    Segments are concatenated in start-time order, not merged for
+    overlap — a genuine conflict between two sources stays visible
+    instead of getting silently resolved.
+  - new "todays-plan" selftest suite on the pure half (four sources
+    interleaved in correct time order, full silence when nothing's
+    declared at all); 58/58 green.
+
 New in v9.42 (#128 — due-date feasibility check extended to the
 deadline editor, 2026-08-07):
   - #124's feasibility check (`_due_date_feasibility_line`) covered
@@ -4138,6 +4165,9 @@ class App(tk.Tk):
         planm.add_command(label="Free evenings…",
                           command=self._tracked("Free evenings",
                                                 self._free_evenings_win))
+        planm.add_command(label="Today's plan…",
+                          command=self._tracked("Today's plan",
+                                                self._todays_plan_win))
         viewm.add_cascade(label="Planning  (foresight)", menu=planm)
 
         memm = tk.Menu(viewm, tearoff=0)
@@ -7233,6 +7263,71 @@ class App(tk.Tk):
                      if signal_tasks else " — pick from Task library)")
             lines.append(line)
         return lines
+
+    def _todays_plan_from_segments(self, commitments, events, locked, free_slots):
+        """Backlog #139: the pure merge/format half of "Today's plan" —
+        takes already-gathered (start, end, label) segments from each
+        source (recurring commitments, calendar events, locked
+        windows) plus plain (start, end) free slots, and lays them out
+        as one ordered list, earliest first. Split from
+        `_todays_plan_lines` (below, which does the real fetching)
+        specifically so this composition logic is unit-testable
+        without _calendar_events/_free_slots' fetch dependency chains
+        — same "pure function, thin fetch wrapper" split #137/#138/
+        #167 already established. Segments are simply concatenated in
+        start-time order, not merged for overlap — a genuine conflict
+        between two sources should be visible, not silently resolved.
+        Returns [] when there's nothing at all to show."""
+        segs = (list(commitments) + list(events) + list(locked)
+               + [(s, e, "free") for s, e in free_slots])
+        if not segs:
+            return []
+        segs.sort()
+        return ["TODAY'S PLAN:",
+               "  " + " · ".join(f"{s:%H:%M}-{e:%H:%M} {label}"
+                                 for s, e, label in segs)]
+
+    def _todays_plan_lines(self):
+        """Backlog #139: "so much of this... just wanna automate and
+        make it so much easier" kept meaning checking FOUR separate
+        views (the morning header's commitments line, the Calendar
+        view, the Lock study windows picker, the free-time forecast)
+        to see what today actually looks like. One composed view
+        instead, built entirely from primitives that already exist —
+        pure assembly, no new computation."""
+        today = self.today
+        commitments = [(s, e, label or "commitment")
+                       for s, e, label in self._protected_intervals_named(today)]
+        events = [(s, e, summary) for d, s, e, summary in
+                 self._calendar_events(today, today) if d == today]
+        locked = []
+        for dl in self.deadlines():
+            for w in dl.get("locked_windows", []):
+                if w.get("date") != today.isoformat():
+                    continue
+                try:
+                    sh, sm = map(int, w["start"].split(":"))
+                    eh, em = map(int, w["end"].split(":"))
+                except (KeyError, ValueError, TypeError):
+                    continue
+                locked.append((dt.time(sh, sm), dt.time(eh, em),
+                              f"locked: {dl.get('name', '')}"))
+        free = list(self._free_slots(today))
+        return self._todays_plan_from_segments(commitments, events, locked, free)
+
+    def _todays_plan_win(self):
+        win = tk.Toplevel(self)
+        win.title("Today's plan")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10),
+                      width=70, height=6)
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        lines = self._todays_plan_lines()
+        if not lines:
+            lines = ["Nothing declared for today yet — no recurring "
+                    "commitments, calendar events, locked windows, or "
+                    "free time found."]
+        txt.insert("1.0", "\n".join(lines))
+        txt.config(state="disabled")
 
     def _day_schedule_lines(self):
         """v8.0: planning-engine tier c, actual time-blocked placement.

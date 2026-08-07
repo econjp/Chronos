@@ -71,7 +71,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_locked_this_week_line", "_weekly_target_lines",
         "_looks_like_pto", "_pto_skip_suggestion", "_lock_picker_progress_line",
         "_locked_windows_for_week", "_due_date_feasibility_line",
-        "_deadline_editor_feasibility_lines",
+        "_deadline_editor_feasibility_lines", "_todays_plan_from_segments",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -2560,6 +2560,25 @@ def suite_deadline_feasibility():
         d5, [{"name": "Thesis", "date": "2026-08-20", "total_h": 3.0}]) == []
 
 
+def suite_todays_plan():
+    D, ns = fresh()
+    d = _mk(D)
+
+    commitments = [(dt.time(9, 30), dt.time(17, 0), "Day job")]
+    events = [(dt.time(8, 0), dt.time(8, 30), "Standup")]
+    locked = [(dt.time(18, 30), dt.time(20, 30), "locked: Thesis")]
+    free = [(dt.time(6, 0), dt.time(8, 0)), (dt.time(17, 0), dt.time(18, 30)),
+           (dt.time(20, 30), dt.time(23, 0))]
+    out = D._todays_plan_from_segments(d, commitments, events, locked, free)
+    assert out[0] == "TODAY'S PLAN:", out
+    assert out[1] == ("  06:00-08:00 free · 08:00-08:30 Standup · "
+                      "09:30-17:00 Day job · 17:00-18:30 free · "
+                      "18:30-20:30 locked: Thesis · 20:30-23:00 free"), out
+
+    # ---- silence: nothing at all ----
+    assert D._todays_plan_from_segments(d, [], [], [], []) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2613,7 +2632,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("pto-skip", suite_pto_skip),
           ("lock-picker-progress", suite_lock_picker_progress),
           ("locked-windows-for-week", suite_locked_windows_for_week),
-          ("deadline-feasibility", suite_deadline_feasibility)]
+          ("deadline-feasibility", suite_deadline_feasibility),
+          ("todays-plan", suite_todays_plan)]
 
 
 def main():

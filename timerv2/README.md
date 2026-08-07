@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.43 — "Today's plan," one composed view
+
+View > Planning > "Today's plan…" — one ordered list combining
+recurring commitments, calendar events, locked windows, and free time
+into a single timeline instead of checking four separate views:
+"06:00-08:00 free · 08:00-08:30 Standup · 09:30-17:00 Day job ·
+17:00-18:30 free · 18:30-20:30 locked: Thesis · 20:30-23:00 free."
+
 ### v9.42 — Deadline editor feasibility check
 
 Saving deadlines now checks each row's due date against real free

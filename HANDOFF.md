@@ -497,6 +497,14 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.43** (#139, 2026-08-07, DONE). View > Planning > "Today's
+  plan…" — one composed ordered list (commitments + calendar events +
+  locked windows + free slots) instead of four separate views: "06:00-
+  08:00 free · 08:00-08:30 Standup · 09:30-17:00 Day job · ...".
+  Split into `_todays_plan_from_segments` (pure merge/sort, tested)
+  and `_todays_plan_lines` (real fetch wrapper, untested — same
+  category as #157/#138). New "todays-plan" selftest suite; 58/58
+  green.
 - **v9.42** (#128, 2026-08-07, DONE). Saving deadlines now runs
   #124's feasibility check per row against its own `total_h`; a
   non-blocking status line names any that come back tight: "Saved,
@@ -3955,23 +3963,11 @@ measuring what's already there.
     between #113/#122/#135's export and #120/#121's own display
     layers; new idea 2026-08-07.)
 
-139. **"Today's plan" — one composed timeline instead of four separate
-    checks (PLANNING — synthesis of #130's commitments line, #114's
+~~139. **"Today's plan" — one composed timeline instead of four
+    separate checks.**~~ — DONE v9.43. See the v9.43 version-history
+    entry above. (Synthesis of #130's commitments line, #114's
     calendar, #136/#138's locked windows, and #82's free slots, all
-    already computed separately; new idea 2026-08-07).** The owner's
-    own words across this whole arc — "so much of this... makes lot
-    of sense... just wanna automate and make it so much easier" —
-    keep pointing at wanting ONE glance, not four (morning header
-    commitments line, Calendar view, Lock study windows picker, free-
-    time forecast). Fix: a small window (or a File/View entry) that
-    renders today specifically as one ordered list — "08:30-09:30
-    Morning admin · 09:30-17:00 Day job · 17:30-18:30 free (locked:
-    Thesis) · 18:30-20:00 free · 23:00 Sleep" — built entirely from
-    primitives that already exist (`_protected_intervals_named`,
-    `_calendar_events`, #136's `locked_windows`, `_free_slots`), so
-    it's assembly, not new computation. Lower priority than #136-138
-    since it's presentation over new capability — build those three
-    first, this becomes almost free afterward.
+    already computed separately; new idea 2026-08-07.)
 
 ~~140. **A single lockable block for the real "grey admin" pile.**~~
     — FIXED v9.18. See the v9.18 version-history entry above.
