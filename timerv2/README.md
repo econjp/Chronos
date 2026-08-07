@@ -4,6 +4,16 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.26 — Add a plan
+
+File > "Add a plan…" — name, date, start, end, done. A dinner, a
+show, anything real with a time now has a fast home instead of the
+generic Recurring Commitments grid. Right-click an hour in the
+calendar's week view (or a day in month view) to add one right there,
+pre-filled. Shows up everywhere automatically — the day header, the
+3-week forecast, auto-plan, the lock picker — since it's the same
+one-off commitment data those already use.
+
 ### v9.25 — auto-plan's picker is faster to work with
 
 Select multiple rows at once (click, ctrl+click, shift+click a

@@ -497,6 +497,17 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.26** (#161, 2026-08-07, DONE). File > "Add a plan…" — one
+  small dialog (name/date/start/end), reuses #159's one-off dated
+  commitments unchanged. Right-click entry points in the week/month
+  calendar too, pre-filling date/time. Since it's the same underlying
+  data, shows up everywhere for free (day header, forecast, auto-
+  plan, lock picker) with zero code in those features. Declined to
+  build a generic event-site scraper (also requested) — most
+  platforms prohibit it in their ToS and it'd be fragile/unmaintable
+  in a stdlib-only app; #155's calendar-source subscription already
+  covers any source with a real ICS/RSS feed, the legitimate version
+  of the same want.
 - **v9.25** (#160, 2026-08-07, DONE). Auto-plan's review list gets
   real multi-select (click/ctrl+click/shift+click a range), bulk
   Select all/none/Drop selected/Keep only selected buttons, and a
@@ -4138,6 +4149,63 @@ polish — the three NOT chosen this round) when continuing this work.
     select, per-deadline shortcuts.**~~ — FIXED v9.25. See the v9.25
     version-history entry above. (Direct owner feedback on #153, same
     round it shipped.)
+
+~~161. **"Add a plan" — a fast one-off entry point for real-world
+    events/social plans.**~~ — FIXED v9.26. See the v9.26 version-
+    history entry above. (Direct owner request, same round: "plan
+    everything LIKE WEEKS AHEAD!!! like even events, social stuff.")
+
+162. **Multi-week auto-plan, not just the next 7 days (PLANNING —
+    directly extends #153, the exact "plan weeks ahead" ask; new idea
+    2026-08-07).** `_auto_plan_week` hardcodes a 7-day window — the
+    owner's own complaint this round was specifically that planning
+    "often endup making plans for next two days etc... WOULD BE GREAT
+    if could kinda plan everything LIKE WEEKS AHEAD." Fix: a `weeks`
+    parameter (default 1, unchanged) on `_auto_plan_week`, and a
+    small control in `_auto_plan_win` ("Plan ahead: [1] week(s)") that
+    re-runs the same greedy allocation over a longer date range — no
+    new algorithm, the urgency-ranked greedy fill already generalizes
+    to any number of days, it's just never been asked to look further
+    than one week.
+
+163. **Diary-line quick-capture for plans, same pattern as TODO:/
+    SOMEDAY: (PLANNING — connects #161's new dialog with the existing
+    task-library auto-capture the owner already lives in daily; new
+    idea 2026-08-07).** #161 gives plans a fast DIALOG, but the
+    fastest possible capture in this app is typing directly into the
+    diary — that's the whole reason TODO:/SOMEDAY: auto-capture into
+    the task library exists (`_backfill_task_library`). A line like
+    "PLAN: dinner with X 16.08 1930-2100" typed anywhere in the diary
+    could be recognized the same way and turned into a real one-off
+    protected window (#159) — reusing #161's own validation logic on
+    the parsed fields, silently skipped (not erroring the diary) if
+    the line doesn't parse cleanly, same lenient-degrade posture as
+    every other pattern-match feature here.
+
+164. **"Upcoming plans" — a dedicated chronological list, separate
+    from the mixed Recurring Commitments grid (PLANNING — closes a
+    real visibility gap #161 itself introduces; new idea 2026-08-07).**
+    Once plans start accumulating via #161/#163, they sit mixed
+    together with PERMANENT recurring commitments (Day job, Sleep) in
+    the same editor grid, sorted by insertion order not date — exactly
+    the "hard to see what's coming up across weeks" problem this whole
+    round is about. Fix: a small read-only list view (View menu),
+    filtered to `protected_windows` entries that have a one-off `date`
+    set, sorted chronologically, each with a quick "Cancel this plan"
+    action — the forward-looking glance the mixed editor can't give.
+
+165. **Helpful hints when a pasted calendar link isn't a real ICS feed
+    (PLANNING — the legitimate, non-scraping answer to this round's
+    "scraper for event sites" ask, made concrete; new idea
+    2026-08-07).** #155's "Subscribe to a calendar link" already
+    accepts any real ICS/RSS feed a source publishes — many community/
+    venue/event-platform calendars DO publish one, just not always
+    obviously. Right now a non-ICS link just fails with a generic
+    error. Fix: recognize a few common event-platform URL shapes
+    (Meetup group pages, Eventbrite organizer pages, a city site) and
+    suggest where their real feed usually lives ("Meetup groups often
+    have an .ics under Group settings > Export" style hints) — a
+    small, honest assist, not scraping the page itself.
 
 ## How to verify changes without Windows
 

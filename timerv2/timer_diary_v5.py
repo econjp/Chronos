@@ -60,6 +60,36 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.26 (#161 — "Add a plan," 2026-08-07: planning weeks ahead —
+"events, social stuff" — was a real chokepoint, "sometimes its kinda
+hard to plan!!! and often endup making plans for next two days"):
+  - File > "Add a plan…" — one small dialog (name, date, start, end),
+    reuses #159's one-off dated commitments completely unchanged. A
+    dinner, a show, anything real-world with a date and time now has
+    a fast, purpose-built home instead of the generic Recurring
+    Commitments grid editor.
+  - right-click an hour in the calendar's week view → "Add a plan at
+    {time} {date}…" (pre-fills both); right-click a day in month view
+    → "Add a plan on {date}…" (pre-fills the date).
+  - because it's the same #159 data, a plan added here shows up
+    everywhere without any of those features needing to know this
+    entry point exists: the day header (#130), week/month calendar,
+    the 3-week forecast (#118, verified against real data this round
+    with zero code changes needed), and correctly reduces free time
+    for auto-plan (#153) and the lock-window picker (#113/#135).
+  - caught and fixed a bug while building this: the calendar's right-
+    click entry points originally chained a render() call directly
+    after opening the (non-blocking) dialog, which would have
+    refreshed the view before the user had entered anything. Fixed
+    with a proper on_save callback that only fires after a real save.
+  - declined to build a generic event-site scraper (also requested
+    this round) — most event platforms prohibit scraping in their own
+    terms, it would be fragile and unmaintainable in a stdlib-only
+    app, and #155's existing calendar-source subscription already
+    covers any event source that publishes a real ICS/RSS feed (many
+    community/venue calendars do) — the legitimate version of the
+    same want, zero new code.
+
 New in v9.25 (#160 — auto-plan's picker is faster to work with,
 2026-08-07: "SHOULD BE LIKE THAT WAY THAT CAN MORE EASILY... choose
 slots tasks etc etc!!! everything shuld be very quickly easy!!!"):
@@ -3690,6 +3720,8 @@ class App(tk.Tk):
         filem.add_command(label="Browse for a day file (file picker)…",
                           command=self._open_day_file)
         filem.add_command(label="Export week to calendar (.ics)", command=self._export_ics)
+        filem.add_command(label="Add a plan…",
+                          command=self._quick_add_plan)
         filem.add_command(label="Auto-plan my week (.ics)…",
                           command=self._auto_plan_win)
         filem.add_command(label="Lock study windows (.ics)…",
@@ -4485,6 +4517,78 @@ class App(tk.Tk):
             return
         self.settings["work_window"] = [s, e]
         save_settings(self.settings)
+
+    def _quick_add_plan(self, prefill_date=None, prefill_start=None, on_save=None):
+        """Backlog #161: a fast, purpose-built way to jot down a one-
+        off plan — a dinner, a show, anything with a real date and
+        time — instead of using the generic Recurring Commitments grid
+        editor for a single entry. Owner's own words, twice now: "SHOULD
+        BE... very quickly easy" (about auto-plan, #160) and directly
+        this round about planning weeks ahead including "events, social
+        stuff." One small dialog, four fields, reuses #159's one-off
+        `date` field completely unchanged — a plan added here shows up
+        everywhere a protected window already does: the day header
+        (#130), the week/month calendar, the 3-week forecast (#118),
+        and correctly reduces free time for auto-plan (#153) and the
+        lock-window picker (#113/#135) without any of them needing to
+        know this entry point exists."""
+        win = tk.Toplevel(self)
+        win.title("Add a plan")
+        win.resizable(False, False)
+        win.grab_set()
+        fields = [
+            ("Name (e.g. Dinner with X):", None),
+            ("Date (YYYY-MM-DD):", (prefill_date or self.today).isoformat()),
+            ("Start (HH:MM):", prefill_start or ""),
+            ("End (HH:MM):", ""),
+        ]
+        entries = []
+        for i, (label, default) in enumerate(fields):
+            ttk.Label(win, text=label).grid(row=i, column=0, sticky="w",
+                                            padx=8, pady=(8 if i == 0 else 2, 2))
+            e = ttk.Entry(win, width=28)
+            if default:
+                e.insert(0, default)
+            e.grid(row=i, column=1, padx=8, pady=(8 if i == 0 else 2, 2))
+            entries.append(e)
+        name_e, date_e, start_e, end_e = entries
+        name_e.focus_set()
+
+        def save(event=None):
+            name = name_e.get().strip()
+            if not name:
+                messagebox.showerror(APP_NAME, "Name it something.", parent=win)
+                return
+            try:
+                d = dt.date.fromisoformat(date_e.get().strip())
+            except ValueError:
+                messagebox.showerror(
+                    APP_NAME, f"'{date_e.get()}' isn't YYYY-MM-DD.", parent=win)
+                return
+            try:
+                for v in (start_e.get().strip(), end_e.get().strip()):
+                    h, m = map(int, v.split(":"))
+                    assert 0 <= h <= 23 and 0 <= m <= 59
+            except (ValueError, AssertionError):
+                messagebox.showerror(
+                    APP_NAME, "Start and end need HH:MM.", parent=win)
+                return
+            self.settings.setdefault("protected_windows", []).append({
+                "label": name, "start": start_e.get().strip(),
+                "end": end_e.get().strip(), "days": "", "skip": [],
+                "date": d.isoformat()})
+            save_settings(self.settings)
+            trace = (f"--- Plan added: '{name}' {d:%d.%m.%Y} "
+                     f"{start_e.get().strip()}-{end_e.get().strip()}")
+            self._append_text(trace)
+            self.status.config(text=f"'{name}' added for {d:%d.%m.%Y}.")
+            win.destroy()
+            if on_save:
+                on_save()
+
+        win.bind("<Return>", save)
+        ttk.Button(win, text="Add", command=save).grid(
+            row=len(fields), column=1, sticky="e", padx=8, pady=8)
 
     def _set_protected_windows(self):
         """Backlog #50/#121: named recurring windows subtracted from
@@ -10293,6 +10397,11 @@ class App(tk.Tk):
                             label=f"Lock {s:%H:%M}–{e:%H:%M} {d:%a %d.%m} "
                                  f"for '{tgt['name']}'",
                             command=lambda tgt=tgt: lock_slot(tgt["name"], d, s, e))
+                menu.add_separator()
+                menu.add_command(
+                    label=f"Add a plan at {s:%H:%M} {d:%a %d.%m}…",
+                    command=lambda: self._quick_add_plan(
+                        prefill_date=d, prefill_start=f"{s:%H:%M}", on_save=render))
                 menu.tk_popup(event.x_root, event.y_root)
             else:
                 d = self._month_click_to_day(event.x, event.y,
@@ -10308,6 +10417,10 @@ class App(tk.Tk):
                             else f"Mark {d:%a %d.%m} as off (no real capacity)")
                 menu.add_command(label=off_label,
                                  command=lambda: toggle_off_date(d))
+                menu.add_separator()
+                menu.add_command(
+                    label=f"Add a plan on {d:%a %d.%m}…",
+                    command=lambda: self._quick_add_plan(prefill_date=d, on_save=render))
                 menu.tk_popup(event.x_root, event.y_root)
 
         ttk.Radiobutton(top, text="Week", variable=mode_var, value="week",
