@@ -60,6 +60,26 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.30 (#164 — "Upcoming plans" dedicated list, 2026-08-07:
+closes a real visibility gap #161/#163 themselves introduce):
+  - View > Planning > "Upcoming plans…" — a small read-only-ish window
+    listing every one-off plan (#159/#161/#163) still ahead,
+    chronologically ("Thu 20.08 20:00-23:00 Concert"), each with a
+    quick Cancel button. Once plans accumulate they used to sit mixed
+    together with PERMANENT recurring commitments (Day job, Sleep) in
+    the same editor grid, sorted by insertion order — exactly the
+    "hard to see what's coming up across weeks" problem this whole
+    round is about.
+  - new `_upcoming_plans`: pure filter over `protected_windows` to
+    entries carrying a one-off `date` on/after today, sorted by
+    (date, start) — no new data, a filtered read of what #159 already
+    stores. Returns (index, window) pairs so Cancel can remove the
+    exact underlying entry.
+  - new "upcoming-plans" selftest suite (chronological ordering, a
+    past-dated plan excluded, a permanent recurring commitment with no
+    one-off date excluded, today counts as upcoming, both silence
+    paths); 47/47 green.
+
 New in v9.29 (#163 — PLAN: diary-line quick-capture, 2026-08-07: the
 fastest possible way to log a plan is typing it, same reason TODO:/
 SOMEDAY: auto-capture exists):
@@ -3832,6 +3852,9 @@ class App(tk.Tk):
                           command=self._tracked("Outlook", self._outlook_win))
         planm.add_command(label="Deadline burn-down",
                           command=self._tracked("Burn-down", self._burndown))
+        planm.add_command(label="Upcoming plans…",
+                          command=self._tracked("Upcoming plans",
+                                                self._upcoming_plans_win))
         viewm.add_cascade(label="Planning  (foresight)", menu=planm)
 
         memm = tk.Menu(viewm, tearoff=0)
@@ -4651,6 +4674,76 @@ class App(tk.Tk):
         win.bind("<Return>", save)
         ttk.Button(win, text="Add", command=save).grid(
             row=len(fields), column=1, sticky="e", padx=8, pady=8)
+
+    def _upcoming_plans(self):
+        """Backlog #164: every one-off plan (#159/#161/#163) still
+        upcoming, sorted chronologically — the forward-looking
+        counterpart to the Recurring Commitments grid, which mixes
+        one-off plans together with PERMANENT commitments (Day job,
+        Sleep) sorted by insertion order, not date, making it hard to
+        see what's actually coming up across weeks. Filters to
+        protected_windows entries that carry a one-off `date` on or
+        after today. Returns [(index, window_dict), ...] — the index
+        into the real settings list, so a caller (the view below) can
+        act on the exact underlying entry rather than a copy."""
+        today_iso = self.today.isoformat()
+        out = [(i, w) for i, w in
+              enumerate(self.settings.get("protected_windows", []))
+              if w.get("date") and w["date"] >= today_iso]
+        out.sort(key=lambda iw: (iw[1]["date"], iw[1].get("start", "")))
+        return out
+
+    def _upcoming_plans_win(self):
+        """Backlog #164: a small read-only(-ish) chronological list of
+        every upcoming one-off plan, with a quick Cancel per row — the
+        forward-looking glance the mixed Recurring Commitments editor
+        can't give, since that one is sorted by insertion order and
+        mixes plans in with permanent commitments."""
+        win = tk.Toplevel(self)
+        win.title("Upcoming plans")
+        win.geometry("440x380")
+        win.rowconfigure(0, weight=1)
+        win.columnconfigure(0, weight=1)
+
+        canvas = tk.Canvas(win, highlightthickness=0)
+        canvas.grid(row=0, column=0, sticky="nsew", padx=(8, 0), pady=8)
+        sb = ttk.Scrollbar(win, orient="vertical", command=canvas.yview)
+        sb.grid(row=0, column=1, sticky="ns", pady=8, padx=(0, 8))
+        canvas.configure(yscrollcommand=sb.set)
+        frame = ttk.Frame(canvas)
+        canvas.create_window((0, 0), window=frame, anchor="nw")
+        frame.bind("<Configure>",
+                  lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        def render():
+            for w in frame.winfo_children():
+                w.destroy()
+            plans = self._upcoming_plans()
+            if not plans:
+                ttk.Label(frame, text='No upcoming plans. Add one via\n'
+                         'File > "Add a plan…" or a PLAN: diary line.',
+                         justify="left").grid(row=0, column=0, sticky="w",
+                                              padx=4, pady=4)
+                return
+            for r, (idx, w) in enumerate(plans):
+                d = dt.date.fromisoformat(w["date"])
+                text = (f"{d:%a %d.%m}  {w.get('start', '')}-"
+                       f"{w.get('end', '')}  {w.get('label', '')}")
+                ttk.Label(frame, text=text).grid(
+                    row=r, column=0, sticky="w", padx=4, pady=3)
+
+                def cancel(idx=idx, label=w.get("label", "")):
+                    windows = self.settings.get("protected_windows", [])
+                    if 0 <= idx < len(windows):
+                        windows.pop(idx)
+                        save_settings(self.settings)
+                    self.status.config(text=f"Cancelled '{label}'.")
+                    render()
+
+                ttk.Button(frame, text="Cancel", command=cancel).grid(
+                    row=r, column=1, padx=(8, 4), pady=3)
+
+        render()
 
     def _set_protected_windows(self):
         """Backlog #50/#121: named recurring windows subtracted from

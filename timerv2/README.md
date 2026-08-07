@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.30 — Upcoming plans list
+
+View > Planning > "Upcoming plans…" — every one-off plan you've added
+(#159/#161/#163), sorted chronologically, each with a quick Cancel
+button. The Recurring Commitments grid mixes plans in with permanent
+commitments like Day job and Sleep, sorted by insertion order — this
+is the actual forward-looking glance instead.
+
 ### v9.29 — PLAN: diary-line quick-capture
 
 Typing is still faster than any dialog. `PLAN: dinner with X 16.08

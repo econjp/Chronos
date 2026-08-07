@@ -497,6 +497,13 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.30** (#164, 2026-08-07, DONE). View > Planning > "Upcoming
+  plans…" — every one-off plan (#159/#161/#163) still ahead, sorted
+  chronologically, each with a quick Cancel. New `_upcoming_plans`:
+  pure filter over `protected_windows` to entries with a one-off
+  `date` on/after today, sorted by (date, start) — the forward-looking
+  glance the mixed, insertion-ordered Recurring Commitments grid can't
+  give. New "upcoming-plans" selftest suite; 47/47 green.
 - **v9.29** (#163, 2026-08-07, DONE). `PLAN: dinner with X 16.08
   1930-2100` typed anywhere in the diary becomes a real one-off
   protected window (#159) — no dialog, same live-capture + 14-day-
@@ -4187,17 +4194,11 @@ polish — the three NOT chosen this round) when continuing this work.
     above. (Connects #161's dialog with the existing task-library
     auto-capture pattern; proposed and built same-round, 2026-08-07.)
 
-164. **"Upcoming plans" — a dedicated chronological list, separate
-    from the mixed Recurring Commitments grid (PLANNING — closes a
-    real visibility gap #161 itself introduces; new idea 2026-08-07).**
-    Once plans start accumulating via #161/#163, they sit mixed
-    together with PERMANENT recurring commitments (Day job, Sleep) in
-    the same editor grid, sorted by insertion order not date — exactly
-    the "hard to see what's coming up across weeks" problem this whole
-    round is about. Fix: a small read-only list view (View menu),
-    filtered to `protected_windows` entries that have a one-off `date`
-    set, sorted chronologically, each with a quick "Cancel this plan"
-    action — the forward-looking glance the mixed editor can't give.
+~~164. **"Upcoming plans" — a dedicated chronological list, separate
+    from the mixed Recurring Commitments grid.**~~ — DONE v9.30. See
+    the v9.30 version-history entry above. (Closes a real visibility
+    gap #161 itself introduces; proposed and built same-round,
+    2026-08-07.)
 
 165. **Helpful hints when a pasted calendar link isn't a real ICS feed
     (PLANNING — the legitimate, non-scraping answer to this round's

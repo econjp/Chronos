@@ -66,6 +66,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_waiting_on_lines", "_cost_of_yes_line", "_status_update_text",
         "_status_update_all", "_focus_signature_grid", "_focus_signature_line",
         "_parse_plan_line", "_auto_capture_plans", "_parse_time_loose",
+        "_upcoming_plans",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -2208,6 +2209,39 @@ def suite_plan_capture():
     assert len(d.settings["protected_windows"]) == 3
 
 
+def suite_upcoming_plans():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 7)
+    d = _mk(D, today=TODAY, settings={"protected_windows": [
+        {"label": "Day job", "start": "09:30", "end": "17:00", "days": "Mon-Fri"},
+        {"label": "Concert", "start": "20:00", "end": "23:00", "days": "",
+         "skip": [], "date": "2026-08-20"},
+        {"label": "Past dinner", "start": "19:00", "end": "21:00", "days": "",
+         "skip": [], "date": "2026-08-01"},          # already past -> excluded
+        {"label": "Gym", "start": "07:00", "end": "08:00", "days": "",
+         "skip": [], "date": "2026-08-10"},
+        {"label": "Today's dentist", "start": "10:00", "end": "11:00",
+         "days": "", "skip": [], "date": "2026-08-07"},   # today -> included
+    ]})
+
+    out = D._upcoming_plans(d)
+    # sorted chronologically; Day job (no date) and the past dinner excluded
+    assert [w["label"] for _i, w in out] == [
+        "Today's dentist", "Gym", "Concert"], out
+    # index points at the real position in the underlying list
+    idx_concert = next(i for i, w in out if w["label"] == "Concert")
+    assert d.settings["protected_windows"][idx_concert]["label"] == "Concert"
+
+    # ---- silence: no one-off dated entries at all ----
+    d2 = _mk(D, today=TODAY, settings={"protected_windows": [
+        {"label": "Day job", "start": "09:30", "end": "17:00", "days": "Mon-Fri"}]})
+    assert D._upcoming_plans(d2) == []
+
+    # ---- silence: nothing configured ----
+    d3 = _mk(D, today=TODAY, settings={})
+    assert D._upcoming_plans(d3) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2250,7 +2284,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("cost-of-yes", suite_cost_of_yes),
           ("status-update", suite_status_update),
           ("focus-signature", suite_focus_signature),
-          ("plan-capture", suite_plan_capture)]
+          ("plan-capture", suite_plan_capture),
+          ("upcoming-plans", suite_upcoming_plans)]
 
 
 def main():
