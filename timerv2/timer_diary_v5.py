@@ -60,6 +60,42 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.23 (#156 — visual polish: window/toolbar overflow fixed,
+diary text size customization, dark mode, 2026-08-07 — the owner's
+own redirect: "theres rn many problems... sometimes too small or too
+big.. fonts etc kinda weird... ALSO darkmode lol for whole software
+could be usable"):
+  - real bug fixed: the main window (780x540) no longer fit its own
+    toolbar — Reset/📅/🗓️+/— buttons were being pushed past the
+    window edge with no visible warning, confirmed via direct widget-
+    tree inspection (every button's right edge vs. actual window
+    width), not just eyeballed. Widened to 1180x650.
+  - compact mode (the small always-on-top floating timer) used to
+    keep the FULL toolbar packed — task dropdown, calendar/auto-plan
+    buttons and all — inside a 330px window, badly overflowing.
+    Compact mode now explicitly hides those extras and only shows
+    what actually fits: clock, Start/Switch/Reset, the toggle itself.
+  - the status header line (today's hours, week total, SIGNAL,
+    per-deadline pace, target %, break budget — a concatenation that
+    only grows as more features append segments) used to hard-clip at
+    the window edge mid-word with no indication anything was cut off.
+    Now wraps, wraplength recomputed on every refresh so it tracks
+    window resizes for free.
+  - Tools > "Diary text size…" — one base size, every tag (raw timer
+    lines, day/meta headers) scales proportionally from it, so
+    resizing actually fixes "too small" instead of just shifting
+    which tag feels off. Previously hardcoded (10pt body, a notably
+    smaller fixed 8pt for raw lines).
+  - View > "Dark mode" — hand-built with stdlib ttk only (no third-
+    party theme package, per the standing stdlib-only rule): switches
+    to ttk's built-in "clam" theme (the only bundled theme that
+    accepts arbitrary colors — native "vista" can't be recolored at
+    all) and recolors the toolbar, diary text, and timeline
+    background. Reverts to native "vista" the instant it's off.
+    Scoped to the main window for this pass — the calendar/heatmap
+    canvas views keep their own hardcoded colors regardless of theme,
+    a real follow-up, not silently left half-dark (logged as #157).
+
 New in v9.22 (#155 — multiple real calendars, not just one, 2026-08-07:
 the owner has more than one real Outlook calendar — a clean work one
 already integrated, plus a much noisier personal one: "many of my
@@ -3031,7 +3067,7 @@ def lock_windows_to_ics(dl_name, windows):
 
 # ---------------- app ----------------
 
-NORMAL_GEO = "780x540"
+NORMAL_GEO = "1180x650"
 COMPACT_GEO = "330x92"
 MIN_LOG_SECS = 30          # intervals shorter than this skip the csv (not the txt)
 
@@ -3067,6 +3103,7 @@ class App(tk.Tk):
         backup_if_due()
         self._build_menu()
         self._build_ui()
+        self._apply_theme()
         self._bind_keys()
         self._load_diary(create=True)
         self._refresh_totals()
@@ -3717,6 +3754,9 @@ class App(tk.Tk):
 
         viewm.add_separator()
         viewm.add_command(label="Toggle compact mode", command=self._toggle_compact)
+        self.dark_var = tk.BooleanVar(value=self.settings.get("dark_mode", False))
+        viewm.add_checkbutton(label="Dark mode", variable=self.dark_var,
+                              command=self._toggle_dark_mode)
         m.add_cascade(label="View", menu=viewm)
 
         toolsm = tk.Menu(m, tearoff=0)
@@ -3735,6 +3775,8 @@ class App(tk.Tk):
         toolsm.add_checkbutton(label="Hide raw timer lines in the diary",
                                variable=self.hide_raw_var,
                                command=self._toggle_raw_lines)
+        toolsm.add_command(label="Diary text size…",
+                           command=self._set_diary_font_size)
         toolsm.add_command(label="Meeting mode (idle off 90 min)",
                            command=self._meeting_mode)
         toolsm.add_command(label="Feature usage…", command=self._usage_win)
@@ -4590,11 +4632,11 @@ class App(tk.Tk):
         self.btn = ttk.Button(self.top, text="Start", width=8, command=self._toggle)
         self.btn.pack(side="right", padx=(0, 4))
 
-        row = ttk.Frame(self.top)
-        row.pack(side="left", fill="x", expand=True, padx=(12, 8))
-        ttk.Label(row, text="Task:").pack(side="left")
+        self.task_row = ttk.Frame(self.top)
+        self.task_row.pack(side="left", fill="x", expand=True, padx=(12, 8))
+        ttk.Label(self.task_row, text="Task:").pack(side="left")
         self.task_var = tk.StringVar()
-        self.task_box = ttk.Combobox(row, textvariable=self.task_var,
+        self.task_box = ttk.Combobox(self.task_row, textvariable=self.task_var,
                                      values=self._task_values())
         self.task_box.pack(side="left", fill="x", expand=True, padx=(6, 0))
 
@@ -4616,30 +4658,121 @@ class App(tk.Tk):
         # packed on demand in _refresh_totals when a deadline is set
         self.diary_lbl = ttk.Label(info, text="")
         self.diary_lbl.pack(side="left")
-        self.diary = tk.Text(self.body, wrap="word", font=("Consolas", 10),
+        self.diary = tk.Text(self.body, wrap="word",
                              undo=True, relief="sunken", borderwidth=1)
         self.diary.pack(fill="both", expand=True, padx=8, pady=(2, 4))
-        # syntax highlighting is purely a VIEW layer — tags style how Tk
-        # renders the text, the underlying file is untouched, byte-
-        # identical either way. raw_event is also elide-able (Tools >
-        # Hide raw timer lines): a real fold, not a color trick, since
-        # those lines are pure machine bookkeeping no human needs to read.
-        self.diary.tag_configure("raw_event", foreground="#b5b5b5",
-                                 font=("Consolas", 8))
-        self.diary.tag_configure("struct", foreground="#7a7a8c")
-        self.diary.tag_configure("day_header", foreground="#1a4a7a",
-                                 font=("Consolas", 11, "bold"))
-        self.diary.tag_configure("meta_header", foreground="#2e6b2e",
-                                 font=("Consolas", 10, "bold"))
-        self.diary.tag_configure("theme_block", foreground="#8a5ba3")
-        self.diary.tag_configure("warn_line", foreground="#c0392b",
-                                 font=("Consolas", 10, "bold"))
-        self.diary.tag_configure("raw_event", elide=self.settings.get(
-            "hide_raw_lines", False))
+        self._apply_diary_fonts()
 
         self.status = ttk.Label(self, text="", anchor="w")
         self.status.pack(fill="x", side="bottom", padx=8, pady=(0, 4))
         self._set_status_hint()
+
+    def _apply_diary_fonts(self):
+        """Backlog #156: visual-polish pass — "fonts etc kinda weird...
+        sometimes too small" (owner's own words). The diary text used a
+        hardcoded base size (10) with raw_event tagged at a fixed 8pt —
+        a big enough jump from everything else around it (day_header
+        11, meta_header/body 10) to read as genuinely inconsistent, not
+        just "smaller." Now every tag size is DERIVED from one base
+        (Tools > "Diary text size…", settings["diary_font_size"],
+        default 10) so the whole ratio between raw-line/body/header
+        text stays proportionally the same at any size — resizing once
+        actually fixes the "too small" complaint instead of just
+        shifting which specific tag feels off. Called at startup and
+        immediately after the size is changed; syntax highlighting
+        stays a pure VIEW layer, the underlying file is untouched
+        either way."""
+        base = self.settings.get("diary_font_size", 10)
+        self.diary.config(font=("Consolas", base))
+        # raw_event is also elide-able (Tools > Hide raw timer lines): a
+        # real fold, not a color trick, since those lines are pure
+        # machine bookkeeping no human needs to read.
+        self.diary.tag_configure("raw_event", foreground="#b5b5b5",
+                                 font=("Consolas", max(6, base - 2)))
+        self.diary.tag_configure("struct", foreground="#7a7a8c")
+        self.diary.tag_configure("day_header", foreground="#1a4a7a",
+                                 font=("Consolas", base + 1, "bold"))
+        self.diary.tag_configure("meta_header", foreground="#2e6b2e",
+                                 font=("Consolas", base, "bold"))
+        self.diary.tag_configure("theme_block", foreground="#8a5ba3")
+        self.diary.tag_configure("warn_line", foreground="#c0392b",
+                                 font=("Consolas", base, "bold"))
+        self.diary.tag_configure("raw_event", elide=self.settings.get(
+            "hide_raw_lines", False))
+
+    def _set_diary_font_size(self):
+        cur = self.settings.get("diary_font_size", 10)
+        v = simpledialog.askinteger(
+            APP_NAME, "Diary text size (base point size — raw timer "
+            "lines and headers scale proportionally with it):",
+            initialvalue=cur, minvalue=7, maxvalue=20, parent=self)
+        if v is None:
+            return
+        self.settings["diary_font_size"] = v
+        save_settings(self.settings)
+        self._apply_diary_fonts()
+        self._load_diary()
+
+    DARK_PALETTE = {"bg": "#1e1e1e", "fg": "#d4d4d4", "field_bg": "#2d2d30",
+                    "select_bg": "#264f78", "text_bg": "#1e1e1e",
+                    "text_fg": "#d4d4d4"}
+
+    def _apply_theme(self):
+        """Backlog #156: dark mode, hand-built with stdlib ttk only —
+        no third-party theme package, per CLAUDE.md's standing stdlib-
+        only rule. "vista" is Windows' own NATIVE renderer and can't be
+        recolored at all; "clam" is ttk's built-in theme that CAN take
+        arbitrary colors, so dark mode means switching to "clam"
+        specifically — a real, visible trade-off (non-native widget
+        chrome while dark mode is on), not a shortcut. Reverts to the
+        native "vista" look the instant dark mode is off, matching
+        CLAUDE.md's "plain Windows/ttk-vista look" default preference.
+        Explicitly scoped to the MAIN window (toolbar, diary text,
+        status bar, timeline background) for this pass — the calendar/
+        heatmap/timeline-segment CANVAS views draw with their own
+        hardcoded hex colors across several separate methods and are
+        NOT recolored here; a real follow-up, not silently left
+        half-done (see backlog)."""
+        dark = self.settings.get("dark_mode", False)
+        style = ttk.Style()
+        if dark:
+            try:
+                style.theme_use("clam")
+            except tk.TclError:
+                pass
+            p = self.DARK_PALETTE
+            style.configure(".", background=p["bg"], foreground=p["fg"])
+            style.configure("TFrame", background=p["bg"])
+            style.configure("TLabel", background=p["bg"], foreground=p["fg"])
+            style.configure("TButton", background=p["field_bg"], foreground=p["fg"])
+            style.map("TButton", background=[("active", p["select_bg"])])
+            style.configure("TEntry", fieldbackground=p["field_bg"],
+                            foreground=p["fg"], insertcolor=p["fg"])
+            style.configure("TCombobox", fieldbackground=p["field_bg"],
+                            foreground=p["fg"], background=p["field_bg"])
+            style.map("TCombobox", fieldbackground=[("readonly", p["field_bg"])])
+            style.configure("TProgressbar", background=p["select_bg"])
+            self.configure(bg=p["bg"])
+            self.diary.config(bg=p["text_bg"], fg=p["text_fg"],
+                              insertbackground=p["text_fg"],
+                              selectbackground=p["select_bg"])
+            self.timeline.config(bg=p["bg"])
+            self.dl_dot.config(bg=p["bg"])
+        else:
+            try:
+                style.theme_use("vista")
+            except tk.TclError:
+                style.theme_use("clam")
+            self.configure(bg="SystemButtonFace")
+            self.diary.config(bg="white", fg="black", insertbackground="black",
+                              selectbackground="SystemHighlight")
+            self.timeline.config(bg="SystemButtonFace")
+            self.dl_dot.config(bg="SystemButtonFace")
+
+    def _toggle_dark_mode(self):
+        self.settings["dark_mode"] = self.dark_var.get()
+        save_settings(self.settings)
+        self._apply_theme()
 
     QUOTES = ["Zero noise. 100% signal.",
               "Every genius in history ran at ~100% signal.",
@@ -4688,8 +4821,18 @@ class App(tk.Tk):
     # ----- compact mode -----
 
     def _toggle_compact(self):
+        """Compact mode is a small always-on-top floating timer — only
+        the clock and Start/Switch/Reset belong in it. Before this fix
+        the full toolbar (task dropdown, calendar/auto-plan buttons)
+        stayed packed and simply overflowed COMPACT_GEO's 330px width
+        with no visible warning; now those extras are explicitly
+        hidden/restored alongside the body, so compact mode only ever
+        shows what actually fits."""
         self.compact = not self.compact
         if self.compact:
+            self.task_row.pack_forget()
+            self.calendar_btn.pack_forget()
+            self.auto_plan_btn.pack_forget()
             self.body.pack_forget()
             self.status.pack_forget()
             self.config(menu="")
@@ -4700,6 +4843,9 @@ class App(tk.Tk):
             self.attributes("-topmost", False)
             self.config(menu=self.menu)
             self.geometry(NORMAL_GEO)
+            self.auto_plan_btn.pack(side="right", padx=(0, 4), before=self.reset_btn)
+            self.calendar_btn.pack(side="right", padx=(0, 4), before=self.auto_plan_btn)
+            self.task_row.pack(side="left", fill="x", expand=True, padx=(12, 8))
             self.body.pack(fill="both", expand=True)
             self.status.pack(fill="x", side="bottom", padx=8, pady=(0, 4))
             self.compact_btn.config(text="—")
@@ -5816,6 +5962,16 @@ class App(tk.Tk):
         budget = self._break_budget_line()
         if budget:
             text += "   |   " + budget
+        # this line concatenates a growing number of independently-added
+        # segments (today's hours, per-deadline pace, target %, break
+        # budget...) with no upper bound — plain-width Label text used to
+        # just get hard-clipped by the window edge once it overflowed,
+        # invisibly, instead of wrapping. Wraplength is recomputed on
+        # every refresh (already called every second) so it tracks
+        # window resizes for free, no separate <Configure> binding needed.
+        win_w = self.winfo_width()
+        if win_w > 1:
+            self.diary_lbl.config(wraplength=max(200, win_w - 40))
         self.diary_lbl.config(text=text)
 
     # ----- day timeline (00-24 bar) -----

@@ -4,6 +4,23 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.23 — visual polish: window fit, text size, dark mode
+
+Fixed a real bug: the main window didn't actually fit its own
+toolbar, and compact mode overflowed even worse. Widened the window
+and fixed compact mode to only show what fits. The status line (today's
+hours, week total, SIGNAL, deadline pace...) now wraps instead of
+getting cut off mid-word as more gets added to it over time.
+
+Tools > "Diary text size…" — pick one base size, the raw timer-line
+text and headers scale with it proportionally, instead of the old
+fixed-8pt-vs-10pt mismatch.
+
+View > "Dark mode" — a real toggle for the toolbar, diary text, and
+status bar. Not yet covering the calendar/heatmap views specifically
+(those still render with their own colors regardless of theme for
+now) — see HANDOFF.md #157 if you want the full picture on that gap.
+
 ### v9.22 — multiple real calendars, not just one
 
 If you have more than one Outlook calendar, subscribe to each one —

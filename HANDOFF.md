@@ -497,6 +497,17 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.23** (#156, 2026-08-07, DONE). Visual polish, owner's own
+  redirect after several rounds of small utility features: real bug
+  fixed — the main window no longer fit its own toolbar (confirmed
+  via direct widget-tree inspection, right edges vs. window width),
+  widened 780x540 -> 1180x650; compact mode now actually hides the
+  extras instead of overflowing a 330px window; the status header
+  line wraps instead of hard-clipping mid-word. Tools > "Diary text
+  size…" — one base size, every tag scales proportionally. View >
+  "Dark mode" — hand-built via ttk's stdlib "clam" theme (no third-
+  party package), scoped to the main window; calendar/heatmap canvas
+  views keep their own colors regardless of theme for now (#157).
 - **v9.22** (#155, 2026-08-07, DONE). Multiple real Outlook calendars,
   not just one — `settings["calendar_sources"]` replaces the single
   `ics_path` (legacy value migrates in automatically, in-memory, same
@@ -4058,6 +4069,47 @@ polish — the three NOT chosen this round) when continuing this work.
     round, 2026-08-07, direct owner request after realizing they have
     more than one real Outlook calendar — verified via a real live
     fetch, not assumed, per this project's own established discipline.)
+
+~~156. **Visual polish: window/toolbar overflow, diary text size,
+    dark mode.**~~ — FIXED v9.23. See the v9.23 version-history entry
+    above. (Proposed and built same-round, 2026-08-07, owner's own
+    redirect: "theres rn many problems... fonts etc kinda weird...
+    ALSO darkmode lol for whole software could be usable.")
+
+157. **Dark mode for the calendar/heatmap/timeline CANVAS views
+    (PLANNING — explicit, known gap left by #156, not silently left
+    half-done; new idea 2026-08-07).** #156 recolors the main window
+    (toolbar, diary text, status bar) but deliberately does NOT touch
+    the several Canvas-drawing methods that use their own hardcoded
+    hex colors — `_draw_calendar_week`/`_draw_calendar_month` (#120,
+    the CAL_EVENT/CAL_WORK/CAL_COMMIT constants, `_cal_shade_color`'s
+    white-to-green blend), the day timeline bar (`TL_WORK`/`TL_BREAK`/
+    `TL_SIGNAL`/`TL_SLEEP`), and any heatmap-style grid. In dark mode
+    right now these views would still render on a light/white canvas
+    background inside an otherwise-dark app — jarring, not actually
+    "whole software" dark mode yet. Fix: a small `_theme_color(key)`
+    lookup (light/dark pairs for canvas backgrounds specifically;
+    the semantic event/commitment/work colors likely don't need to
+    change, just what they sit on top of) threaded through each
+    drawing method's `cv.create_rectangle(..., fill=...)` background
+    calls — more files to touch than #156, but the same pattern,
+    not a new concept.
+
+158. **Quick visualization/filter tools — small, secondary charts
+    that trigger off a click or filter, not a main view (PLANNING —
+    the owner's own words, still unaddressed this round: "mbe some
+    other quick visualisation tools etc.. like not mian things but
+    that could trigger or filter some stuff or open some chart or
+    anythign"; new idea 2026-08-07).** Deliberately vague in the
+    owner's own ask — the concrete want is pattern-recognition support
+    ("human brains quite good at thinking of patterns that way"), not
+    a named feature. Needs a short concrete menu of options before
+    building (e.g.: a small popup histogram of work-hours-by-weekday;
+    a clickable heatmap-style month grid where clicking a day jumps to
+    that day's file; a quick "filter the diary search by tag/keyword"
+    view) rather than guessing at one — same judgment call already
+    made once this session (calendar-focus AskUserQuestion) when an
+    ask was this open-ended.
 
 ## How to verify changes without Windows
 
