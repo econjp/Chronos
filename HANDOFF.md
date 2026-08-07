@@ -3673,6 +3673,67 @@ measuring what's already there.
     v9.13. See the v9.13 version-history entry above
     (`_cal_shade_color`, real `_day_capacity` per cell).
 
+132. **One-off commitment exception — skip a recurring commitment on a
+    specific day (PLANNING — connects #121's commitments with #82's
+    existing off_dates concept; new idea 2026-08-07).** A "Day job"
+    commitment declared Mon-Fri has no honest way to skip a single
+    holiday or sick day without editing (and re-editing back) the
+    whole commitment — `off_dates` already exists for zeroing a
+    WHOLE day's capacity, but nothing lets one specific commitment
+    sit out one specific day while everything else (Sleep, Lunch)
+    still applies normally. Fix: a small per-commitment exception
+    list (`{"label": "Day job", ..., "skip": ["2026-08-15"]}`),
+    checked in `_protected_intervals_named` right alongside the
+    existing weekday filter — same shape, one more condition, no new
+    concept. Surfaced from the calendar itself would be ideal (right-
+    click a day already showing a commitment → "Skip 'Day job' just
+    today") but the data model is the real piece; the UI can start as
+    simple as a text field in the existing editor.
+
+133. **Week-ahead commitment cost, extending #130 to the Monday
+    review (PLANNING — directly extends #130's "today" framing to
+    the week; new idea 2026-08-07).** #130 answers "how much of
+    TODAY is already spoken for"; the existing Monday week-ahead
+    block (`_week_ahead_lines`) never mentions commitments at all,
+    so the week's own real capacity picture stays split across two
+    places (the week-ahead text and a separate mental sum of 7 days
+    of commitments). Fix: one line in the Monday block — "commitments
+    this week: ~37.5h (Day job 37.5h) — X.Xh of real capacity left
+    once TUTA/thesis are fed" — reusing `_protected_hours(d)` summed
+    across the coming week, same primitive #82/#130 already use, no
+    new capacity math.
+
+134. **Recurring locks, not just one-off slots (PLANNING — extends
+    #113/#122's lock-windows with #121's own "recurring" concept;
+    new idea 2026-08-07).** #113/#122 lock ONE specific date/hour at
+    a time — genuinely repeating study routines ("every Tue/Thu
+    18:00-20:00 until the exam") currently need clicking through the
+    same right-click flow once per occurrence. Fix: a "repeat weekly
+    until [date]" option on the lock action — generates N individual
+    windows internally (still real, still checked against real free
+    time each occurrence via `_free_slots`, so a week that's
+    suddenly busy doesn't get a phantom lock) and exports them as one
+    batch to `lock_windows_to_ics`, which already accepts a list.
+    Mostly UI (a date-until picker + a loop), the export/lock
+    mechanics underneath don't need to change at all.
+
+135. **Lock windows for standalone TASKS, not just deadlines
+    (PLANNING — closes the loop between #123's task due-dates and
+    #113's locking, directly serves the "grey admin" ask from the
+    very first calendar request; new idea 2026-08-07).** #113's lock-
+    windows picker (and #122's right-click week-view menu) only lists
+    DEADLINES — a lightweight task (the "grey admin" chores — grocery
+    shopping, laundry — the owner's own original example, or a task
+    with a #123 due-date but no full Deadline behind it) currently
+    has no way to get a locked, exportable calendar slot at all. Fix:
+    widen the lock-target list to include task-library items too
+    (name + optional due date instead of a Deadline's real date
+    range), reusing `lock_windows_to_ics` unchanged — it already just
+    takes a name and a list of windows, nothing Deadline-specific
+    about the export itself. The `_lock_window_candidates` date-range
+    math needs a task's `due` date (or a short default window, e.g.
+    "next 7 days") when there's no real Deadline date to anchor to.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
