@@ -497,6 +497,15 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.19** (#141, 2026-08-07, DONE). Real bug fixed: `off_dates`
+  only ever zeroed `_day_capacity`'s aggregate hours — `_free_slots`
+  (what every lock-window picker/scheduler actually routes through)
+  was blind to it, so an off day could still get offered and locked.
+  Fixed at the source, plus now editable from where the need shows
+  up: a new "Off dates" row right in the Lock-windows picker, and a
+  matching "Mark/Unmark as off" right-click in the calendar's month
+  view (which already shades by real capacity via #131, so marking a
+  day off shows up instantly, no new visual system).
 - **v9.18** (#140, 2026-08-07, DONE). File > "Lock an admin/task
   batch (.ics)…" — checklist of undated non-someday non-blocked
   tasks (oldest first, confirmed real: "pay rent", "buy the blazer",
@@ -3800,24 +3809,12 @@ measuring what's already there.
     pile from the original "grey admin" ask is still real and
     growing — not hypothetical.)
 
-141. **Off-dates reachable from deadline planning, not buried in a
-    disconnected "Week plan" setting (PLANNING — grounded in a REAL,
-    still-open task: "plan tuta exam prep schedule, cuz gonna be
-    weekends where no lockin.." written 2026-08-01, still undated as
-    of 2026-08-07; new idea 2026-08-07, re-checking real task-library
-    content at the owner's own request).** `off_dates` (a whole day
-    zeroed for capacity math) already exists and already feeds
-    `_day_capacity`/`_free_slots`/`_lock_window_candidates` — but it
-    lives only in Tools > "Week plan," is currently completely empty
-    in the real settings, and has zero connection to a specific
-    deadline's own planning flow. The TUTA task above is exactly the
-    moment this gap bites: the owner already KNOWS some upcoming
-    weekends won't be real study time, but there's no way to say so
-    from anywhere near the TUTA deadline itself. Fix: surface off-
-    dates editing directly inside the Lock-windows picker (#113/#135)
-    and/or Deadline countdowns — "Mark an upcoming date as off" right
-    next to the candidates it would otherwise affect, so the
-    knowledge and the tool meet at the point of use.
+~~141. **Off-dates reachable from deadline planning, not buried in a
+    disconnected "Week plan" setting.**~~ — FIXED v9.19. See the
+    v9.19 version-history entry above. (Turned out bigger than
+    planned: `_free_slots` — what the picker actually runs on — was
+    completely blind to `off_dates`, a real correctness bug, not just
+    a UX gap. Fixed alongside the two new entry points.)
 
 142. **A quiet nudge toward #140's admin batch when the undated pile
     goes stale (PLANNING — closes the "built the tool, will anyone

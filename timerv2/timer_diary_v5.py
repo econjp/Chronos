@@ -60,6 +60,28 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.19 (#141 — off-dates finally reach the scheduler, and reach
+it from where the need actually shows up, 2026-08-07: grounded in a
+real, still-open task — "plan tuta exam prep schedule, cuz gonna be
+weekends where no lockin.." written 2026-08-01, still undated):
+  - real bug fixed: `off_dates` (a whole day marked unavailable) only
+    ever zeroed the AGGREGATE hours `_day_capacity` reports — the
+    time-of-day picture `_free_slots` builds (which every lock-window
+    picker, the forecast, and the scheduler itself route through)
+    stayed completely blind to it. A day you'd marked off could still
+    get offered — and locked — as if it were free. Fixed at the
+    source: `_free_slots` checks it first, same as `_day_capacity`
+    already did.
+  - now also editable from where the need actually shows up: the
+    Lock-windows picker (#113/#135) gets its own "Off dates" row —
+    type a date, Save, the candidate list updates immediately — no
+    detour through the disconnected Tools > "Week plan" screen.
+  - the calendar's month view (#120/#131) gets a matching right-click
+    action, "Mark/Unmark {day} as off," right next to #123's existing
+    "Set task due date" entry — and since #131's month shading already
+    colors by real `_day_capacity`, a day marked off instantly shows
+    up as 0-capacity white, no new visual system needed.
+
 New in v9.18 (#140 — a single lockable block for the real "grey admin"
 pile, 2026-08-07: the owner's own original example from the very
 first scheduling ask — "groceries laundry etc that have to schedule
@@ -8415,7 +8437,14 @@ class App(tk.Tk):
         only) already-logged work/break — the foundation piece v8's
         real time-blocked scheduler is built on. Returns [(start_time,
         end_time), ...]; slivers under 15 min are dropped so it reads
-        as usable blocks, not calendar noise."""
+        as usable blocks, not calendar noise. Backlog #141: `off_dates`
+        (a whole day marked unavailable) used to only zero the
+        AGGREGATE hours `_day_capacity` reports — the time-of-day
+        picture here stayed blind to it, so a lock-window picker would
+        happily offer a slot on a day you'd already declared off. Now
+        checked first, same as _day_capacity already does."""
+        if d.isoformat() in self.settings.get("off_dates", []):
+            return []
         win_start, win_end = self._work_window()
         busy = list(self._busy_intervals().get(d.isoformat(), []))
         busy += self._protected_intervals(d)
@@ -9528,17 +9557,21 @@ class App(tk.Tk):
         return dt.date(year, month, day_num)
 
     def _calendar_view_win(self):
-        """Backlog #120/#122/#123/#135: the Outlook-like detailed
-        calendar, week/month toggle. Two right-click actions, split by
-        the granularity each view actually has: in WEEK view, right-
-        click an hour cell to lock it for a deadline OR a task (#122,
-        widened by #135 — reuses #113's lock_windows_to_ics unchanged);
-        in MONTH view, right-click a
-        day cell to set a task's due date (#123 — a lightweight,
-        Deadline-object-free "done by" marker, deliberately not a
-        full scoped Deadline, so quick ad-hoc due dates don't clutter
-        the deadlines list). Everything else here stays read-only,
-        same standing guardrail as every other planning view."""
+        """Backlog #120/#122/#123/#135/#141: the Outlook-like detailed
+        calendar, week/month toggle. Right-click actions, split by the
+        granularity each view actually has: in WEEK view, right-click
+        an hour cell to lock it for a deadline OR a task (#122, widened
+        by #135 — reuses #113's lock_windows_to_ics unchanged); in
+        MONTH view, right-click a day cell to either set a task's due
+        date (#123 — a lightweight, Deadline-object-free "done by"
+        marker, deliberately not a full scoped Deadline, so quick
+        ad-hoc due dates don't clutter the deadlines list) or toggle
+        the day as off (#141 — the same off_dates the Lock-windows
+        picker can now also edit; a toggled-off day's month cell
+        immediately shows 0-capacity shading via #131's existing
+        `_day_capacity`-driven color, no separate visual system
+        needed). Everything else here stays read-only, same standing
+        guardrail as every other planning view."""
         win = tk.Toplevel(self)
         win.title("Calendar")
         top = ttk.Frame(win)
@@ -9602,6 +9635,22 @@ class App(tk.Tk):
             self.status.config(text=status)
             render()
 
+        def toggle_off_date(d):
+            offs = self.settings.get("off_dates", [])
+            iso = d.isoformat()
+            if iso in offs:
+                offs = [o for o in offs if o != iso]
+                self._append_text(f"--- Off date cleared: {d:%d.%m.%Y}")
+                self.status.config(text=f"{d:%d.%m.%Y} is available again")
+            else:
+                offs = offs + [iso]
+                self._append_text(f"--- Marked off: {d:%d.%m.%Y} "
+                                  "(no real capacity that day)")
+                self.status.config(text=f"{d:%d.%m.%Y} marked off")
+            self.settings["off_dates"] = offs
+            save_settings(self.settings)
+            render()
+
         def pick_task_due(d):
             names = [t["name"] for t in self.settings.get("tasks", [])]
             if not names:
@@ -9657,6 +9706,11 @@ class App(tk.Tk):
                 menu = tk.Menu(win, tearoff=0)
                 menu.add_command(label=f"Set task due date to {d:%a %d.%m}…",
                                  command=lambda: pick_task_due(d))
+                is_off = d.isoformat() in self.settings.get("off_dates", [])
+                off_label = (f"Unmark {d:%a %d.%m} as off" if is_off
+                            else f"Mark {d:%a %d.%m} as off (no real capacity)")
+                menu.add_command(label=off_label,
+                                 command=lambda: toggle_off_date(d))
                 menu.tk_popup(event.x_root, event.y_root)
 
         ttk.Radiobutton(top, text="Week", variable=mode_var, value="week",
@@ -12624,10 +12678,16 @@ class App(tk.Tk):
         locking, then export the picked ones as .ics events for
         Outlook/Google Calendar — the owner's own ask, 2026-08-07.
         _lock_window_candidates does the ranking; this window is just
-        pick-and-export."""
+        pick-and-export. Backlog #141: off-dates (a day known to be
+        unavailable — "gonna be weekends where no lockin" was the
+        owner's own real example, about TUTA specifically) used to
+        live only in a disconnected Week-plan setting, nowhere near
+        the moment this picker makes that knowledge actually matter.
+        Now editable right here, one Save away from the candidate list
+        it immediately affects."""
         win = tk.Toplevel(self)
         win.title("Lock study windows")
-        win.geometry("560x420")
+        win.geometry("560x460")
 
         top = ttk.Frame(win)
         top.pack(fill="x", padx=8, pady=8)
@@ -12647,6 +12707,37 @@ class App(tk.Tk):
         combo = ttk.Combobox(top, textvariable=dl_var, state="readonly",
                              values=labels, width=32)
         combo.pack(side="left", padx=(4, 0))
+
+        off_row = ttk.Frame(win)
+        off_row.pack(fill="x", padx=8, pady=(0, 6))
+        ttk.Label(off_row, text="Off dates (know you can't lock these — "
+                                "comma-sep YYYY-MM-DD):").pack(side="left")
+        off_var = tk.StringVar(
+            value=", ".join(self.settings.get("off_dates", [])))
+        off_entry = ttk.Entry(off_row, textvariable=off_var, width=28)
+        off_entry.pack(side="left", padx=(4, 4))
+
+        def save_off():
+            offs = []
+            for s in off_var.get().split(","):
+                s = s.strip()
+                if not s:
+                    continue
+                try:
+                    dt.date.fromisoformat(s)
+                except ValueError:
+                    status.config(text=f"'{s}' isn't YYYY-MM-DD — off dates "
+                                       "not saved.")
+                    return
+                offs.append(s)
+            self.settings["off_dates"] = offs
+            save_settings(self.settings)
+            refresh()
+            status.config(text=f"Saved {len(offs)} off date(s) — candidate "
+                               "list updated.")
+
+        ttk.Button(off_row, text="Save off dates",
+                  command=save_off).pack(side="left")
 
         ttk.Label(win, text="Click a row to pick it, then export.",
                  foreground="#777777").pack(anchor="w", padx=8)

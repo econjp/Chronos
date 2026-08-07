@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.19 — off-dates now actually work, and reach the scheduler
+
+Fixed a real bug: marking a day "off" only ever zeroed the hours
+total — the actual time-slot scheduler behind every lock-window
+picker stayed blind to it, so an off day could still get offered and
+locked. Fixed at the source. Off dates are also now editable right
+where you need them: a new row in the Lock-windows picker, and
+right-click a day in the calendar's month view → "Mark as off."
+
 ### v9.18 — one lockable block for the "grey admin" pile
 
 File > "Lock an admin/task batch (.ics)…" — a checklist of every
