@@ -497,6 +497,18 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.9** (#122, owner's own chosen interaction model, 2026-08-07,
+  DONE). Right-click an hour cell in the calendar's week view → pick
+  a deadline from the context menu → locks that exact hour for it —
+  the interactive half of #113/#120 the owner asked for after seeing
+  the read-only calendar view. `_week_click_to_slot` inverts
+  `_draw_calendar_week`'s own layout math (now shared class
+  constants so the two can't drift apart); locking itself reuses
+  `lock_windows_to_ics` completely unchanged — a new entry point, not
+  new export logic. Asked which interaction model (right-click vs
+  drag-and-drop vs click-then-dialog) before building, rather than
+  guessing — direct payoff from #103's earlier lesson about a wrong
+  guess costing a full redo.
 - **v9.8** (#121, owner's own follow-up, 2026-08-07, DONE: "realistic
   blocks... sleep, eating, work blocks... dont wanna fill my outlook
   with that... shuld ofc affect my DL calcs everythng"). Extended
@@ -3534,26 +3546,18 @@ measuring what's already there.
     (`_parse_weekdays`, the 14h overnight-vs-typo sanity cap, why it
     extends #50 rather than a new parallel mechanism).
 
-122. **Interactive scheduling on the calendar view (PLANNING —
-    owner's own next-step ask, 2026-08-07: "shuld also be able to
-    schedule or add events or tasks there like already... option to
-    set DL or just sort of set the working windows for it").** The
-    natural extension of #120's now-read-only week/month view: click
-    (or otherwise select) an open slot and either (a) attach a task/
-    deadline to it with a "done by" framing, or (b) lock it as a
-    working window for a deadline — #113's own lock-windows concept,
-    but placed directly on the calendar instead of through its
-    separate picker dialog. Real UX design question before building,
-    flagged rather than guessed at (see #103's lesson — a wrong guess
-    on a similar-scale decision cost a full redo): what's the actual
-    interaction model — click an empty cell then a dialog appears;
-    drag a task from the Tasks window onto a slot; right-click menu
-    on a slot? Each has different build complexity and a different
-    feel, and the owner explicitly asked for this to feel like
-    "building with legos... simple efficient, easy" — worth getting
-    the interaction shape right rather than shipping a technically-
-    working but clunky first guess. Not built this round — the
-    owner was asked directly which model fits before starting.
+122. ~~**Interactive scheduling on the calendar view — right-click
+    to lock a slot (mode (b), "working windows").**~~ — FIXED v9.9.
+    See the v9.9 version-history entry above. Mode (a) — attach a
+    task to a "done by" date, creating/updating a lightweight
+    deadline from a right-click rather than locking a specific hour
+    — is DELIBERATELY not part of this fix; tasks currently only
+    link to an EXISTING named Deadline object, and quick-creating one
+    from a slot click raises its own questions (does it clutter the
+    deadlines list with one-off ad-hoc entries? does a task need a
+    lighter-weight standalone due-date field instead?) that weren't
+    part of what got asked/answered this round. Worth a fresh ask if
+    that mode is still wanted.
 
 ## How to verify changes without Windows
 

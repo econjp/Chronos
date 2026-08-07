@@ -4,6 +4,13 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.9 — right-click a calendar slot to lock it
+
+In the calendar's week view (v9.7), right-click any hour cell → pick
+a deadline from the menu → that hour gets locked and exported to
+.ics, same as "Lock study windows for a deadline" (v9.3) but directly
+from the calendar instead of a separate picker.
+
 ### v9.8 — recurring commitments (day job, sleep, admin)
 
 Tools > **"Recurring commitments (lunch, day job, sleep, admin)…"**

@@ -60,6 +60,30 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.9 (#122 — right-click to lock a calendar slot, owner's own
+chosen interaction model, 2026-08-07: "shuld also be able to schedule
+or add events or tasks there... option to set... the working windows
+for it"):
+  - Right-click any hour cell in the calendar's week view (View >
+    Planning > Calendar) → a context menu lists your deadlines →
+    pick one to lock that exact hour for it. Reuses #113's
+    `lock_windows_to_ics` completely unchanged — this is a new entry
+    point into already-tested plumbing, not new export logic.
+  - `_week_click_to_slot` inverts the same layout math
+    `_draw_calendar_week` draws with (now shared class constants,
+    `_CAL_WEEK_HDR_H`/`_CAL_WEEK_PAD_L`/`_CAL_WEEK_COL_W`/
+    `_CAL_WEEK_HOUR_H`), so a click always resolves to the exact cell
+    it visually landed in. Clicks outside the grid (header, time
+    labels, past the last day/hour) are silently ignored — no
+    confusing menu with nothing to act on.
+  - Locking appends the same visible day-file trace #113's own picker
+    already writes — consistent regardless of which entry point was
+    used.
+  - Interaction model (right-click, not drag-and-drop or a click-
+    then-dialog flow) was asked directly rather than guessed, after
+    #103's lesson that a wrong guess on a similar-scale decision cost
+    a full redo.
+
 New in v9.8 (#121 — recurring commitments: day job, sleep, admin,
 owner's own follow-up, 2026-08-07: "this softw doesnt have the...
 realistic blocks... adding like sleep, eating blocks, work work
@@ -8861,6 +8885,11 @@ class App(tk.Tk):
         return text if len(text) <= max_chars else text[:max_chars - 1] + "…"
 
     _CAL_HOUR_START, _CAL_HOUR_END = 7, 23   # displayed range, week view
+    _CAL_WEEK_HDR_H, _CAL_WEEK_PAD_L = 26, 46   # backlog #122: shared with
+    _CAL_WEEK_COL_W, _CAL_WEEK_HOUR_H = 96, 26  # _week_click_to_slot below,
+                                                 # so a right-click inverts
+                                                 # exactly the same layout
+                                                 # _draw_calendar_week uses
 
     def _draw_calendar_week(self, cv, monday):
         """Backlog #120 (owner's own ask, 2026-08-07: "proper monthly
@@ -8874,9 +8903,10 @@ class App(tk.Tk):
         on top — all positioned by real clock time, not just counted."""
         cv.delete("all")
         days = [monday + dt.timedelta(days=i) for i in range(7)]
-        hdr_h, pad_l, col_w = 26, 46, 96
+        hdr_h, pad_l, col_w = (self._CAL_WEEK_HDR_H, self._CAL_WEEK_PAD_L,
+                               self._CAL_WEEK_COL_W)
         hours = self._CAL_HOUR_END - self._CAL_HOUR_START
-        hour_h = 26
+        hour_h = self._CAL_WEEK_HOUR_H
         W = pad_l + 7 * col_w
         H = hdr_h + hours * hour_h
         cv.config(width=W, height=H)
@@ -8937,6 +8967,27 @@ class App(tk.Tk):
                                                        col_w - 6),
                                font=("Segoe UI", 6), fill="white")
         cv.create_line(pad_l, 0, pad_l, H, fill="#cccccc")
+
+    def _week_click_to_slot(self, x, y, monday):
+        """Backlog #122: the inverse of _draw_calendar_week's own
+        layout math — a canvas click (x, y) -> (date, hour_start,
+        hour_end), snapped to the hour cell it landed in. None if the
+        click was outside the grid (the header row, or past the last
+        day column) — right-clicking there does nothing, not a
+        confusing menu with no real target."""
+        if y < self._CAL_WEEK_HDR_H or x < self._CAL_WEEK_PAD_L:
+            return None
+        col = int((x - self._CAL_WEEK_PAD_L) // self._CAL_WEEK_COL_W)
+        if not (0 <= col <= 6):
+            return None
+        hours = self._CAL_HOUR_END - self._CAL_HOUR_START
+        hour_idx = int((y - self._CAL_WEEK_HDR_H) // self._CAL_WEEK_HOUR_H)
+        if not (0 <= hour_idx < hours):
+            return None
+        d = monday + dt.timedelta(days=col)
+        h = self._CAL_HOUR_START + hour_idx
+        h_end, m_end = (h + 1, 0) if h + 1 < 24 else (23, 59)
+        return d, dt.time(h, 0), dt.time(h_end, m_end)
 
     def _draw_calendar_month(self, cv, year, month):
         """Backlog #120: a real month grid — date numbers, up to a
@@ -9000,13 +9051,17 @@ class App(tk.Tk):
                                font=("Segoe UI", 6), fill="#999999")
 
     def _calendar_view_win(self):
-        """Backlog #120: the Outlook-like detailed calendar, week/
+        """Backlog #120/#122: the Outlook-like detailed calendar, week/
         month toggle — complements #118's glance-only free/busy bars
         with real event names and exact time slots, "looking at free
-        slots differently" per the owner's own framing. Foundation
-        for future planning/placement features (#119) without
-        committing to any of them yet — this window is read-only,
-        same standing guardrail as every other planning view here."""
+        slots differently" per the owner's own framing. Right-click an
+        hour cell in week view to lock it for a deadline (#122 —
+        owner's own chosen interaction model, picked over drag-and-
+        drop or a click-then-dialog flow) — reuses #113's
+        lock_windows_to_ics unchanged, just a new entry point into
+        already-tested plumbing. Month view and everything else here
+        stays read-only, same standing guardrail as every other
+        planning view."""
         win = tk.Toplevel(self)
         win.title("Calendar")
         top = ttk.Frame(win)
@@ -9041,6 +9096,37 @@ class App(tk.Tk):
             state["anchor"] = self.today
             render()
 
+        def lock_slot(dl_name, d, s, e):
+            path, n = lock_windows_to_ics(dl_name, [{"date": d, "start": s,
+                                                     "end": e}])
+            self._append_text(f"--- Locked {s:%H:%M}-{e:%H:%M} {d:%d.%m} for "
+                              f"{dl_name} (exported {os.path.basename(path)})")
+            self.status.config(text=f"Locked {s:%H:%M}-{e:%H:%M} on {d:%d.%m} "
+                                    f"for {dl_name} — exported {path}")
+
+        def on_right_click(event):
+            if mode_var.get() != "week":
+                return
+            monday = state["anchor"] - dt.timedelta(
+                days=state["anchor"].weekday())
+            slot = self._week_click_to_slot(event.x, event.y, monday)
+            if not slot:
+                return
+            d, s, e = slot
+            dls = self.deadlines()
+            menu = tk.Menu(win, tearoff=0)
+            if not dls:
+                menu.add_command(
+                    label="No deadlines set — Tools > Deadline countdowns…",
+                    state="disabled")
+            else:
+                for dl in dls:
+                    menu.add_command(
+                        label=f"Lock {s:%H:%M}–{e:%H:%M} {d:%a %d.%m} "
+                             f"for '{dl['name']}'",
+                        command=lambda dl=dl: lock_slot(dl["name"], d, s, e))
+            menu.tk_popup(event.x_root, event.y_root)
+
         ttk.Radiobutton(top, text="Week", variable=mode_var, value="week",
                        command=render).pack(side="left")
         ttk.Radiobutton(top, text="Month", variable=mode_var, value="month",
@@ -9053,9 +9139,11 @@ class App(tk.Tk):
 
         cv = tk.Canvas(win, background="white", highlightthickness=0)
         cv.pack(padx=8, pady=(0, 8))
+        cv.bind("<Button-3>", on_right_click)
         render()
         ttk.Label(win, text="blue = imported calendar events · darker = "
-                 "your tracked work sessions",
+                 "your tracked work sessions · right-click an hour "
+                 "(week view) to lock it for a deadline",
                  foreground="#777777").pack(anchor="w", padx=8, pady=(0, 8))
 
     def _outlook_win(self):
