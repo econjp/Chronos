@@ -4,6 +4,12 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.27 — plan weeks ahead, not just one
+
+"Auto-plan my week" now has a "Plan ahead: N week(s)" control (1-8) —
+pick how far out, hit Regenerate, review the longer list the same way
+as before. Same allocation logic, just no longer capped at 7 days.
+
 ### v9.26 — Add a plan
 
 File > "Add a plan…" — name, date, start, end, done. A dinner, a

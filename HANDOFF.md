@@ -497,6 +497,13 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.27** (#162, 2026-08-07, DONE). "Auto-plan my week" gets a
+  "Plan ahead: N week(s)" control (1-8) + Regenerate —
+  `_auto_plan_week` takes a `weeks` param (default 1, unchanged),
+  same urgency-ranked greedy allocation generalized past 7 days.
+  Direct answer to the owner's repeated "plan everything LIKE WEEKS
+  AHEAD" complaint. Verified: 3-week plans propose real non-
+  overlapping blocks further out, more total hours, same algorithm.
 - **v9.26** (#161, 2026-08-07, DONE). File > "Add a plan…" — one
   small dialog (name/date/start/end), reuses #159's one-off dated
   commitments unchanged. Right-click entry points in the week/month
@@ -4155,18 +4162,8 @@ polish — the three NOT chosen this round) when continuing this work.
     history entry above. (Direct owner request, same round: "plan
     everything LIKE WEEKS AHEAD!!! like even events, social stuff.")
 
-162. **Multi-week auto-plan, not just the next 7 days (PLANNING —
-    directly extends #153, the exact "plan weeks ahead" ask; new idea
-    2026-08-07).** `_auto_plan_week` hardcodes a 7-day window — the
-    owner's own complaint this round was specifically that planning
-    "often endup making plans for next two days etc... WOULD BE GREAT
-    if could kinda plan everything LIKE WEEKS AHEAD." Fix: a `weeks`
-    parameter (default 1, unchanged) on `_auto_plan_week`, and a
-    small control in `_auto_plan_win` ("Plan ahead: [1] week(s)") that
-    re-runs the same greedy allocation over a longer date range — no
-    new algorithm, the urgency-ranked greedy fill already generalizes
-    to any number of days, it's just never been asked to look further
-    than one week.
+~~162. **Multi-week auto-plan, not just the next 7 days.**~~ — FIXED
+    v9.27. See the v9.27 version-history entry above.
 
 163. **Diary-line quick-capture for plans, same pattern as TODO:/
     SOMEDAY: (PLANNING — connects #161's new dialog with the existing

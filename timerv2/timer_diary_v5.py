@@ -60,6 +60,19 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.27 (#162 — multi-week auto-plan, 2026-08-07: the owner's
+repeated complaint — "often endup making plans for next two days
+etc... WOULD BE GREAT if could kinda plan everything LIKE WEEKS
+AHEAD!!!"):
+  - "Auto-plan my week" (#153) gets a "Plan ahead: N week(s)"
+    control (1-8) + Regenerate — the exact same urgency-ranked greedy
+    allocation, just no longer hardcoded to 7 days. `_auto_plan_week`
+    takes a `weeks` parameter (default 1, unchanged behavior).
+  - verified against real data: planning 3 weeks ahead proposes real,
+    non-overlapping blocks further out than 1 week alone finds, using
+    the exact same algorithm — no new logic, it just hadn't been
+    asked to look further before.
+
 New in v9.26 (#161 — "Add a plan," 2026-08-07: planning weeks ahead —
 "events, social stuff" — was a real chokepoint, "sometimes its kinda
 hard to plan!!! and often endup making plans for next two days"):
@@ -9087,9 +9100,9 @@ class App(tk.Tk):
         out.sort(key=lambda w: -w["hours"])
         return out
 
-    def _auto_plan_week(self, start=None, max_block_h=4.0):
-        """Backlog #153: "auto-plan my week" — the owner's own chosen
-        direction after the calendar work drifted into small
+    def _auto_plan_week(self, start=None, max_block_h=4.0, weeks=1):
+        """Backlog #153 + #162: "auto-plan my week" — the owner's own
+        chosen direction after the calendar work drifted into small
         connect-the-dots utility features instead of the actual
         calendar experience ("GO BACK TO THE OG IDEA... FUNCTIONING
         GOOD CALENDAR... helps me to predict, automate etc ANYTHING").
@@ -9099,19 +9112,28 @@ class App(tk.Tk):
         (`needed_per_day`, already net of #136's locked-hour credit
         and #141's off-date fix, since both route through
         `_dl_progress`/`_free_slots`), each gets first pick of the
-        week's free time in priority order up to its own weekly need
-        (#133's own `min(needed_per_day*7, remaining_h)` target), so
-        the most time-pressured deadline never gets crowded out by one
-        that already has slack. A single proposed block is capped at
-        `max_block_h` so one deadline doesn't swallow an entire free
-        afternoon in one sitting — several distinct blocks read better
-        and edit more easily than one giant one. Returns
-        [{"dl_name", "date", "start", "end", "hours"}, ...] — a pure
-        PREVIEW, nothing is locked or written; the picker UI turns
-        accepted rows into real locks only on explicit confirm, same
-        posture as every other suggestion in this app."""
+        `weeks`-worth of free time in priority order up to its own
+        need over that span (`needed_per_day * weeks*7`, capped at
+        `remaining_h` — #133's own single-week version of the same
+        formula, just generalized past one week), so the most time-
+        pressured deadline never gets crowded out by one that already
+        has slack. Backlog #162: `weeks` defaults to 1 (identical
+        behavior to before), but the owner's own repeated complaint
+        this whole arc was planning "often endup... next two days...
+        WOULD BE GREAT if could kinda plan everything LIKE WEEKS
+        AHEAD" — the exact same greedy fill already generalizes to any
+        span, it just needed to be asked for more than 7 days. A
+        single proposed block is capped at `max_block_h` so one
+        deadline doesn't swallow an entire free afternoon in one
+        sitting — several distinct blocks read better and edit more
+        easily than one giant one. Returns [{"dl_name", "date",
+        "start", "end", "hours"}, ...] — a pure PREVIEW, nothing is
+        locked or written; the picker UI turns accepted rows into real
+        locks only on explicit confirm, same posture as every other
+        suggestion in this app."""
         start = start or self.today
-        week = [start + dt.timedelta(days=i) for i in range(7)]
+        span_days = max(1, weeks) * 7
+        week = [start + dt.timedelta(days=i) for i in range(span_days)]
         remaining = {d: list(self._free_slots(d)) for d in week}
 
         needs = []
@@ -9122,7 +9144,7 @@ class App(tk.Tk):
                 continue
             if not p.get("total_h") or p["remaining_h"] <= 0 or p["left"] < 0:
                 continue
-            week_need = min(p["needed_per_day"] * 7, p["remaining_h"])
+            week_need = min(p["needed_per_day"] * span_days, p["remaining_h"])
             if week_need > 0.05:
                 needs.append({"name": dl["name"],
                              "needed_per_day": p["needed_per_day"],
@@ -13516,8 +13538,8 @@ class App(tk.Tk):
         refresh()
 
     def _auto_plan_win(self):
-        """Backlog #153 + #160: "auto-plan my week" — one button
-        proposing a full week's lock plan across every open deadline
+        """Backlog #153 + #160 + #162: "auto-plan my week" — one
+        button proposing a full lock plan across every open deadline
         at once, instead of #113/#135's one-deadline-at-a-time picker.
         The owner's own chosen direction for the calendar work after
         it drifted into small utility features: "GO BACK TO THE OG
@@ -13526,35 +13548,31 @@ class App(tk.Tk):
         allocation; this window is review-and-confirm, nothing gets
         locked until "Lock accepted plan" — same "recommend, never
         auto-apply" posture as every suggestion in this app. #160:
-        the picking itself got faster after the owner's own feedback
-        ("SHOULD BE LIKE THAT WAY THAT CAN MORE EASILY... choose slots
-        tasks etc etc!!! everything shuld be very quickly easy") —
         native multi-select (click, ctrl+click, shift+click a range)
         plus bulk Drop/Keep buttons and a right-click "drop/keep only
-        this deadline" shortcut, instead of one row at a time."""
+        this deadline" shortcut. #162: a "Plan ahead: N week(s)"
+        control — the owner's own repeated complaint was planning
+        "often endup... next two days... WOULD BE GREAT if could kinda
+        plan everything LIKE WEEKS AHEAD" — `_auto_plan_week`'s greedy
+        fill already generalizes to any span, this just exposes it."""
         win = tk.Toplevel(self)
         win.title("Auto-plan my week")
-        win.geometry("680x520")
+        win.geometry("680x560")
 
-        plan = self._auto_plan_week()
+        top = ttk.Frame(win)
+        top.pack(fill="x", padx=8, pady=(8, 0))
+        ttk.Label(top, text="Plan ahead:").pack(side="left")
+        weeks_var = tk.StringVar(value="1")
+        weeks_box = ttk.Spinbox(top, from_=1, to=8, width=3,
+                                textvariable=weeks_var)
+        weeks_box.pack(side="left", padx=(4, 4))
+        ttk.Label(top, text="week(s)").pack(side="left")
+        ttk.Button(top, text="Regenerate",
+                  command=lambda: refresh_plan()).pack(side="left", padx=(12, 0))
+
         summary = ttk.Label(win, foreground="#2e6da4", wraplength=640,
                             justify="left")
         summary.pack(fill="x", padx=8, pady=(8, 4))
-        if not plan:
-            summary.config(text="No open deadlines with real hours needed, "
-                                "or no free time left this week — nothing "
-                                "to propose.")
-            return
-
-        by_dl = {}
-        for p in plan:
-            by_dl[p["dl_name"]] = by_dl.get(p["dl_name"], 0.0) + p["hours"]
-        total_h = sum(by_dl.values())
-        breakdown = ", ".join(f"{n} {h:.1f}h" for n, h in by_dl.items())
-        summary.config(text=f"Proposed: {total_h:.1f}h across "
-                            f"{len(by_dl)} deadline(s) this week — {breakdown}. "
-                            "Click rows (ctrl/shift for more), then Drop/Keep, "
-                            "or right-click a row for per-deadline shortcuts.")
 
         bar1 = ttk.Frame(win)
         bar1.pack(fill="x", padx=8, pady=(0, 4))
@@ -13579,20 +13597,51 @@ class App(tk.Tk):
             tree.column(c, width=w, anchor="w")
         tree.pack(fill="both", expand=True, padx=8, pady=(4, 8))
         tree.tag_configure("dropped", foreground="#aaaaaa")
-        dropped = set()
-        for i, p in enumerate(plan):
-            tree.insert("", "end", iid=str(i), values=(
-                f"{p['date']:%a %d.%m}", f"{p['start']:%H:%M}-{p['end']:%H:%M}",
-                f"{p['hours']:.1f}h", p["dl_name"]))
+
+        state = {"plan": [], "dropped": set()}
+
+        def refresh_plan():
+            try:
+                weeks = max(1, min(8, int(weeks_var.get())))
+            except ValueError:
+                weeks = 1
+            weeks_var.set(str(weeks))
+            plan = self._auto_plan_week(weeks=weeks)
+            state["plan"] = plan
+            state["dropped"] = set()
+            tree.delete(*tree.get_children())
+            span = "week" if weeks == 1 else f"{weeks} weeks"
+            if not plan:
+                summary.config(
+                    text=f"No open deadlines with real hours needed, or no "
+                        f"free time left in the next {span} — nothing to "
+                        "propose.")
+                status.config(text="")
+                return
+            by_dl = {}
+            for p in plan:
+                by_dl[p["dl_name"]] = by_dl.get(p["dl_name"], 0.0) + p["hours"]
+            total_h = sum(by_dl.values())
+            breakdown = ", ".join(f"{n} {h:.1f}h" for n, h in by_dl.items())
+            summary.config(text=f"Proposed: {total_h:.1f}h across "
+                                f"{len(by_dl)} deadline(s) over the next "
+                                f"{span} — {breakdown}. Click rows (ctrl/shift "
+                                "for more), then Drop/Keep, or right-click a "
+                                "row for per-deadline shortcuts.")
+            for i, p in enumerate(plan):
+                tree.insert("", "end", iid=str(i), values=(
+                    f"{p['date']:%a %d.%m}", f"{p['start']:%H:%M}-{p['end']:%H:%M}",
+                    f"{p['hours']:.1f}h", p["dl_name"]))
+            status.config(text="")
 
         def drop_rows(rows):
             for row in rows:
-                dropped.add(row)
+                state["dropped"].add(row)
                 tree.item(row, tags=("dropped",))
 
         def keep_rows(rows):
             for row in rows:
-                dropped.discard(row)
+                state["dropped"].discard(row)
                 tree.item(row, tags=())
 
         def keep_only(rows):
@@ -13606,9 +13655,9 @@ class App(tk.Tk):
                 return
             if row not in tree.selection():
                 tree.selection_set(row)
-            name = plan[int(row)]["dl_name"]
+            name = state["plan"][int(row)]["dl_name"]
             same_dl = [r for r in tree.get_children()
-                      if plan[int(r)]["dl_name"] == name]
+                      if state["plan"][int(r)]["dl_name"] == name]
             menu = tk.Menu(win, tearoff=0)
             menu.add_command(label=f"Drop all '{name}' blocks",
                              command=lambda: drop_rows(same_dl))
@@ -13622,7 +13671,9 @@ class App(tk.Tk):
         status.pack(fill="x", padx=8, pady=(0, 4))
 
         def lock_plan():
-            accepted = [p for i, p in enumerate(plan) if str(i) not in dropped]
+            plan = state["plan"]
+            accepted = [p for i, p in enumerate(plan)
+                       if str(i) not in state["dropped"]]
             if not accepted:
                 status.config(text="Nothing picked — every row was dropped.")
                 return
@@ -13637,14 +13688,16 @@ class App(tk.Tk):
                 paths.append(os.path.basename(path))
             total = sum(p["hours"] for p in accepted)
             names = ", ".join(f"{n} ({len(w)})" for n, w in grouped.items())
-            self._append_text(f"--- Auto-planned week locked: {total:.1f}h "
-                              f"across {names} (exported {', '.join(paths)})")
+            self._append_text(f"--- Auto-planned {weeks_var.get()} week(s) "
+                              f"locked: {total:.1f}h across {names} "
+                              f"(exported {', '.join(paths)})")
             status.config(text=f"Locked {len(accepted)} window(s), "
                          f"{total:.1f}h total — import the exported .ics "
                          "file(s) into Outlook/Google Calendar.")
 
         ttk.Button(win, text="Lock accepted plan",
                   command=lock_plan).pack(anchor="e", padx=8, pady=(0, 8))
+        refresh_plan()
 
     def _admin_batch_win(self):
         """Backlog #140: the real "grey admin" pile — pay rent, buy a
