@@ -67,7 +67,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_status_update_all", "_focus_signature_grid", "_focus_signature_line",
         "_parse_plan_line", "_auto_capture_plans", "_parse_time_loose",
         "_upcoming_plans", "_ics_hint_for_url", "_free_evenings_from_rows",
-        "_social_density_line",
+        "_social_density_line", "_repeating_plan_suggestion",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -2317,6 +2317,50 @@ def suite_social_density():
     assert D._social_density_line(d, 10.0, bad_plans) is None
 
 
+def suite_repeating_plan():
+    D, ns = fresh()
+    d = _mk(D, settings={"protected_windows": [
+        {"label": "Dinner", "start": "19:00", "end": "21:00", "days": "",
+         "skip": [], "date": "2026-07-15"},
+        {"label": "Dinner", "start": "19:15", "end": "21:00", "days": "",
+         "skip": [], "date": "2026-07-22"},
+        {"label": "dinner", "start": "18:50", "end": "20:45", "days": "",
+         "skip": [], "date": "2026-07-29"},          # case-insensitive match
+        {"label": "Gym", "start": "07:00", "end": "08:00", "days": "",
+         "skip": [], "date": "2026-07-16"},           # unrelated, only 1x
+    ]})
+    rep = D._repeating_plan_suggestion(d)
+    assert rep is not None
+    assert rep["label"] == "Dinner" and rep["count"] == 3, rep
+    assert rep["weekday"] == dt.date(2026, 7, 15).weekday(), rep
+    assert rep["avg_start"] == "19:02", rep     # round((1140+1155+1130)/3)=1142
+    assert rep["end"] == "20:45", rep           # most recent occurrence's end
+    assert sorted(rep["dates"]) == [
+        "2026-07-15", "2026-07-22", "2026-07-29"], rep
+
+    # ---- silence: fewer than 3 occurrences ----
+    d2 = _mk(D, settings={"protected_windows": [
+        {"label": "Dinner", "start": "19:00", "end": "21:00", "days": "",
+         "skip": [], "date": "2026-07-15"},
+        {"label": "Dinner", "start": "19:00", "end": "21:00", "days": "",
+         "skip": [], "date": "2026-07-22"}]})
+    assert D._repeating_plan_suggestion(d2) is None
+
+    # ---- silence: times too spread out to be "same-ish" ----
+    d3 = _mk(D, settings={"protected_windows": [
+        {"label": "Dinner", "start": "12:00", "end": "13:00", "days": "",
+         "skip": [], "date": "2026-07-15"},
+        {"label": "Dinner", "start": "19:00", "end": "21:00", "days": "",
+         "skip": [], "date": "2026-07-22"},
+        {"label": "Dinner", "start": "09:00", "end": "10:00", "days": "",
+         "skip": [], "date": "2026-07-29"}]})
+    assert D._repeating_plan_suggestion(d3) is None
+
+    # ---- silence: no protected_windows at all ----
+    d4 = _mk(D, settings={})
+    assert D._repeating_plan_suggestion(d4) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2363,7 +2407,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("upcoming-plans", suite_upcoming_plans),
           ("ics-hints", suite_ics_hints),
           ("free-evenings", suite_free_evenings),
-          ("social-density", suite_social_density)]
+          ("social-density", suite_social_density),
+          ("repeating-plan", suite_repeating_plan)]
 
 
 def main():

@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.34 — Detect a repeating plan, offer recurring
+
+Add "Dinner" as a one-off plan on the same weekday three weeks running
+and the Recurring Commitments editor now offers to convert it: "your
+last 3 Wednesdays all had a 'Dinner' entry around 19:00 — make it
+recurring instead of re-adding it each week?" Pre-filled, never
+auto-saved — edit or clear before saving, same suggestion-only spirit
+as the sleep-block suggestion.
+
 ### v9.33 — Social-plan density warning
 
 The reverse of the overbooked-deadline check: WEEK AHEAD now also

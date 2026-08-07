@@ -60,6 +60,28 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.34 (#169 — detect a repeating one-off plan, offer to make
+it recurring, 2026-08-07: connects #126's "learn from real data"
+pattern with #159/#161's one-off entries):
+  - if "Dinner" gets added as a one-off plan on the same weekday three
+    weeks running (same-ish time, within 45 min), that's not really
+    one-off anymore — it's a pattern being re-typed by hand each week.
+    The Recurring Commitments editor now offers to convert it, same
+    "pre-fill a blank row, never auto-saved" pattern #126's own sleep
+    suggestion already established: "your last 3 Wednesdays all had a
+    'Dinner' entry around 19:00 — make it recurring instead of
+    re-adding it each week? (edit or clear before saving)."
+  - new `_repeating_plan_suggestion`: pure scan of one-off dated
+    protected_windows entries grouped by (normalized label, weekday);
+    n>=3 occurrences with times within a 45-min tolerance — same n>=3
+    honesty-gate sample size #126 uses — returns the strongest match
+    or None. Skips the offer entirely if a matching real recurring
+    entry already covers that weekday. Never auto-converts anything —
+    suggest, don't apply, same posture as #126 itself.
+  - new "repeating-plan" selftest suite (3 matching Wednesdays across
+    case variants, silence below n=3, silence when times are too
+    spread out, silence with nothing configured); 51/51 green.
+
 New in v9.33 (#168 — social-plan density warning, 2026-08-07: the
 reverse direction of #133's overbooked-deadline check):
   - #133 already warns when a week is overbooked on DEADLINE hours;
@@ -4809,6 +4831,53 @@ class App(tk.Tk):
 
         render()
 
+    _WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday",
+                      "Friday", "Saturday", "Sunday")
+
+    def _repeating_plan_suggestion(self, n_min=3, tolerance_min=45):
+        """Backlog #169: if 'Dinner' gets added as a one-off plan
+        (#159/#161/#163) on a Wednesday three weeks running, that's
+        not really one-off anymore — it's a pattern being re-typed by
+        hand each week. Groups one-off dated protected_windows entries
+        by (normalized label, weekday); a group with >=n_min entries
+        whose start times all land within tolerance_min minutes of
+        each other is a real pattern, not coincidence — same n>=3
+        honesty-gate sample size #126's own sleep-block suggestion
+        uses. Returns a dict describing the strongest match (most
+        occurrences) — {"label", "weekday", "count", "avg_start",
+        "end", "dates"} — or None. Never converts anything itself; the
+        caller decides whether/how to offer it, same 'suggest, don't
+        auto-apply' posture as #126."""
+        groups = {}
+        for w in self.settings.get("protected_windows", []):
+            date_s, label, start = w.get("date"), (w.get("label") or "").strip(), w.get("start")
+            if not (date_s and label and start):
+                continue
+            try:
+                d = dt.date.fromisoformat(date_s)
+                sh, sm = map(int, start.split(":"))
+            except (ValueError, TypeError):
+                continue
+            key = (label.lower(), d.weekday())
+            groups.setdefault(key, []).append(
+                (d, sh * 60 + sm, label, w.get("end", "")))
+        best = None
+        for (_label_lc, wd), items in groups.items():
+            if len(items) < n_min:
+                continue
+            mins = [m for _d, m, _lbl, _e in items]
+            if max(mins) - min(mins) > tolerance_min:
+                continue
+            n = len(items)
+            if best is None or n > best["count"]:
+                items.sort()
+                avg_min = round(sum(mins) / n)
+                best = {"label": items[0][2], "weekday": wd, "count": n,
+                        "avg_start": f"{avg_min // 60:02d}:{avg_min % 60:02d}",
+                        "end": items[-1][3],
+                        "dates": [d.isoformat() for d, _m, _l, _e in items]}
+        return best
+
     def _set_protected_windows(self):
         """Backlog #50/#121: named recurring windows subtracted from
         _free_slots (and, via #82's _protected_hours, the aggregate
@@ -4872,6 +4941,38 @@ class App(tk.Tk):
                             win, text=f"↑ suggested from {n} real tracked "
                                      "nights — edit or clear before saving",
                             foreground="#2e6da4", font=("Segoe UI", 8)
+                        ).grid(row=i + 1, column=6, sticky="w", padx=(4, 8))
+                        break
+
+        # backlog #169: suggest converting a repeating one-off plan
+        # (#159/#161/#163) into a real recurring commitment — same
+        # "pre-fill a blank row, never auto-saved" pattern as #126's
+        # sleep suggestion above
+        rep = self._repeating_plan_suggestion()
+        if rep:
+            wd_abbr = self._WEEKDAY_NAMES[rep["weekday"]][:3]
+            already = any(
+                not w.get("date")
+                and (w.get("label") or "").strip().lower() == rep["label"].lower()
+                and rep["weekday"] in (self._parse_weekdays(w.get("days", "")) or set(range(7)))
+                for w in cur)
+            if not already:
+                for i in range(len(cur), n_rows):
+                    if not grid[i][0].get().strip():
+                        grid[i][0].insert(0, rep["label"])
+                        grid[i][1].insert(0, rep["avg_start"])
+                        if rep["end"]:
+                            grid[i][2].insert(0, rep["end"])
+                        grid[i][3].insert(0, wd_abbr)
+                        ttk.Label(
+                            win, text=f"↑ your last {rep['count']} "
+                                     f"{self._WEEKDAY_NAMES[rep['weekday']]}s "
+                                     f"all had a '{rep['label']}' entry around "
+                                     f"{rep['avg_start']} — make it recurring "
+                                     "instead of re-adding it each week? "
+                                     "(edit or clear before saving)",
+                            foreground="#2e6da4", font=("Segoe UI", 8),
+                            wraplength=380, justify="left"
                         ).grid(row=i + 1, column=6, sticky="w", padx=(4, 8))
                         break
 

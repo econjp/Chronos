@@ -497,6 +497,14 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.34** (#169, 2026-08-07, DONE). A one-off plan repeating on the
+  same weekday 3+ weeks running (same-ish time, within 45min) now gets
+  offered as a real recurring commitment when the editor opens — same
+  pre-fill-a-blank-row, never-auto-saved pattern as #126's sleep
+  suggestion. New `_repeating_plan_suggestion`: pure scan grouped by
+  (label, weekday), n>=3 honesty gate, returns the strongest match or
+  None; skipped if a matching recurring entry already exists. New
+  "repeating-plan" selftest suite; 51/51 green.
 - **v9.33** (#168, 2026-08-07, DONE). The reverse of #133's
   overbooked-deadline check: WEEK AHEAD now names it when one-off
   plans (#159/#161) eat >40% of the week's free capacity — "this week
@@ -4242,18 +4250,10 @@ polish — the three NOT chosen this round) when continuing this work.
     the two chokepoints the owner named this round — work planning AND
     social planning — into one honesty check; new idea 2026-08-07.)
 
-169. **Detect a one-off plan repeating and offer to make it a real
-    recurring commitment (PLANNING — connects #126's "learn from real
-    data" pattern with #159/#161's one-off entries; new idea
-    2026-08-07).** If "Dinner" gets added via #161 on a Wednesday
-    three weeks running, that's not really one-off anymore — it's a
-    pattern the owner is re-typing by hand each week. Fix: a quiet
-    check (n>=3 same-weekday, same-ish time, matching label, same
-    honesty-gate sample size this app already uses elsewhere) that
-    offers, next time the Recurring Commitments editor opens — "your
-    last 3 Wednesdays all had a 'Dinner' entry around 19:00 — make it
-    recurring instead of re-adding it each week?" — never auto-
-    converted, same "suggest, don't auto-apply" posture as #126 itself.
+~~169. **Detect a one-off plan repeating and offer to make it a real
+    recurring commitment.**~~ — DONE v9.34. See the v9.34 version-
+    history entry above. (Connects #126's "learn from real data"
+    pattern with #159/#161's one-off entries; new idea 2026-08-07.)
 
 ## How to verify changes without Windows
 
