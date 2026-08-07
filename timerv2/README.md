@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.28 — the week-ahead line names your real plans
+
+The Monday WEEK AHEAD block now names your actual plans for the week
+("plans this week: Concert Tue 20:00-23:00, Dinner Thu 19:00-21:00"),
+not just deadline hours. Fixes a real gap: a small plan used to be
+able to get crowded out of the existing "already committed" line by
+bigger recurring commitments like Day job or Sleep, and never
+actually get named.
+
 ### v9.27 — plan weeks ahead, not just one
 
 "Auto-plan my week" now has a "Plan ahead: N week(s)" control (1-8) —

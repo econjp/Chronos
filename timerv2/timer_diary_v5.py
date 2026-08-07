@@ -60,6 +60,26 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.28 (#166 — the week-ahead line names your real plans, not
+just deadline hours, 2026-08-07):
+  - the Monday "WEEK AHEAD" block gets a new line — "plans this week:
+    Concert Tue 11.08 20:00-23:00, Dinner Thu 13.08 19:00-21:00" —
+    every one-off plan (#159/#161) falling in the coming 7 days,
+    sorted chronologically.
+  - fixes a real visibility gap: one-off plans already fed into the
+    existing "(of which X.Xh already committed: ...)" line, but only
+    as part of a top-3-BY-HOURS ranking — a small 2h dinner could get
+    silently crowded out by Day job (37.5h) or Sleep (59.5h) and
+    never actually get named. Verified this exact scenario: with
+    Day job/Sleep/a 3h concert/a 2h dinner all declared the same
+    week, the old line named only the big three; the new line
+    correctly lists both the concert AND the dinner regardless of
+    size.
+  - a week with real plans now shows this block even if nothing else
+    about the week is stressful (no overbooked/tight/behind deadline)
+    — seeing what's already on the calendar has its own value here,
+    independent of deadline pressure.
+
 New in v9.27 (#162 — multi-week auto-plan, 2026-08-07: the owner's
 repeated complaint — "often endup making plans for next two days
 etc... WOULD BE GREAT if could kinda plan everything LIKE WEEKS
@@ -6706,8 +6726,12 @@ class App(tk.Tk):
         the next 7 days as a whole. Composes primitives that already
         exist (_day_capacity, _dl_progress, _dl_projection) — no new
         data. Silent unless something's actually worth flagging: no
-        deadlines with real remaining scope, or a normal week with slack
-        and nothing already behind, produce nothing at all."""
+        deadlines with real remaining scope, a normal week with slack
+        and nothing already behind, AND no real plans (#166) this
+        week, produce nothing at all — but a week with real one-off
+        plans (#159/#161) is worth showing on its own, even a calm one,
+        since seeing what's already on the calendar is exactly the
+        "plan weeks ahead" ask this whole feature exists for."""
         week = [self.today + dt.timedelta(days=i) for i in range(7)]
         caps = [(d, self._day_capacity(d)) for d in week]
         total_cap = sum(c for _d, c in caps)
@@ -6731,7 +6755,28 @@ class App(tk.Tk):
         overbooked = total_need > total_cap
         real_tight_day = tightest_h < avg_cap * 0.4 and tightest_h < 3.0
         behind_names = [n for n, _need, b in needs if b]
-        if not (overbooked or real_tight_day or behind_names):
+        # backlog #166: one-off plans (#159/#161 -- a dinner, an event)
+        # deserve their own visible line, not just folded into the
+        # generic "already committed" hours breakdown below, where a
+        # small plan (1.5h) would get crowded out of a top-3-by-hours
+        # ranking by big recurring blocks like Day job or Sleep. Named
+        # concretely with dates, same "show it, don't just total it"
+        # instinct as #148's still-open locked-windows idea. A week
+        # with real plans is worth showing even if nothing else about
+        # it is stressful -- planning ahead has its own value here.
+        plans = []
+        for w in self.settings.get("protected_windows", []):
+            if not w.get("date"):
+                continue
+            try:
+                wd = dt.date.fromisoformat(w["date"])
+            except ValueError:
+                continue
+            if week[0] <= wd <= week[-1]:
+                plans.append((wd, w.get("label", ""), w.get("start", ""),
+                             w.get("end", "")))
+        plans.sort()
+        if not (overbooked or real_tight_day or behind_names or plans):
             return []                # a normal week — nothing to flag
         lines = ["", f"WEEK AHEAD: {total_cap:.1f}h free across the next "
                     f"7 days · deadlines need ~{total_need:.1f}h"]
@@ -6759,6 +6804,12 @@ class App(tk.Tk):
         if behind_names:
             lines.append(f"  already behind at real pace: "
                          + ", ".join(behind_names))
+        if plans:
+            plan_txt = ", ".join(
+                f"{label} {d:%a %d.%m}" + (f" {s}-{e}" if s and e else "")
+                for d, label, s, e in plans if label)
+            if plan_txt:
+                lines.append(f"  plans this week: {plan_txt}")
         return lines
 
     @staticmethod

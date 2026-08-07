@@ -497,6 +497,13 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.28** (#166, 2026-08-07, DONE). Week-ahead block names real
+  plans (#159/#161) concretely — "plans this week: Concert Tue
+  11.08 20:00-23:00, Dinner Thu 13.08 19:00-21:00" — fixing a real
+  gap where a small plan could get crowded out of the existing
+  top-3-by-hours "already committed" line by big recurring
+  commitments (Day job, Sleep). Verified with exactly that scenario.
+  A week with real plans now shows even if nothing else is stressful.
 - **v9.27** (#162, 2026-08-07, DONE). "Auto-plan my week" gets a
   "Plan ahead: N week(s)" control (1-8) + Regenerate —
   `_auto_plan_week` takes a `weeks` param (default 1, unchanged),
@@ -4204,16 +4211,9 @@ polish — the three NOT chosen this round) when continuing this work.
     have an .ics under Group settings > Export" style hints) — a
     small, honest assist, not scraping the page itself.
 
-166. **Week-ahead block also lists #161's one-off plans, not just
-    locked deadline windows (PLANNING — one glance covering BOTH the
-    work side and the social side the owner named as separate
-    chokepoints; new idea 2026-08-07).** #133's week-ahead line names
-    locked STUDY windows (#136/#148's still-open concrete-list idea);
-    #161's one-off plans (dinners, events) live in the same
-    `protected_windows` data but never surface there. Fix: one more
-    line — "plans this week: Dinner Wed 19:30, HGW Thu 08:30-17:00" —
-    a plain iteration over the week's `protected_windows` entries that
-    carry a one-off `date`, same primitive #133 already walks.
+~~166. **Week-ahead block also lists #161's one-off plans, not just
+    locked deadline windows.**~~ — FIXED v9.28. See the v9.28
+    version-history entry above.
 
 167. **"Free evenings" finder — a filtered multi-week glance of
     genuinely open evening blocks (PLANNING — direct aid for "rn often
