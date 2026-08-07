@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.17 — locked windows actually count toward a deadline's math
+
+Locking a window for a deadline (File > "Lock study windows…" or
+right-click an hour in the week calendar) now actually reduces what
+that deadline thinks it still needs — "20h needed, 9h locked, 11h
+still needs a home." Every number that already leans on this
+(capacity, week-ahead, SIGNAL, cost-of-yes, due-date feasibility)
+gets more honest automatically. And a slot you've already locked for
+one deadline can't be double-booked for another, or offered again by
+the picker.
+
 ### v9.16 — skip a recurring commitment on one specific day
 
 Tools > "Recurring commitments…" now has a 5th column, "Skip dates" —

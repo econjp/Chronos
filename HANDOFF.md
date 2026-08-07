@@ -497,6 +497,15 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.17** (#136, 2026-08-07, DONE). Locking a window for a deadline
+  now writes it to that deadline itself, not just a fire-and-forget
+  .ics — `_dl_progress`'s `remaining_h`/`needed_per_day` are net of
+  hours already locked from today onward, so capacity_lines/week-
+  ahead/SIGNAL/cost-of-yes/feasibility all get more honest the moment
+  something's locked, no per-caller wiring. `_free_slots` also treats
+  every deadline's locked windows as busy, so a claimed slot can't be
+  double-booked for another deadline or re-offered by the picker.
+  `lock_windows_to_ics` itself untouched.
 - **v9.16** (#132, 2026-08-07, DONE). Recurring commitments get a
   5th column, "Skip dates" (comma-separated YYYY-MM-DD) — one
   holiday off the Day job without editing the whole commitment away
@@ -3724,23 +3733,9 @@ measuring what's already there.
 ~~135. **Lock windows for standalone TASKS, not just deadlines.**~~
     — FIXED v9.15. See the v9.15 version-history entry above.
 
-136. **Locked windows actually count toward a deadline's real
-    progress math (PLANNING — the literal "these shuld ofc affect my
-    DL calcs everythng" ask from the owner's very first scheduling
-    message, still not true; new idea 2026-08-07).** Every scheduling
-    feature built so far (#113/#122/#135 locking, #124 feasibility,
-    #133 week-ahead) treats "hours needed" as if nothing is scheduled
-    yet — locking 3 windows totaling 9h for Thesis doesn't reduce
-    what `_dl_progress`/`_dl_projection`/`_lock_window_candidates`
-    think is still needed, because locked windows are fire-and-export
-    only, never written back to `settings.json`. Fix: keep a light
-    `locked_windows` list per deadline (date/start/end, written the
-    moment `lock_windows_to_ics` runs, not a new UI) and have
-    `_dl_progress` credit committed-but-not-yet-worked hours
-    separately from `done_h` — "20h needed, 9h locked, 11h still
-    needs a home" — so the numbers this app already leans on the most
-    finally know what's already spoken for, not just what's already
-    logged.
+~~136. **Locked windows actually count toward a deadline's real
+    progress math.**~~ — FIXED v9.17. See the v9.17 version-history
+    entry above.
 
 137. **Auto-detect a real day off from the subscribed calendar, offer
     it as a #132 skip (PLANNING — connects #114's real Outlook feed

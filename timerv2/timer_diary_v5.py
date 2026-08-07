@@ -60,6 +60,33 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.17 (#136 — locked windows finally count toward a deadline's
+real progress math, 2026-08-07: the literal "these shuld ofc affect
+my DL calcs everythng" ask, still not true until now):
+  - locking a window for a deadline (File > "Lock study windows…" or
+    right-click an hour in the week calendar) is now written to that
+    deadline itself, not just exported as a fire-and-forget .ics.
+  - `_dl_progress`'s `remaining_h`/`needed_per_day` are now net of
+    hours already locked from today onward — "20h needed, 9h locked,
+    11h still needs a home" — so every feature already leaning on
+    those two numbers (capacity_lines, week-ahead #133, SIGNAL,
+    cost-of-yes, #124's feasibility check) automatically gets more
+    honest the moment you lock real time, no extra wiring per caller.
+  - only FUTURE locked windows count: one that already passed either
+    got worked (already counted in done_h from real sessions) or
+    didn't, in which case it's not a real commitment anymore — the
+    date cutoff alone gets this right, no separate "missed lock"
+    tracking needed.
+  - `_free_slots` also now treats every deadline's locked windows as
+    busy time, so a slot already claimed for Thesis can't also get
+    offered (and double-booked) for TUTA, or re-offered for Thesis
+    itself the next time the picker opens.
+  - locking a TASK (#135) is a deliberate no-op here — tasks carry no
+    total_h/progress to credit against, so nothing changes for them.
+  - `lock_windows_to_ics` itself is completely unchanged, still just
+    a name + a list of windows — the crediting is a second effect at
+    the call site, not a change to the tested export plumbing.
+
 New in v9.16 (#132 — a one-off exception for a recurring commitment,
 2026-08-07):
   - Tools > "Recurring commitments…" gets a 5th column: "Skip dates."
@@ -4162,7 +4189,15 @@ class App(tk.Tk):
         same (keywords, window) -> minutes primitive SIGNAL and Goals
         use — when a task keyword is set; an empty match keeps its old
         meaning of 'count all work', which matched_minutes deliberately
-        doesn't support (there, no keywords means no signal)."""
+        doesn't support (there, no keywords means no signal). Backlog
+        #136: `remaining_h`/`needed_per_day` are net of `locked_h` —
+        hours already locked (#113/#122/#135) for THIS deadline from
+        today onward — so every caller that already leans on these two
+        numbers (capacity_lines, week-ahead, SIGNAL, cost-of-yes,
+        feasibility) automatically knows what's already scheduled on
+        the calendar, not just what's already been worked. `behind`
+        stays based on `done_h` alone — locked-but-not-worked time
+        hasn't happened yet, so it can't count as being on pace."""
         due = dt.date.fromisoformat(dl["date"])
         start = None
         if dl.get("start"):
@@ -4184,9 +4219,11 @@ class App(tk.Tk):
         total = float(dl.get("total_h") or 0)
         if total:
             rem = max(0.0, total - done / 60)
+            locked = self._locked_hours(dl)
             out["total_h"] = total
-            out["remaining_h"] = rem
-            out["needed_per_day"] = rem / max(out["left"], 1)
+            out["locked_h"] = locked
+            out["remaining_h"] = max(0.0, rem - locked)
+            out["needed_per_day"] = out["remaining_h"] / max(out["left"], 1)
             if start:
                 span = max((due - start).days, 1)
                 elapsed = min(max((dt.date.today() - start).days + 1, 0), span)
@@ -8284,16 +8321,85 @@ class App(tk.Tk):
         the labeled version."""
         return [(s, e) for s, e, _label in self._protected_intervals_named(d)]
 
+    def _locked_intervals(self, d):
+        """Backlog #136: (start, end) tuples already locked for ANY
+        deadline on date `d` — one more "busy" source merged into
+        _free_slots, same pattern as calendar/protected-window busy
+        time, so a slot already committed to Thesis doesn't also get
+        offered (and possibly double-locked) for TUTA, or re-offered
+        for Thesis itself the next time the picker opens."""
+        out = []
+        for dl in self.deadlines():
+            for w in dl.get("locked_windows", []):
+                if w.get("date") != d.isoformat():
+                    continue
+                try:
+                    sh, sm = map(int, w["start"].split(":"))
+                    eh, em = map(int, w["end"].split(":"))
+                    out.append((dt.time(sh, sm), dt.time(eh, em)))
+                except (KeyError, ValueError):
+                    continue
+        return out
+
+    def _locked_hours(self, dl, from_date=None):
+        """Backlog #136: hours already locked for this ONE deadline
+        from `from_date` (default today) onward — committed-but-not-
+        yet-worked time. Only future windows count: a locked slot that
+        already passed either got worked (and so already shows up in
+        done_h from real logged sessions) or didn't, in which case
+        it's simply no longer a real commitment and should stop being
+        credited — no separate "missed lock" bookkeeping needed, the
+        date cutoff alone gives the right answer."""
+        from_date = from_date or self.today
+        total = 0.0
+        for w in dl.get("locked_windows", []):
+            try:
+                d = dt.date.fromisoformat(w["date"])
+            except (KeyError, ValueError):
+                continue
+            if d < from_date:
+                continue
+            try:
+                sh, sm = map(int, w["start"].split(":"))
+                eh, em = map(int, w["end"].split(":"))
+            except (KeyError, ValueError):
+                continue
+            total += _time_span_hours(dt.time(sh, sm), dt.time(eh, em))
+        return total
+
+    def _add_locked_windows(self, dl_name, windows):
+        """Backlog #136: persist locked windows against their deadline
+        the moment lock_windows_to_ics exports the .ics for it — same
+        event, two effects, no separate flow, and lock_windows_to_ics
+        itself stays completely unchanged (still just a name + a list
+        of windows). A name that isn't a real deadline (a task, #135)
+        is a no-op here — tasks deliberately carry no total_h/progress
+        to credit against. De-duplicated by (date, start, end) so re-
+        locking an already-locked slot doesn't double-count its hours."""
+        dl = next((d for d in self.deadlines() if d["name"] == dl_name), None)
+        if dl is None:
+            return
+        existing = dl.setdefault("locked_windows", [])
+        seen = {(w["date"], w["start"], w["end"]) for w in existing}
+        for w in windows:
+            key = (w["date"].isoformat(), f"{w['start']:%H:%M}", f"{w['end']:%H:%M}")
+            if key not in seen:
+                existing.append({"date": key[0], "start": key[1], "end": key[2]})
+                seen.add(key)
+        save_settings(self.settings)
+
     def _free_slots(self, d):
         """Free time-of-day ranges on date d: the work window minus
         calendar busy time minus protected windows (lunch, wind-down —
-        backlog #50) minus (today only) already-logged work/break —
-        the foundation piece v8's real time-blocked scheduler is built
-        on. Returns [(start_time, end_time), ...]; slivers under 15 min
-        are dropped so it reads as usable blocks, not calendar noise."""
+        backlog #50) minus already-locked windows (#136) minus (today
+        only) already-logged work/break — the foundation piece v8's
+        real time-blocked scheduler is built on. Returns [(start_time,
+        end_time), ...]; slivers under 15 min are dropped so it reads
+        as usable blocks, not calendar noise."""
         win_start, win_end = self._work_window()
         busy = list(self._busy_intervals().get(d.isoformat(), []))
         busy += self._protected_intervals(d)
+        busy += self._locked_intervals(d)
         if d == dt.date.today():
             busy += self._logged_intervals(d)
         slots = _free_from_busy(win_start, win_end, busy)
@@ -9432,8 +9538,9 @@ class App(tk.Tk):
             render()
 
         def lock_slot(dl_name, d, s, e):
-            path, n = lock_windows_to_ics(dl_name, [{"date": d, "start": s,
-                                                     "end": e}])
+            windows = [{"date": d, "start": s, "end": e}]
+            path, n = lock_windows_to_ics(dl_name, windows)
+            self._add_locked_windows(dl_name, windows)
             self._append_text(f"--- Locked {s:%H:%M}-{e:%H:%M} {d:%d.%m} for "
                               f"{dl_name} (exported {os.path.basename(path)})")
             self.status.config(text=f"Locked {s:%H:%M}-{e:%H:%M} on {d:%d.%m} "
@@ -12558,6 +12665,7 @@ class App(tk.Tk):
                             key=lambda w: w["date"])
             name = label_for[dl_var.get()]["name"]
             path, n = lock_windows_to_ics(name, windows)
+            self._add_locked_windows(name, windows)
             when = ", ".join(f"{w['date']:%d.%m} {w['start']:%H:%M}-"
                             f"{w['end']:%H:%M}" for w in windows)
             self._append_text(f"--- Locked {n} window(s) for {name}: "
