@@ -70,7 +70,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_social_density_line", "_repeating_plan_suggestion",
         "_locked_this_week_line", "_weekly_target_lines",
         "_looks_like_pto", "_pto_skip_suggestion", "_lock_picker_progress_line",
-        "_locked_windows_for_week",
+        "_locked_windows_for_week", "_due_date_feasibility_line",
+        "_deadline_editor_feasibility_lines",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -2530,6 +2531,35 @@ def suite_locked_windows_for_week():
     assert D._locked_windows_for_week(d2, monday) == []
 
 
+def suite_deadline_feasibility():
+    D, ns = fresh()
+    d = _mk(D, _avail_hours=lambda until: 5.0)
+
+    line = D._due_date_feasibility_line(d, dt.date(2026, 8, 20), 8.0)
+    assert line == ("⚠ only 5.0h of real free time before 20.08 — 8h "
+                    "estimated, 3.0h short"), line
+    assert D._due_date_feasibility_line(d, dt.date(2026, 8, 20), 3.0) is None
+
+    d2 = _mk(D, _avail_hours=lambda until: 1.0)
+    assert (D._due_date_feasibility_line(d2, dt.date(2026, 8, 20))
+           == "⚠ only 1.0h of real free time before 20.08")
+    d3 = _mk(D, _avail_hours=lambda until: 10.0)
+    assert D._due_date_feasibility_line(d3, dt.date(2026, 8, 20)) is None
+
+    d4 = _mk(D, _avail_hours=lambda until: 5.0)
+    rows = [{"name": "Thesis", "date": "2026-08-20", "total_h": 3.0},
+           {"name": "TUTA", "date": "2026-08-20", "total_h": 8.0},
+           {"name": "Bad", "date": "not-a-date", "total_h": 5.0}]
+    lines = D._deadline_editor_feasibility_lines(d4, rows)
+    assert lines == ["row 2: TUTA — ⚠ only 5.0h of real free time before "
+                     "20.08 — 8h estimated, 3.0h short"], lines
+
+    # ---- silence: nothing tight ----
+    d5 = _mk(D, _avail_hours=lambda until: 100.0)
+    assert D._deadline_editor_feasibility_lines(
+        d5, [{"name": "Thesis", "date": "2026-08-20", "total_h": 3.0}]) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2582,7 +2612,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("weekly-target", suite_weekly_target),
           ("pto-skip", suite_pto_skip),
           ("lock-picker-progress", suite_lock_picker_progress),
-          ("locked-windows-for-week", suite_locked_windows_for_week)]
+          ("locked-windows-for-week", suite_locked_windows_for_week),
+          ("deadline-feasibility", suite_deadline_feasibility)]
 
 
 def main():

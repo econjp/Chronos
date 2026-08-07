@@ -4,6 +4,13 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.42 — Deadline editor feasibility check
+
+Saving deadlines now checks each row's due date against real free
+time, same check task due-dates already got: "Saved, but tight: row 2:
+TUTA — ⚠ only 5.0h of real free time before 20.08 — 8h estimated,
+3.0h short." Never blocks the save, purely informational.
+
 ### v9.41 — Locked windows visible in the calendar
 
 Locking a window used to be invisible inside the app itself until you

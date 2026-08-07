@@ -497,6 +497,14 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.42** (#128, 2026-08-07, DONE). Saving deadlines now runs
+  #124's feasibility check per row against its own `total_h`; a
+  non-blocking status line names any that come back tight: "Saved,
+  but tight: row 2: TUTA — ⚠ only 5.0h of real free time before
+  20.08 — 8h estimated, 3.0h short." New
+  `_deadline_editor_feasibility_lines`: pure function reusing
+  `_due_date_feasibility_line` unchanged. New "deadline-feasibility"
+  selftest suite; 57/57 green.
 - **v9.41** (#138, 2026-08-07, DONE). Locked windows now draw as
   their own dashed-outline layer in the week calendar view — "locked:
   TUTA" — visible inside the app the instant a window's locked,
@@ -3877,19 +3885,9 @@ measuring what's already there.
     on the same footing — flagged, not scoped, since a wrong ranking
     heuristic here would quietly make SIGNAL worse, not better.
 
-128. **#124's feasibility check, extended to the deadline editor
-    (TRUST — #124's own deferred half; new idea 2026-08-07).** #124
-    shipped covering only task due-dates (#123's two entry points);
-    the deadline editor's own save() — a bigger, multi-row grid, not
-    a single date field — was explicitly left out. Now that
-    `_due_date_feasibility_line` exists and is tested, wiring it into
-    the deadline editor is mostly plumbing: for each row whose date
-    changed, run the same check against its `total_h` (deadlines
-    already have a real scope, unlike a bare task due-date) and
-    surface any warnings before/alongside the save, same non-blocking
-    shape. The main new question is UX, not math — one deadline's
-    editor saves N rows at once, so warnings need to read as "row 3:
-    ⚠ ..." not one bare line.
+~~128. **#124's feasibility check, extended to the deadline editor.**~~
+    — DONE v9.42. See the v9.42 version-history entry above. (TRUST —
+    #124's own deferred half; new idea 2026-08-07.)
 
 129. **One-click "update to actual" on #125's drift insight (USABILITY
     — closes the loop from noticing to fixing; new idea 2026-08-07).**

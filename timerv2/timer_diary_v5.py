@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.42 (#128 — due-date feasibility check extended to the
+deadline editor, 2026-08-07):
+  - #124's feasibility check (`_due_date_feasibility_line`) covered
+    only task due-dates (#123's two entry points) — the deadline
+    editor's own multi-row grid was explicitly left out. Saving
+    deadlines now runs the same check per row against its own
+    `total_h`, and if any come back tight, a non-blocking status line
+    names exactly which: "Saved, but tight: row 2: TUTA — ⚠ only
+    5.0h of real free time before 20.08 — 8h estimated, 3.0h short."
+    The save always goes through regardless — purely informational,
+    same non-blocking shape #124 itself established.
+  - new `_deadline_editor_feasibility_lines`: pure function over the
+    same row-shaped dicts `save()` already builds, reusing
+    `_due_date_feasibility_line` unchanged — no new capacity math.
+  - new "deadline-feasibility" selftest suite (tight vs fine with an
+    estimate, near-zero-availability without one, multi-row 1-indexed
+    output with a malformed row safely skipped, full silence); 57/57
+    green.
+
 New in v9.41 (#138 — locked windows get their own visible layer in
 the calendar view, 2026-08-07):
   - a locked window (#113/#122/#135/#136) used to be invisible inside
@@ -4249,6 +4268,29 @@ class App(tk.Tk):
                     "target_h": self.settings.get("dl_target_h", 0)}]
         return dls or []
 
+    def _deadline_editor_feasibility_lines(self, rows):
+        """Backlog #128: #124's feasibility check
+        (`_due_date_feasibility_line`) covered only task due-dates
+        (#123's two entry points); the deadline editor's own save() —
+        a bigger, multi-row grid, not a single date field — was
+        explicitly left out. `rows` is the same shape save() already
+        builds ({"name", "date", "total_h"} dicts, in display order);
+        runs the same feasibility check per row against its own
+        `total_h`. Returns ["row 2: Thesis — ⚠ ...", ...] for rows
+        that come back tight, empty when everything looks fine. Never
+        blocks the save — purely informational, same non-blocking
+        shape #124 itself established."""
+        lines = []
+        for i, r in enumerate(rows, 1):
+            try:
+                due = dt.date.fromisoformat(r["date"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            warn = self._due_date_feasibility_line(due, r.get("total_h") or None)
+            if warn:
+                lines.append(f"row {i}: {r.get('name', '')} — {warn}")
+        return lines
+
     def _set_deadline(self):
         win = tk.Toplevel(self)
         win.title("Deadline countdowns")
@@ -4304,6 +4346,7 @@ class App(tk.Tk):
                             "target_h": target, "match": vals["match"],
                             "goal": vals["goal"] or None,
                             "milestones": vals["milestones"]})
+            feas = self._deadline_editor_feasibility_lines(out)
             out = _deadline_revisions_after_save(
                 cur, out, dt.date.today().isoformat())
             self.settings["deadlines"] = out
@@ -4311,6 +4354,8 @@ class App(tk.Tk):
             save_settings(self.settings)
             self._refresh_totals()
             win.destroy()
+            if feas:
+                self.status.config(text="Saved, but tight: " + "; ".join(feas))
 
         preview_lbl = ttk.Label(win, text="", foreground="#2e6da4",
                                 wraplength=760, justify="left")
