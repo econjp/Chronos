@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.18 — one lockable block for the "grey admin" pile
+
+File > "Lock an admin/task batch (.ics)…" — a checklist of every
+undated task sitting in your library (pay rent, buy a blazer, email
+follow-ups — whatever's piled up), pick which ones belong in this
+round's batch, pick one open slot in the next 14 days, export as ONE
+calendar event that names what's actually in it. No more locking each
+grey-admin task one at a time.
+
 ### v9.17 — locked windows actually count toward a deadline's math
 
 Locking a window for a deadline (File > "Lock study windows…" or

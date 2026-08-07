@@ -60,6 +60,24 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.18 (#140 — a single lockable block for the real "grey admin"
+pile, 2026-08-07: the owner's own original example from the very
+first scheduling ask — "groceries laundry etc that have to schedule
+and DO! but kinda dont want to" — confirmed still real: pay rent, buy
+a blazer, email follow-ups, ferry tickets, all sitting undated):
+  - File > "Lock an admin/task batch (.ics)…" — a checklist of every
+    undated, non-someday, non-blocked task (oldest first), pick which
+    ones belong in this round's batch, pick one open slot in the next
+    14 days, export as ONE calendar event whose name lists what's
+    actually in it ("Admin batch: pay rent, buy the blazer, email
+    washington"), instead of locking each task one at a time via #135.
+  - reuses `_lock_window_candidates`/`lock_windows_to_ics` completely
+    unchanged — a batch is just another name with a date to search up
+    to, `min_hours` lowered to 0.5h since admin doesn't need a full
+    2h+ block the way study time does.
+  - `_undated_admin_tasks` is the one new primitive: normal-priority,
+    undated, unblocked tasks, sorted oldest-added-first.
+
 New in v9.17 (#136 — locked windows finally count toward a deadline's
 real progress math, 2026-08-07: the literal "these shuld ofc affect
 my DL calcs everythng" ask, still not true until now):
@@ -3492,6 +3510,8 @@ class App(tk.Tk):
         filem.add_command(label="Export week to calendar (.ics)", command=self._export_ics)
         filem.add_command(label="Lock study windows (.ics)…",
                           command=self._lock_windows_win)
+        filem.add_command(label="Lock an admin/task batch (.ics)…",
+                          command=self._admin_batch_win)
         filem.add_command(label="Export life record (JSON)…",
                           command=self._export_life_json)
         filem.add_command(label="Import life record (JSON)…",
@@ -8439,6 +8459,22 @@ class App(tk.Tk):
         parts = ", ".join(f"{label} {h:.1f}h" for label, h in by_label.items())
         return f"commitments today: {parts} ({total:.1f}h of 24h already spoken for)"
 
+    def _undated_admin_tasks(self):
+        """Backlog #140: the real "grey admin" pile — normal-priority
+        tasks with no due date, not someday, not blocked, not signal —
+        the owner's own original example from the very first
+        scheduling ask ("groceries laundry etc that have to schedule
+        and DO! but kinda dont want to"), confirmed still real and
+        growing (pay rent, buy a blazer, email follow-ups, ferry
+        tickets — all sitting undated in the real task library).
+        Oldest-first by `added`, the app's own natural "this has been
+        sitting here longest" signal — no new staleness concept."""
+        out = [t for t in self.settings.get("tasks", [])
+              if t.get("priority", "normal") == "normal"
+              and not t.get("due") and not t.get("blocked_by")]
+        out.sort(key=lambda t: t.get("added") or "")
+        return out
+
     def _lock_targets(self):
         """Backlog #135: widens #113/#122's lock-window pickers to also
         reach task-library items, not just Deadlines — closes the loop
@@ -12676,6 +12712,120 @@ class App(tk.Tk):
         ttk.Button(win, text="Export selected to .ics",
                   command=export).pack(anchor="e", padx=8, pady=(0, 8))
         refresh()
+
+    def _admin_batch_win(self):
+        """Backlog #140: the real "grey admin" pile — pay rent, buy a
+        blazer, email follow-ups, ferry tickets — gets ONE lockable
+        calendar block instead of needing #135's per-task picker once
+        each. Owner's own words from the very first scheduling ask:
+        "so much of SO CALLED grey admin... have to schedule and DO!
+        but kinda dont want to." Pick which undated tasks belong in
+        this round's batch, pick an open slot in the next 14 days
+        (admin doesn't carry real deadline urgency, so a plain rolling
+        window is enough), export as one .ics event whose name lists
+        what's actually in it. Reuses `_lock_window_candidates` and
+        `lock_windows_to_ics` completely unchanged — a batch is just
+        another name with a date to search up to."""
+        win = tk.Toplevel(self)
+        win.title("Lock an admin/task batch")
+        win.geometry("560x480")
+
+        tasks = self._undated_admin_tasks()
+        ttk.Label(win, text="Pick which undated tasks to batch into one "
+                            "slot (click a row):",
+                 foreground="#777777").pack(anchor="w", padx=8, pady=(8, 0))
+        if not tasks:
+            ttk.Label(win, text="No undated admin-style tasks right now — "
+                                "the task library is caught up.",
+                     foreground="#2e8b2e").pack(anchor="w", padx=8, pady=8)
+            return
+
+        task_tree = ttk.Treeview(win, columns=("task",), show="headings",
+                                 height=8)
+        task_tree.heading("task", text=f"Undated tasks ({len(tasks)})")
+        task_tree.column("task", width=520, anchor="w")
+        task_tree.pack(fill="x", padx=8, pady=(2, 6))
+        task_tree.tag_configure("picked", background="#d7ecd7")
+        for i, t in enumerate(tasks):
+            task_tree.insert("", "end", iid=str(i), values=(t["name"],))
+
+        task_picked = set()
+
+        def toggle_task(event):
+            row = task_tree.identify_row(event.y)
+            if not row:
+                return
+            if row in task_picked:
+                task_picked.discard(row)
+                task_tree.item(row, tags=())
+            else:
+                task_picked.add(row)
+                task_tree.item(row, tags=("picked",))
+            refresh_status()
+        task_tree.bind("<Button-1>", toggle_task)
+
+        ttk.Label(win, text="Then pick an open slot in the next 14 days:",
+                 foreground="#777777").pack(anchor="w", padx=8, pady=(4, 0))
+        slot_tree = ttk.Treeview(win, columns=("date", "window", "hours"),
+                                 show="headings", height=8)
+        for c, label, w in (("date", "Date", 100), ("window", "Window", 140),
+                            ("hours", "Hours", 70)):
+            slot_tree.heading(c, text=label)
+            slot_tree.column(c, width=w, anchor="w")
+        slot_tree.pack(fill="both", expand=True, padx=8, pady=(2, 6))
+        slot_tree.tag_configure("picked", background="#d7ecd7")
+
+        slot_picked, cand = set(), {"list": []}
+        far = {"date": (self.today + dt.timedelta(days=14)).isoformat()}
+        cand["list"] = self._lock_window_candidates(far, min_hours=0.5)
+        for i, w in enumerate(cand["list"]):
+            slot_tree.insert("", "end", iid=str(i), values=(
+                f"{w['date']:%a %d.%m}", f"{w['start']:%H:%M}-{w['end']:%H:%M}",
+                f"{w['hours']:.1f}h"))
+
+        def toggle_slot(event):
+            row = slot_tree.identify_row(event.y)
+            if not row:
+                return
+            if row in slot_picked:
+                slot_picked.discard(row)
+                slot_tree.item(row, tags=())
+            else:
+                slot_picked.add(row)
+                slot_tree.item(row, tags=("picked",))
+            refresh_status()
+        slot_tree.bind("<Button-1>", toggle_slot)
+
+        status = ttk.Label(win, foreground="#2e6da4", wraplength=520,
+                           justify="left")
+        status.pack(fill="x", padx=8, pady=(0, 4))
+
+        def refresh_status():
+            status.config(text=f"{len(task_picked)} task(s), "
+                               f"{len(slot_picked)} slot(s) picked.")
+
+        def export():
+            if not task_picked or not slot_picked:
+                status.config(text="Pick at least one task AND one slot first.")
+                return
+            names = [tasks[int(i)]["name"] for i in sorted(task_picked, key=int)]
+            shown = ", ".join(names[:3]) + (f" (+{len(names) - 3} more)"
+                                            if len(names) > 3 else "")
+            batch_name = f"Admin batch: {shown}"
+            windows = sorted((cand["list"][int(i)] for i in slot_picked),
+                            key=lambda w: w["date"])
+            path, n = lock_windows_to_ics(batch_name, windows)
+            when = ", ".join(f"{w['date']:%d.%m} {w['start']:%H:%M}-"
+                            f"{w['end']:%H:%M}" for w in windows)
+            self._append_text(f"--- Locked admin batch ({len(names)} tasks: "
+                              f"{shown}) for {when} "
+                              f"(exported {os.path.basename(path)})")
+            status.config(text=f"Exported {n} window(s) to {path} — "
+                         "import that file into Outlook/Google Calendar.")
+
+        ttk.Button(win, text="Export batch to .ics",
+                  command=export).pack(anchor="e", padx=8, pady=(0, 8))
+        refresh_status()
 
     # ----- misc -----
 

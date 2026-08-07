@@ -497,6 +497,13 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.18** (#140, 2026-08-07, DONE). File > "Lock an admin/task
+  batch (.ics)…" — checklist of undated non-someday non-blocked
+  tasks (oldest first, confirmed real: "pay rent", "buy the blazer",
+  "email washington" all sitting undated in the actual task library),
+  pick which ones + one open 14-day-window slot, export as ONE .ics
+  event naming what's in it. `_lock_window_candidates`/
+  `lock_windows_to_ics` unchanged, `min_hours` dropped to 0.5h.
 - **v9.17** (#136, 2026-08-07, DONE). Locking a window for a deadline
   now writes it to that deadline itself, not just a fire-and-forget
   .ics — `_dl_progress`'s `remaining_h`/`needed_per_day` are net of
@@ -3785,6 +3792,13 @@ measuring what's already there.
     it's assembly, not new computation. Lower priority than #136-138
     since it's presentation over new capability — build those three
     first, this becomes almost free afterward.
+
+~~140. **A single lockable block for the real "grey admin" pile.**~~
+    — FIXED v9.18. See the v9.18 version-history entry above.
+    (Proposed and built same-round, 2026-08-07, after re-checking the
+    owner's actual task library at their request and confirming the
+    pile from the original "grey admin" ask is still real and
+    growing — not hypothetical.)
 
 ## How to verify changes without Windows
 
