@@ -497,6 +497,22 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.3** (#113, owner's own top-priority ask, 2026-08-07, DONE).
+  File > "Lock study windows for a deadline (.ics)…": `_lock_window_
+  candidates` walks today through a deadline's due date, ranks each
+  day by its single biggest contiguous free block (`_free_slots` —
+  already prices in imported calendar busy time + protected windows),
+  keeps 2h+ blocks. Pick which to lock, `lock_windows_to_ics` exports
+  them as real calendar events (same flat-.ics shape as the existing
+  week-export) for Outlook/Google Calendar import. Exporting appends
+  a visible day-file trace from day one — #112's principle applied to
+  a brand-new feature rather than retrofitted. Ranking deliberately
+  kept simple (biggest block wins, no peak-hour weighting) after
+  direct feedback that the .ics mechanics aren't the hard part and
+  the picker shouldn't be over-engineered. Tested: ranking order,
+  threshold filtering, malformed/past-due deadlines degrade to no
+  candidates not a crash, and — the actual point — a real imported
+  .ics busy block correctly shrinks/removes that day's candidacy.
 - **v9.2** (two small high-priority fixes, 2026-07-29, DONE). #109:
   `_carry_signal`'s fallback now seeds from the single most-urgent
   scoped deadline (`_focus_items`' own ranking) instead of blending
@@ -3317,31 +3333,16 @@ measuring what's already there.
     at any day file shows not just what you DID but what you
     RECONFIGURED. Small, mechanical, one line per editor's save().
 
-113. **Concrete buffer-window recommendation for high-stakes deadlines
-    (PLANNING — owner's own ask, 2026-08-07: "calendar and this
-    software should talk to each other better... so it can assess
-    whether something is realistically possible and, for something
-    like an exam, reserve enough evenings or weekends — REALISTICALLY
-    schedule time with enough buffer").** Real pain behind this: a
-    high-stakes exam declared with real busy weeks already known
-    (a travel-heavy work week, a weekend commitment) but nothing in
-    the app translates "X hours needed" into "THESE specific dates are
-    your real windows — lock them now." Today's capacity math
-    (`_capacity_lines`, `_cost_of_yes_line`) already answers "is there
-    enough total slack" in the abstract; this asks for the concrete
-    next step: given the already-known busy stretches (.ics import,
-    v8's capacity feature; declared WORKBLOCK/protected windows), name
-    the SPECIFIC upcoming weekends/evenings with enough open capacity
-    to matter, ranked, so "lock 15-16.8 and 23-25.8" replaces "you
-    need ~20h before the 26th." Reuses `_free_slots`/`_day_capacity`
-    over the date range between today and the deadline — no new data
-    source, the "assess if something is possible" half already exists
-    in `_avail_hours`; the new part is turning a total into a dated
-    list of the best specific windows and (maybe) a one-click way to
-    turn the top ones into protected windows or a WORKBLOCK-style lock.
-    Needs a real design pass on what "enough capacity to matter"
-    means (a whole free weekend vs a fragmented evening aren't equally
-    useful) before building — flagged, not scoped yet.
+113. ~~**Concrete buffer-window recommendation for high-stakes
+    deadlines.**~~ — FIXED v9.3, as "lock study windows" + .ics
+    export. Went with the simplest honest ranking (biggest single
+    contiguous free block per day, `_free_slots`) rather than the
+    peak-hour-weighted version originally sketched here — direct
+    owner feedback mid-build: the picker logic isn't the hard part,
+    don't over-engineer it. Export-to-.ics (not protected-windows or
+    WORKBLOCK) turned out to be the right mechanism since the owner
+    wants these in their REAL calendar (Outlook/Google), not just
+    inside this app.
 
 ## How to verify changes without Windows
 

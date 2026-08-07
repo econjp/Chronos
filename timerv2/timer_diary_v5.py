@@ -60,6 +60,30 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.3 (#113 — lock study windows for a deadline, owner's own
+top-priority ask, 2026-08-07: "calendar and this software should talk
+to each other better... realistically schedule time with enough
+buffer"):
+  - File > "Lock study windows for a deadline (.ics)…": turns a
+    deadline's abstract "X hours needed" into concrete real dates
+    worth locking. `_lock_window_candidates` walks every day between
+    today and the deadline's due date, takes each day's single
+    biggest contiguous free block (`_free_slots` — the same primitive
+    the scheduler already uses, so imported calendar busy time and
+    protected windows are already priced in), keeps days with 2h+ in
+    one sitting, ranked biggest-block-first.
+  - Pick the windows worth locking, then export them as real calendar
+    events (`lock_windows_to_ics`) — a flat .ics file (same shape as
+    the existing week-export) to import into Outlook/Google Calendar
+    by hand. No live calendar API, stdlib only, same as every other
+    .ics feature in this app.
+  - Exporting appends a visible trace to today's diary file (which
+    windows, for which deadline) — the sacred rule applied to a brand
+    new feature from day one, not bolted on after the fact.
+  - Deliberately simple ranking (biggest block wins, no peak-hour
+    weighting) per direct owner feedback: the .ics mechanics aren't
+    the hard part, don't over-engineer the picker.
+
 New in v9.2 (two small high-priority fixes):
   - #109: SIGNAL's fallback (when nothing carried forward) now seeds
     from the single MOST URGENT scoped deadline's own keywords
@@ -2348,6 +2372,30 @@ def week_to_ics(monday):
     return path, n
 
 
+def lock_windows_to_ics(dl_name, windows):
+    """Backlog #113: the export half — chosen study/work blocks for a
+    deadline written as real calendar events, same flat-file shape as
+    week_to_ics (stdlib-only, one .ics the owner imports into Outlook/
+    Google Calendar by hand). `windows` is
+    [{"date": date, "start": time, "end": time}, ...]."""
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", f"PRODID:-//{APP_NAME}//EN"]
+    for i, w in enumerate(windows):
+        start = dt.datetime.combine(w["date"], w["start"])
+        end = dt.datetime.combine(w["date"], w["end"])
+        lines += ["BEGIN:VEVENT",
+                  f"UID:timerdiary-lock-{w['date'].isoformat()}-{i}@local",
+                  f"DTSTART:{start:%Y%m%dT%H%M%S}",
+                  f"DTEND:{end:%Y%m%dT%H%M%S}",
+                  f"SUMMARY:Locked: {dl_name}",
+                  "END:VEVENT"]
+    lines.append("END:VCALENDAR")
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", dl_name)
+    path = os.path.join(data_dir(), f"TimerDiary_lock_{safe}.ics")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return path, len(windows)
+
+
 # ---------------- app ----------------
 
 NORMAL_GEO = "780x540"
@@ -2938,6 +2986,8 @@ class App(tk.Tk):
         filem.add_command(label="Browse for a day file (file picker)…",
                           command=self._open_day_file)
         filem.add_command(label="Export week to calendar (.ics)", command=self._export_ics)
+        filem.add_command(label="Lock study windows for a deadline (.ics)…",
+                          command=self._lock_windows_win)
         filem.add_command(label="Export life record (JSON)…",
                           command=self._export_life_json)
         filem.add_command(label="Import life record (JSON)…",
@@ -7570,6 +7620,36 @@ class App(tk.Tk):
         return (f"biggest free block today: {s:%H:%M}-{e:%H:%M} "
                 f"({_time_span_hours(s, e):.1f}h)")
 
+    def _lock_window_candidates(self, dl, min_hours=2.0):
+        """Backlog #113: which specific upcoming days are actually worth
+        locking for a deadline — the concrete next step after
+        _capacity_lines' abstract "X hours needed" total. Walks every
+        day from today through the deadline's due date, takes each
+        day's single biggest contiguous free block (_free_slots — same
+        primitive the scheduler and _next_free_block_line already use,
+        so calendar busy time and protected windows are already priced
+        in), and keeps days with at least `min_hours` in one sitting.
+        Ranked biggest-block-first: a full open weekend day naturally
+        outranks a fragmented weekday, the same way eyeballing a
+        calendar would — no separate peak-hour weighting, deliberately
+        kept simple."""
+        try:
+            due = dt.date.fromisoformat(dl["date"])
+        except (KeyError, ValueError, TypeError):
+            return []
+        out = []
+        d = self.today
+        while d <= due:
+            slots = self._free_slots(d)
+            if slots:
+                s, e = max(slots, key=lambda se: _time_span_hours(*se))
+                hours = _time_span_hours(s, e)
+                if hours >= min_hours:
+                    out.append({"date": d, "start": s, "end": e, "hours": hours})
+            d += dt.timedelta(days=1)
+        out.sort(key=lambda w: -w["hours"])
+        return out
+
     def _day_fragmentation_tax(self, meetings, win_start, win_end):
         """Backlog #21: the marginal deep-capacity cost of EACH meeting
         on one day, holding the others fixed — a 1h meeting at 13:00
@@ -10926,6 +11006,89 @@ class App(tk.Tk):
         if messagebox.askyesno(APP_NAME,
                                f"Exported {n} sessions to\n{path}\n\nOpen folder?"):
             self._open_folder()
+
+    def _lock_windows_win(self):
+        """Backlog #113: turn a deadline's abstract 'X hours needed'
+        into concrete real dates worth locking, then export the picked
+        ones as .ics events for Outlook/Google Calendar — the owner's
+        own ask, 2026-08-07. _lock_window_candidates does the ranking;
+        this window is just pick-and-export."""
+        win = tk.Toplevel(self)
+        win.title("Lock study windows")
+        win.geometry("560x420")
+
+        top = ttk.Frame(win)
+        top.pack(fill="x", padx=8, pady=8)
+        ttk.Label(top, text="Deadline:").pack(side="left")
+        dl_names = [d["name"] for d in self.deadlines()]
+        dl_var = tk.StringVar(value=dl_names[0] if dl_names else "")
+        combo = ttk.Combobox(top, textvariable=dl_var, state="readonly",
+                             values=dl_names, width=24)
+        combo.pack(side="left", padx=(4, 0))
+
+        ttk.Label(win, text="Click a row to pick it, then export.",
+                 foreground="#777777").pack(anchor="w", padx=8)
+        tree = ttk.Treeview(win, columns=("date", "window", "hours"),
+                            show="headings")
+        for c, label, w in (("date", "Date", 100), ("window", "Window", 140),
+                            ("hours", "Hours", 70)):
+            tree.heading(c, text=label)
+            tree.column(c, width=w, anchor="w")
+        tree.pack(fill="both", expand=True, padx=8, pady=(4, 8))
+        tree.tag_configure("picked", background="#d7ecd7")
+
+        picked, cand = set(), {"list": []}
+
+        def refresh(event=None):
+            tree.delete(*tree.get_children())
+            picked.clear()
+            dl = next((d for d in self.deadlines() if d["name"] == dl_var.get()),
+                      None)
+            cand["list"] = self._lock_window_candidates(dl) if dl else []
+            if not cand["list"]:
+                status.config(text="No open block of 2h+ found before this "
+                             "deadline's due date — nothing to lock.")
+            else:
+                status.config(text="")
+            for i, w in enumerate(cand["list"]):
+                tree.insert("", "end", iid=str(i), values=(
+                    f"{w['date']:%a %d.%m}", f"{w['start']:%H:%M}-{w['end']:%H:%M}",
+                    f"{w['hours']:.1f}h"))
+
+        def toggle(event):
+            row = tree.identify_row(event.y)
+            if not row:
+                return
+            if row in picked:
+                picked.discard(row)
+                tree.item(row, tags=())
+            else:
+                picked.add(row)
+                tree.item(row, tags=("picked",))
+        tree.bind("<Button-1>", toggle)
+        combo.bind("<<ComboboxSelected>>", refresh)
+
+        status = ttk.Label(win, foreground="#2e6da4", wraplength=520,
+                           justify="left")
+        status.pack(fill="x", padx=8, pady=(0, 4))
+
+        def export():
+            if not picked:
+                status.config(text="Pick at least one window first — click a row.")
+                return
+            windows = sorted((cand["list"][int(i)] for i in picked),
+                            key=lambda w: w["date"])
+            path, n = lock_windows_to_ics(dl_var.get(), windows)
+            when = ", ".join(f"{w['date']:%d.%m} {w['start']:%H:%M}-"
+                            f"{w['end']:%H:%M}" for w in windows)
+            self._append_text(f"--- Locked {n} window(s) for {dl_var.get()}: "
+                              f"{when} (exported {os.path.basename(path)})")
+            status.config(text=f"Exported {n} window(s) to {path} — "
+                         "import that file into Outlook/Google Calendar.")
+
+        ttk.Button(win, text="Export selected to .ics",
+                  command=export).pack(anchor="e", padx=8, pady=(0, 8))
+        refresh()
 
     # ----- misc -----
 

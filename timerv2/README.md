@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.3 — lock study windows for a deadline
+
+File > **"Lock study windows for a deadline (.ics)…"** — picks a
+deadline, shows the specific upcoming days with a real 2h+ open block
+(calendar busy time already priced in), you pick which ones to lock,
+then exports them as calendar events to a .ics file you import into
+Outlook/Google Calendar. Turns "you need ~20h before the exam" into
+"lock these actual dates."
+
 ### v9.2 — two small fixes
 
 - SIGNAL's auto-fill now seeds from your most urgent deadline instead
