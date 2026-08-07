@@ -497,6 +497,14 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.39** (#137, 2026-08-07, DONE). The Recurring Commitments
+  editor now checks subscribed-calendar events for PTO/holiday
+  language on an all-day-ish event and offers a one-click skip:
+  "calendar shows 'Loma' on 2026-08-15 — skip 'Day job' that day too?"
+  Split into `_looks_like_pto` (pure text+duration) and
+  `_pto_skip_suggestion` (pure match against recurring commitments,
+  given an already-fetched events list) — fetch itself stays in
+  `_calendar_events`. New "pto-skip" selftest suite; 54/54 green.
 - **v9.38** (#144, 2026-08-07, DONE). New `_weekly_target_lines`:
   deadlines with `target_h` set get checked against it directly —
   "TUTA: 2.0h logged + 4.0h locked = 6.0h of your own 8h/week target."
@@ -3924,21 +3932,11 @@ measuring what's already there.
     progress math.**~~ — FIXED v9.17. See the v9.17 version-history
     entry above.
 
-137. **Auto-detect a real day off from the subscribed calendar, offer
-    it as a #132 skip (PLANNING — connects #114's real Outlook feed
-    with #132's skip-a-day exception, both already built separately;
-    new idea 2026-08-07).** #132 fixed the DATA MODEL for skipping a
-    commitment on one day, but it's still manual typing. Meanwhile
-    the app already parses real calendar events via `_calendar_events`
-    /`_busy_intervals` (#114/#120) — an all-day or near-all-day event
-    whose text matches obvious PTO/holiday language ("vacation",
-    "loma", "PTO", "out of office", "sick") on a day a commitment like
-    "Day job" would otherwise apply is a strong, cheap signal. Fix: a
-    quiet check (same "insight, never auto-applied" posture as every
-    other suggestion in this app, see #126) that surfaces "Outlook
-    shows 'Loma' on 15.08 — skip 'Day job' that day too?" next to the
-    Recurring commitments editor, one click to add it to `skip`
-    rather than typing the date by hand.
+~~137. **Auto-detect a real day off from the subscribed calendar,
+    offer it as a #132 skip.**~~ — DONE v9.39. See the v9.39 version-
+    history entry above. (Connects #114's real Outlook feed with
+    #132's skip-a-day exception, both already built separately; new
+    idea 2026-08-07.)
 
 138. **Locked windows render as their own layer in the calendar view,
     before any Outlook round-trip (PLANNING — closes a real visibility

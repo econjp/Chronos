@@ -69,6 +69,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_upcoming_plans", "_ics_hint_for_url", "_free_evenings_from_rows",
         "_social_density_line", "_repeating_plan_suggestion",
         "_locked_this_week_line", "_weekly_target_lines",
+        "_looks_like_pto", "_pto_skip_suggestion",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -79,7 +80,7 @@ CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "_WORD_STOPWORDS", "_DECAY_BUCKETS", "_CAPSULE_RE",
                "_COMMIT_RE", "_FOCUS_SIG_WD", "_WEEKDAY_ABBR", "_PLAN_RE",
                "_ICS_HINT_PATTERNS", "_EVENING_START", "_EVENING_END",
-               "_SOCIAL_DENSITY_THRESHOLD"}
+               "_SOCIAL_DENSITY_THRESHOLD", "_PTO_KEYWORDS"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -2433,6 +2434,45 @@ def suite_weekly_target():
     assert D._weekly_target_lines(d2) == []
 
 
+def suite_pto_skip():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 7)
+    d = _mk(D, today=TODAY)
+
+    assert D._looks_like_pto(d, "Loma", dt.time(0, 0), dt.time(23, 59))
+    assert D._looks_like_pto(d, "Team offsite - Out of Office",
+                             dt.time(8, 0), dt.time(18, 0))
+    assert not D._looks_like_pto(d, "Loma", dt.time(9, 0), dt.time(10, 0))
+    assert not D._looks_like_pto(d, "Team meeting",
+                                 dt.time(0, 0), dt.time(23, 59))
+
+    events = [
+        (dt.date(2026, 8, 10), dt.time(0, 0), dt.time(23, 59), "Loma"),  # Mon
+        (dt.date(2026, 8, 6), dt.time(0, 0), dt.time(23, 59), "Loma"),   # past
+        (dt.date(2026, 8, 11), dt.time(9, 0), dt.time(10, 0), "Loma"),   # too short
+    ]
+    d2 = _mk(D, today=TODAY, settings={"protected_windows": [
+        {"label": "Day job", "start": "09:00", "end": "17:00",
+         "days": "Mon-Fri", "skip": []},
+        {"label": "Weekend gym", "start": "10:00", "end": "11:00",
+         "days": "Sat,Sun", "skip": []}]})
+    sug = D._pto_skip_suggestion(d2, events)
+    assert sug == ("Day job", "2026-08-10", "Loma"), sug
+
+    # ---- silence: date already in that window's skip list ----
+    d3 = _mk(D, today=TODAY, settings={"protected_windows": [
+        {"label": "Day job", "start": "09:00", "end": "17:00",
+         "days": "Mon-Fri", "skip": ["2026-08-10"]}]})
+    assert D._pto_skip_suggestion(d3, events) is None
+
+    # ---- silence: no PTO-looking events at all ----
+    d4 = _mk(D, today=TODAY, settings={"protected_windows": [
+        {"label": "Day job", "start": "09:00", "end": "17:00", "days": "Mon-Fri"}]})
+    assert D._pto_skip_suggestion(
+        d4, [(dt.date(2026, 8, 10), dt.time(9, 0), dt.time(17, 0), "Standup")]
+    ) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2482,7 +2522,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("social-density", suite_social_density),
           ("repeating-plan", suite_repeating_plan),
           ("locked-this-week", suite_locked_this_week),
-          ("weekly-target", suite_weekly_target)]
+          ("weekly-target", suite_weekly_target),
+          ("pto-skip", suite_pto_skip)]
 
 
 def main():

@@ -4,6 +4,13 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.39 — Auto-detect a day off, offer to skip it
+
+The Recurring Commitments editor now checks your subscribed calendar
+for PTO/holiday-looking events and offers a one-click skip: "calendar
+shows 'Loma' on 2026-08-15 — skip 'Day job' that day too?" No more
+typing the date into Skip dates by hand.
+
 ### v9.38 — Weekly target_h check (TUTA-style deadlines)
 
 A deadline with a weekly pace target (`target_h`, separate from its
