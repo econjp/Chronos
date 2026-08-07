@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.7 — a real week/month calendar view
+
+View > Planning > **"Calendar (week/month)…"** — an Outlook-shaped
+week view (hour grid, events at their real time) and month view (date
+grid with event names, "+N more" when a day's full), with Prev/Today/
+Next and a Week/Month toggle. Shows your imported calendar events and
+your own tracked work sessions together, both named. Read-only for
+now — for picking specific windows to lock, use "Lock study windows
+for a deadline" (v9.3); for a fast glance at just free/busy, use
+"Free-time forecast" (v9.6).
+
 ### v9.6 — free-time forecast (a simple visual calendar view)
 
 View > Planning > **"Free-time forecast (calendar)…"** — one green/

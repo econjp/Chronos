@@ -497,6 +497,21 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.7** (#120, owner's own follow-up, 2026-08-07, DONE: "proper
+  monthly or weekly calendar views... event or stuff names there...
+  similar to outlooks monthly setup"). View > Planning > "Calendar
+  (week/month)…": a real Outlook-shaped week (hour grid, 7 columns,
+  events at their real clock position) and month (date grid, event
+  names per cell, "+N more" overflow) view, Prev/Today/Next + a
+  Week/Month toggle. Two new parsers — `parse_ics_events`/
+  `parse_csv_events` — keep each event's SUMMARY/Subject text instead
+  of discarding it like the existing capacity-math parsers do;
+  completely separate/additive, so #113/#114/#116/#118's tested
+  behavior couldn't regress. Shows imported calendar events AND
+  tracked work sessions together, both named, both at their real
+  time. Deliberately read-only — the visual foundation #119
+  (automated schedule building) would sit on top of, not that
+  feature itself.
 - **v9.6** (#118, owner's own ask, 2026-08-07, DONE: "calendar
   view... very simple... easier to visually inspect free slots").
   View > Planning > "Free-time forecast (calendar)…": one green/grey
@@ -3482,6 +3497,15 @@ measuring what's already there.
     `_free_slots` already nets all of that out, worth confirming
     rather than assuming. Flagged, not scoped — a real next-round
     project once the design questions have real answers.
+
+120. ~~**Real week/month calendar view, named events.**~~ — FIXED
+    v9.7. See the v9.7 version-history entry above for the full
+    design (`parse_ics_events`/`parse_csv_events`, week/month
+    drawing, why it stays read-only). Directly narrows #119's open
+    question (c) — confirmed while building this that `_free_slots`
+    already nets out WORKBLOCK/protected windows/real calendar busy
+    time correctly, since the calendar view's own "free" reads agree
+    with what #113/#118 already showed.
 
 ## How to verify changes without Windows
 

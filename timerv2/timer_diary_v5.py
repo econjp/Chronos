@@ -60,6 +60,30 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.7 (#120 — a real week/month calendar view, owner's own
+follow-up ask, 2026-08-07: "proper monthly or weekly calendar
+views... event or stuff names there... similar to outlooks monthly
+setup... exact time slots"):
+  - View > Planning > "Calendar (week/month)…": an Outlook-shaped
+    week view (hour-gridded, 7 day columns, events positioned at
+    their real clock time) and month view (date grid, event names
+    listed per cell, "+N more" when a day's too full to list), with
+    Prev/Today/Next navigation and a Week/Month toggle.
+  - Shows TWO layers together: imported calendar events (blue, named,
+    via the new `parse_ics_events`/`parse_csv_events` — richer
+    siblings of the existing capacity-math parsers that also keep the
+    SUMMARY/Subject text instead of discarding it) and your own
+    tracked work sessions (darker blue, named, straight from
+    sessions.csv) — what's coming up and what you actually did,
+    side by side.
+  - Deliberately read-only — no drag-and-drop, no placing tasks onto
+    it yet. This is the visual foundation #119 (automated schedule
+    building) would sit on top of, not that feature itself.
+  - The existing capacity-math pipeline (`_busy_intervals`,
+    `_free_slots`, #113/#118) is completely untouched — the new
+    parsers are separate, additive functions so nothing already
+    tested could regress.
+
 New in v9.6 (#118 — free-time forecast, a simple visual calendar view,
 owner's own ask, 2026-08-07: "calendar view.. like smthg very
 simple!.. easier to visually like inspect free slots"):
@@ -2280,6 +2304,58 @@ def parse_ics_busy(path, start, end):
             for iso, ivs in parse_ics_intervals(path, start, end).items()}
 
 
+def parse_ics_events(path, start, end):
+    """Backlog #120: [(date, start_time, end_time, summary), ...] — the
+    calendar-VIEW sibling of parse_ics_intervals. Capacity math
+    (_busy_intervals) only needs merged, unlabeled time ranges; the
+    week/month calendar views need to show WHAT'S on, so this keeps
+    each event as its own labeled, unmerged entry instead. Same all-
+    day/RRULE limitations as parse_ics_intervals (see #117) — a
+    rendering source, not a second capacity model, so it deliberately
+    shares those gaps rather than fixing them differently in two
+    places."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return []
+    text = text.replace("\r\n ", "").replace("\n ", "")
+    utc_off = dt.datetime.now().astimezone().utcoffset() or dt.timedelta()
+    out = []
+    for block in text.split("BEGIN:VEVENT")[1:]:
+        block = block.split("END:VEVENT")[0]
+        if "RRULE:" in block:
+            continue
+
+        def field(name):
+            m = re.search(rf"^{name}[^:\n]*:([^\s]+)", block, re.M)
+            return m.group(1).strip() if m else None
+
+        def parse(v):
+            if v is None or len(v) <= 8:
+                return None
+            naive = dt.datetime.strptime(v[:15], "%Y%m%dT%H%M%S")
+            return naive + utc_off if v.rstrip().endswith("Z") else naive
+
+        sm = re.search(r"^SUMMARY[^:\n]*:(.+)$", block, re.M)
+        summary = sm.group(1).strip() if sm else "(no title)"
+        try:
+            sdt, edt = parse(field("DTSTART")), parse(field("DTEND"))
+        except ValueError:
+            continue
+        if not sdt or not edt or edt <= sdt:
+            continue
+        cur = sdt
+        while cur < edt:
+            nxt = dt.datetime.combine(cur.date() + dt.timedelta(days=1),
+                                      dt.time())
+            seg_end = min(edt, nxt)
+            if start <= cur.date() <= end:
+                out.append((cur.date(), cur.time(), seg_end.time(), summary))
+            cur = seg_end
+    return out
+
+
 def parse_csv_busy_export(path, start, end):
     """Backlog #116: the fallback path for when Outlook won't publish a
     calendar link at all (common on locked-down school/work tenants —
@@ -2328,6 +2404,41 @@ def csv_busy_data(path, start, end):
     thin sum over parse_csv_busy_export."""
     return {iso: sum(_time_span_hours(s, e) for s, e in ivs)
             for iso, ivs in parse_csv_busy_export(path, start, end).items()}
+
+
+def parse_csv_events(path, start, end):
+    """Backlog #120: [(date, start_time, end_time, summary), ...] — the
+    calendar-VIEW sibling of parse_csv_busy_export, same relationship
+    parse_ics_events has to parse_ics_intervals. Reads an optional
+    "Subject" column if present (Power Automate's own CSV export
+    includes it if you mapped it — see the setup guide); falls back
+    to a placeholder when it's missing rather than failing."""
+    try:
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.DictReader(f))
+    except OSError:
+        return []
+    out = []
+    for r in rows:
+        s_raw = (r.get("Start") or "").strip()
+        e_raw = (r.get("End") or "").strip()
+        summary = (r.get("Subject") or "").strip() or "(no title)"
+        if not s_raw or not e_raw:
+            continue
+        try:
+            s_dt = dt.datetime.fromisoformat(s_raw.replace("Z", "+00:00"))
+            e_dt = dt.datetime.fromisoformat(e_raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if s_dt.tzinfo:
+            s_dt = s_dt.astimezone().replace(tzinfo=None)
+        if e_dt.tzinfo:
+            e_dt = e_dt.astimezone().replace(tzinfo=None)
+        d = s_dt.date()
+        if not (start <= d <= end):
+            continue
+        out.append((d, s_dt.time(), e_dt.time(), summary))
+    return out
 
 
 # ---------------- old-format line builders ----------------
@@ -3196,6 +3307,8 @@ class App(tk.Tk):
         planm = tk.Menu(viewm, tearoff=0)
         planm.add_command(label="Free-time forecast (calendar)…",
                           command=self._tracked("Free-time forecast", self._forecast_win))
+        planm.add_command(label="Calendar (week/month)…",
+                          command=self._tracked("Calendar view", self._calendar_view_win))
         planm.add_command(label="Week plan / capacity…",
                           command=self._tracked("Capacity planner", self._capacity_win))
         planm.add_command(label="Outlook — weeks ahead…",
@@ -5293,6 +5406,8 @@ class App(tk.Tk):
                              # a lighter/desaturated TL_SIGNAL, distinct at
                              # a glance but visibly related (same family,
                              # one rank down)
+    CAL_EVENT = "#6c8ebf"    # backlog #120: imported calendar events
+    CAL_WORK = "#4a6fa5"     # backlog #120: tracked work sessions (= TL_WORK)
     WORKOUT_DOT_MIN = 10   # minutes — filters Apple Watch's auto-detected
                             # "Other" activity blips from a real workout
 
@@ -7741,6 +7856,48 @@ class App(tk.Tk):
         self._busy_intervals_cache = (key, data)
         return data
 
+    def _calendar_events(self, start, end):
+        """Backlog #120: named calendar events for the week/month
+        views — the display-layer sibling of _busy_intervals (which
+        only needs times, not names, for capacity math). Same source
+        dispatch (local .ics, subscribe URL, or Power Automate CSV) as
+        _busy_intervals/_busy_data, just a richer parser. Not cached —
+        these views are opened rarely, on demand, unlike the capacity
+        math that runs on every refresh."""
+        raw = self.settings.get("ics_path")
+        if not raw:
+            return []
+        path = resolve_ics_source(raw)
+        if not path or not os.path.exists(path):
+            return []
+        reader = (parse_csv_events if path.lower().endswith(".csv")
+                 else parse_ics_events)
+        return reader(path, start, end)
+
+    def _work_sessions_by_day(self, start, end):
+        """{date: [(start_time, end_time, task_name), ...]} — tracked
+        work (not breaks) in [start, end], for the calendar view's own
+        use. Plain read of read_rows(), not cached, same reasoning as
+        _calendar_events."""
+        out = {}
+        for r in read_rows():
+            try:
+                d = dt.date.fromisoformat(r[0])
+            except ValueError:
+                continue
+            if r[1] == "break" or not (start <= d <= end):
+                continue
+            try:
+                sh, sm = map(int, r[2].split(":")[:2])
+                eh, em = map(int, r[3].split(":")[:2])
+                s, e = dt.time(sh, sm), dt.time(eh, em)
+            except (ValueError, IndexError):
+                continue
+            if e <= s:
+                continue
+            out.setdefault(d, []).append((s, e, r[5] or "(untitled)"))
+        return out
+
     def _work_window(self):
         """The daily envelope the free-slot finder is allowed to offer
         blocks within — configurable (Tools menu), defaults 08:00-22:00.
@@ -8580,6 +8737,200 @@ class App(tk.Tk):
         cv.pack(padx=8, pady=8)
         self._draw_forecast_bars(cv, rows)
         ttk.Label(win, text="green = free · grey = busy/outside work hours",
+                 foreground="#777777").pack(anchor="w", padx=8, pady=(0, 8))
+
+    @staticmethod
+    def _cal_truncate(text, max_px, px_per_char=5.3):
+        max_chars = max(3, int(max_px / px_per_char))
+        return text if len(text) <= max_chars else text[:max_chars - 1] + "…"
+
+    _CAL_HOUR_START, _CAL_HOUR_END = 7, 23   # displayed range, week view
+
+    def _draw_calendar_week(self, cv, monday):
+        """Backlog #120 (owner's own ask, 2026-08-07: "proper monthly
+        or weekly calendar views... event or stuff names there...
+        similar to outlooks monthly setup... exact time slots"). An
+        hour-gridded week, 7 day columns — real Outlook-week shape.
+        Calendar events (named, from _calendar_events) in one color,
+        tracked work sessions (named, from _work_sessions_by_day) in
+        another — both positioned by real clock time, not just
+        counted."""
+        cv.delete("all")
+        days = [monday + dt.timedelta(days=i) for i in range(7)]
+        hdr_h, pad_l, col_w = 26, 46, 96
+        hours = self._CAL_HOUR_END - self._CAL_HOUR_START
+        hour_h = 26
+        W = pad_l + 7 * col_w
+        H = hdr_h + hours * hour_h
+        cv.config(width=W, height=H)
+
+        def y_for(t):
+            mins = max(0, min(hours * 60,
+                              t.hour * 60 + t.minute - self._CAL_HOUR_START * 60))
+            return hdr_h + hour_h * hours * mins / (hours * 60)
+
+        for h in range(hours + 1):
+            y = hdr_h + h * hour_h
+            cv.create_line(pad_l, y, W, y, fill="#e5e5e5")
+            if h < hours:
+                cv.create_text(4, y + 2, anchor="nw",
+                               text=f"{self._CAL_HOUR_START + h:02d}:00",
+                               font=("Segoe UI", 7), fill="#999999")
+
+        events = self._calendar_events(monday, monday + dt.timedelta(days=6))
+        ev_by_day = {}
+        for d, s, e, summary in events:
+            ev_by_day.setdefault(d, []).append((s, e, summary))
+        work_end = min(monday + dt.timedelta(days=6), self.today)
+        work_by_day = (self._work_sessions_by_day(monday, work_end)
+                      if work_end >= monday else {})
+
+        for i, d in enumerate(days):
+            x0 = pad_l + i * col_w
+            weekend = d.weekday() >= 5
+            cv.create_rectangle(x0, 0, x0 + col_w, hdr_h,
+                                fill="#e4e7ec" if weekend else "#eef1f5",
+                                outline="")
+            cv.create_text(x0 + col_w / 2, hdr_h / 2, text=f"{d:%a %d.%m}",
+                           fill="#2e6da4" if d == self.today else "#333333",
+                           font=("Segoe UI", 8, "bold"))
+            cv.create_line(x0, 0, x0, H, fill="#eeeeee")
+            for s, e, name in ev_by_day.get(d, []):
+                y0, y1 = y_for(s), max(y_for(e), y_for(s) + 11)
+                cv.create_rectangle(x0 + 2, y0, x0 + col_w - 2, y1,
+                                    fill=self.CAL_EVENT, outline="")
+                cv.create_text(x0 + 4, y0 + 1, anchor="nw",
+                               text=self._cal_truncate(f"{s:%H:%M} {name}",
+                                                       col_w - 6),
+                               font=("Segoe UI", 6), fill="white")
+            for s, e, name in work_by_day.get(d, []):
+                y0, y1 = y_for(s), max(y_for(e), y_for(s) + 9)
+                cv.create_rectangle(x0 + 2, y0, x0 + col_w - 2, y1,
+                                    fill=self.CAL_WORK, outline="")
+                cv.create_text(x0 + 4, y0 + 1, anchor="nw",
+                               text=self._cal_truncate(f"{s:%H:%M} {name}",
+                                                       col_w - 6),
+                               font=("Segoe UI", 6), fill="white")
+        cv.create_line(pad_l, 0, pad_l, H, fill="#cccccc")
+
+    def _draw_calendar_month(self, cv, year, month):
+        """Backlog #120: a real month grid — date numbers, up to a
+        few event/work-session names per cell before collapsing to
+        "+N more", same shape as Outlook's own month view."""
+        cv.delete("all")
+        first = dt.date(year, month, 1)
+        start_col = first.weekday()
+        next_month = (dt.date(year + 1, 1, 1) if month == 12
+                     else dt.date(year, month + 1, 1))
+        days_in_month = (next_month - first).days
+        weeks = -(-(start_col + days_in_month) // 7)
+
+        cell_w, cell_h, hdr_h, pad = 104, 78, 20, 4
+        W = pad * 2 + 7 * cell_w
+        H = hdr_h + pad * 2 + weeks * cell_h
+        cv.config(width=W, height=H)
+
+        for i, wd in enumerate(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")):
+            cv.create_text(pad + i * cell_w + cell_w / 2, hdr_h / 2, text=wd,
+                           font=("Segoe UI", 8, "bold"), fill="#666666")
+
+        range_end = next_month - dt.timedelta(days=1)
+        events = self._calendar_events(first, range_end)
+        ev_by_day = {}
+        for d, s, e, summary in events:
+            ev_by_day.setdefault(d, []).append((s, summary))
+        work_end = min(range_end, self.today)
+        work_by_day = (self._work_sessions_by_day(first, work_end)
+                      if work_end >= first else {})
+
+        for day_num in range(1, days_in_month + 1):
+            d = dt.date(year, month, day_num)
+            idx = start_col + day_num - 1
+            row, col = idx // 7, idx % 7
+            x0, y0 = pad + col * cell_w, hdr_h + pad + row * cell_h
+            bg = "#eaf2fb" if d == self.today else (
+                "#f7f7f7" if d.weekday() >= 5 else "white")
+            cv.create_rectangle(x0, y0, x0 + cell_w, y0 + cell_h, fill=bg,
+                                outline="#e0e0e0")
+            cv.create_text(x0 + 4, y0 + 2, anchor="nw", text=str(day_num),
+                           font=("Segoe UI", 8, "bold" if d == self.today
+                                 else "normal"),
+                           fill="#2e6da4" if d == self.today else "#333333")
+            items = sorted(ev_by_day.get(d, []) +
+                          [(s, n) for s, e, n in work_by_day.get(d, [])])
+            line_y, shown = y0 + 16, 0
+            for s, name in items:
+                if line_y > y0 + cell_h - 9:
+                    break
+                cv.create_text(x0 + 4, line_y, anchor="nw",
+                               text=self._cal_truncate(f"{s:%H:%M} {name}",
+                                                       cell_w - 8),
+                               font=("Segoe UI", 6), fill=self.CAL_EVENT)
+                line_y += 10
+                shown += 1
+            remaining = len(items) - shown
+            if remaining > 0:
+                cv.create_text(x0 + 4, line_y, anchor="nw",
+                               text=f"+{remaining} more",
+                               font=("Segoe UI", 6), fill="#999999")
+
+    def _calendar_view_win(self):
+        """Backlog #120: the Outlook-like detailed calendar, week/
+        month toggle — complements #118's glance-only free/busy bars
+        with real event names and exact time slots, "looking at free
+        slots differently" per the owner's own framing. Foundation
+        for future planning/placement features (#119) without
+        committing to any of them yet — this window is read-only,
+        same standing guardrail as every other planning view here."""
+        win = tk.Toplevel(self)
+        win.title("Calendar")
+        top = ttk.Frame(win)
+        top.pack(fill="x", padx=8, pady=8)
+        mode_var = tk.StringVar(value="week")
+        state = {"anchor": self.today}
+
+        def render():
+            if mode_var.get() == "week":
+                monday = state["anchor"] - dt.timedelta(
+                    days=state["anchor"].weekday())
+                self._draw_calendar_week(cv, monday)
+                title_lbl.config(text=f"Week of {monday:%d.%m.%Y}")
+            else:
+                self._draw_calendar_month(cv, state["anchor"].year,
+                                          state["anchor"].month)
+                title_lbl.config(text=f"{state['anchor']:%B %Y}")
+
+        def nav(delta):
+            if mode_var.get() == "week":
+                state["anchor"] += dt.timedelta(days=7 * delta)
+            else:
+                y, m = state["anchor"].year, state["anchor"].month + delta
+                if m < 1:
+                    y, m = y - 1, 12
+                elif m > 12:
+                    y, m = y + 1, 1
+                state["anchor"] = state["anchor"].replace(year=y, month=m, day=1)
+            render()
+
+        def go_today():
+            state["anchor"] = self.today
+            render()
+
+        ttk.Radiobutton(top, text="Week", variable=mode_var, value="week",
+                       command=render).pack(side="left")
+        ttk.Radiobutton(top, text="Month", variable=mode_var, value="month",
+                       command=render).pack(side="left", padx=(4, 12))
+        ttk.Button(top, text="< Prev", command=lambda: nav(-1)).pack(side="left")
+        ttk.Button(top, text="Today", command=go_today).pack(side="left", padx=4)
+        ttk.Button(top, text="Next >", command=lambda: nav(1)).pack(side="left")
+        title_lbl = ttk.Label(top, text="", font=("Segoe UI", 9, "bold"))
+        title_lbl.pack(side="left", padx=12)
+
+        cv = tk.Canvas(win, background="white", highlightthickness=0)
+        cv.pack(padx=8, pady=(0, 8))
+        render()
+        ttk.Label(win, text="blue = imported calendar events · darker = "
+                 "your tracked work sessions",
                  foreground="#777777").pack(anchor="w", padx=8, pady=(0, 8))
 
     def _outlook_win(self):
