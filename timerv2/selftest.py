@@ -66,7 +66,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_waiting_on_lines", "_cost_of_yes_line", "_status_update_text",
         "_status_update_all", "_focus_signature_grid", "_focus_signature_line",
         "_parse_plan_line", "_auto_capture_plans", "_parse_time_loose",
-        "_upcoming_plans", "_ics_hint_for_url",
+        "_upcoming_plans", "_ics_hint_for_url", "_free_evenings_from_rows",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -76,7 +76,7 @@ CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
                "_WORD_STOPWORDS", "_DECAY_BUCKETS", "_CAPSULE_RE",
                "_COMMIT_RE", "_FOCUS_SIG_WD", "_WEEKDAY_ABBR", "_PLAN_RE",
-               "_ICS_HINT_PATTERNS"}
+               "_ICS_HINT_PATTERNS", "_EVENING_START", "_EVENING_END"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -2261,6 +2261,33 @@ def suite_ics_hints():
     assert D._ics_hint_for_url(d, "https://random-venue.example/calendar") is None
 
 
+def suite_free_evenings():
+    D, ns = fresh()
+    d = _mk(D)
+
+    rows = [
+        (dt.date(2026, 8, 10), [(dt.time(0, 0), dt.time(23, 59, 59))], 24.0),
+        (dt.date(2026, 8, 11), [(dt.time(17, 0), dt.time(20, 0))], 3.0),
+        (dt.date(2026, 8, 12), [(dt.time(21, 0), dt.time(22, 0))], 1.0),
+        (dt.date(2026, 8, 13), [(dt.time(18, 0), dt.time(19, 0)),
+                                (dt.time(20, 0), dt.time(23, 0))], 4.0),
+        (dt.date(2026, 8, 14), [(dt.time(18, 30), dt.time(21, 0))], 2.5),
+        (dt.date(2026, 8, 15), [], 0.0),
+    ]
+    out = D._free_evenings_from_rows(d, rows, min_h=2.0)
+    assert out == [
+        (dt.date(2026, 8, 10), "all day"),
+        (dt.date(2026, 8, 11), "18-20"),
+        (dt.date(2026, 8, 13), "20-23"),
+        (dt.date(2026, 8, 14), "18:30-21"),
+    ], out
+
+    # ---- silence: nothing clears the bar anywhere ----
+    assert D._free_evenings_from_rows(
+        d, [(dt.date(2026, 8, 12), [(dt.time(21, 0), dt.time(22, 0))], 1.0)],
+        min_h=2.0) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2305,7 +2332,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("focus-signature", suite_focus_signature),
           ("plan-capture", suite_plan_capture),
           ("upcoming-plans", suite_upcoming_plans),
-          ("ics-hints", suite_ics_hints)]
+          ("ics-hints", suite_ics_hints),
+          ("free-evenings", suite_free_evenings)]
 
 
 def main():

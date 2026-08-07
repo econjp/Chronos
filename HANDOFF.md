@@ -497,6 +497,14 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.32** (#167, 2026-08-07, DONE). View > Planning > "Free
+  evenings…" — filtered multi-week glance of genuinely open evening
+  blocks ("Tue 18-20, Thu 20-23, Sat all day"), reusing #118's
+  `_day_forecast`/`_free_slots`, no new capacity math. Split into a
+  pure filter/format function (`_free_evenings_from_rows`, unit-
+  tested) and a thin `_free_slots`-fetching wrapper (not unit-tested,
+  same category as `_day_forecast` itself). New "free-evenings"
+  selftest suite; 49/49 green.
 - **v9.31** (#165, 2026-08-07, DONE). A bad calendar-subscribe link
   now gets a real hint instead of just a generic error: Meetup
   (Group Settings > Calendar > Export), Eventbrite (per-event only,
@@ -4216,18 +4224,11 @@ polish — the three NOT chosen this round) when continuing this work.
     locked deadline windows.**~~ — FIXED v9.28. See the v9.28
     version-history entry above.
 
-167. **"Free evenings" finder — a filtered multi-week glance of
-    genuinely open evening blocks (PLANNING — direct aid for "rn often
-    manually just check some event sites... if theres anything
-    relevant," the social-planning half of this round's ask; new idea
-    2026-08-07).** Knowing WHICH evenings are actually free is the
-    first question before checking any event listing — right now
-    that means mentally cross-referencing the week/month calendar.
-    Fix: a small view (reuses #118's `_day_forecast` machinery,
-    filtered to evening hours specifically, across N weeks via #162's
-    same span control) — "Free evenings: Tue 18-23, Thu 19-23, Sat
-    all day" — no new capacity math, a filtered read of what already
-    exists.
+~~167. **"Free evenings" finder — a filtered multi-week glance of
+    genuinely open evening blocks.**~~ — DONE v9.32. See the v9.32
+    version-history entry above. (Direct aid for "rn often manually
+    just check some event sites... if theres anything relevant," the
+    social-planning half of this round's ask; new idea 2026-08-07.)
 
 168. **Social-plan density warning in the week-ahead block (PLANNING —
     connects the two chokepoints the owner named this round — work

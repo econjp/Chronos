@@ -60,6 +60,26 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.32 (#167 — free evenings finder, 2026-08-07: the direct aid
+for "rn often manually just check some event sites... if theres
+anything relevant" — knowing WHICH evenings are open is the actual
+first question):
+  - View > Planning > "Free evenings…" — a filtered multi-week glance:
+    "Tue 11.08: 18-20, Thu 13.08: 20-23, Sat 15.08: all day". No new
+    capacity math — reuses #118's `_day_forecast` (the same
+    `_free_slots` every scheduling primitive already uses), clipped to
+    the evening window (18:00-23:00). A day whose entire 24h is free
+    is named "all day" instead of just the evening slice.
+  - split into a pure filter/format function (`_free_evenings_from_
+    rows`) and a thin data-fetch wrapper (`_free_evenings`) — the
+    former is fully unit-testable without `_free_slots`' calendar-
+    fetch dependency chain, the latter isn't (same category as
+    `_day_forecast` itself, verified by direct read-through).
+  - new "free-evenings" selftest suite on the pure half (all-day
+    detection, a clipped 2h block named, sub-2h evening excluded, the
+    longer of two same-day blocks wins, half-hour formatting, full
+    silence when nothing clears the bar); 49/49 green.
+
 New in v9.31 (#165 — ICS-feed discovery hints, 2026-08-07: the
 legitimate, non-scraping answer to this round's "gather event info
 automatically" ask):
@@ -3875,6 +3895,9 @@ class App(tk.Tk):
         planm.add_command(label="Upcoming plans…",
                           command=self._tracked("Upcoming plans",
                                                 self._upcoming_plans_win))
+        planm.add_command(label="Free evenings…",
+                          command=self._tracked("Free evenings",
+                                                self._free_evenings_win))
         viewm.add_cascade(label="Planning  (foresight)", menu=planm)
 
         memm = tk.Menu(viewm, tearoff=0)
@@ -10306,6 +10329,85 @@ class App(tk.Tk):
             out.append((d, slots, free_h))
             d += dt.timedelta(days=1)
         return out
+
+    _EVENING_START = dt.time(18, 0)
+    _EVENING_END = dt.time(23, 0)
+
+    def _free_evenings_from_rows(self, rows, min_h=2.0):
+        """Backlog #167: the pure filter/format half of the free-
+        evenings finder — takes `_day_forecast`-shaped rows
+        [(date, free_slots, free_hours), ...] and clips each day's free
+        slots to the evening window (18:00-23:00), naming the day if a
+        SINGLE contiguous free block there clears `min_h`. Split out
+        from `_free_evenings` (below, which does the real _free_slots
+        fetch) specifically so this filtering/formatting logic is
+        pure and testable without the calendar-fetch dependency chain
+        _free_slots carries — same "the math is a pure function, the
+        data fetch is a thin wrapper" split used elsewhere. A day whose
+        entire 24h is free (nothing busy or protected at all) is named
+        'all day' instead of just the evening slice, since that's a
+        strictly better answer to the same question. Returns
+        [(date, label), ...]; a day that doesn't clear min_h is
+        omitted entirely, not shown as empty."""
+        out = []
+        for d, slots, _free_h in rows:
+            full_day = (len(slots) == 1 and slots[0][0] <= dt.time(0, 1)
+                       and slots[0][1] >= dt.time(23, 58))
+            if full_day:
+                out.append((d, "all day"))
+                continue
+            best = None
+            for s, e in slots:
+                cs, ce = max(s, self._EVENING_START), min(e, self._EVENING_END)
+                if cs >= ce:
+                    continue
+                dur = _time_span_hours(cs, ce)
+                if dur >= min_h and (best is None or dur > best[2]):
+                    best = (cs, ce, dur)
+            if best:
+                cs, ce, _dur = best
+                fmt = lambda t: (f"{t.hour}" if t.minute == 0
+                                 else f"{t.hour}:{t.minute:02d}")
+                out.append((d, f"{fmt(cs)}-{fmt(ce)}"))
+        return out
+
+    def _free_evenings(self, weeks=2, min_h=2.0):
+        """Backlog #167: knowing WHICH evenings are actually free is
+        the first question before checking any event listing for
+        something to do — right now that means mentally cross-
+        referencing the week/month calendar. Reuses #118's
+        `_day_forecast` (the same `_free_slots` every scheduling
+        primitive already uses), filtered to evenings — no new
+        capacity math, a filtered read of what already exists."""
+        return self._free_evenings_from_rows(
+            self._day_forecast(weeks * 7), min_h)
+
+    def _free_evenings_lines(self, weeks=2, min_h=2.0):
+        evenings = self._free_evenings(weeks, min_h)
+        if not evenings:
+            return []
+        lines = [f"FREE EVENINGS (next {weeks} week(s)):"]
+        for d, label in evenings:
+            lines.append(f"  {d:%a %d.%m}: {label}")
+        return lines
+
+    def _free_evenings_win(self):
+        """Backlog #167: the direct answer to "which evenings are
+        actually open" before checking any event listing for something
+        to do there — a filtered multi-week glance, not a new capacity
+        model."""
+        win = tk.Toplevel(self)
+        win.title("Free evenings")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10),
+                      width=60, height=18)
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        lines = self._free_evenings_lines(weeks=3)
+        if not lines:
+            lines = ["No evening block (18:00-23:00) clears 2h of "
+                    "contiguous free time in the next 3 weeks — or "
+                    "every evening in that window is already spoken for."]
+        txt.insert("1.0", "\n".join(lines))
+        txt.config(state="disabled")
 
     def _draw_forecast_bars(self, cv, rows):
         cv.delete("all")

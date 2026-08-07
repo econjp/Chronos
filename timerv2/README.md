@@ -4,6 +4,13 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.32 — Free evenings finder
+
+View > Planning > "Free evenings…" — the actual first question before
+checking any event listing: "Tue 18-20, Thu 20-23, Sat all day." No
+new capacity math, just the existing free-time calendar filtered to
+the evening window across the next 3 weeks.
+
 ### v9.31 — ICS-feed discovery hints
 
 A bad calendar-subscribe link used to just fail with a generic error.
