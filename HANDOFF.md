@@ -497,6 +497,20 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.12** (#125 + #126, owner's own "automate and make it so much
+  easier" ask, 2026-08-07, DONE). #126: the Recurring commitments
+  editor now suggests a Sleep row from real tracked data (median
+  bedtime/wake over n>=10 real nights, wake proxied by each day's
+  first logged activity) when none is declared yet — pre-filled and
+  editable, never auto-saved, resolving the "auto-set" instinct #121
+  deliberately left blank rather than guess. #125: a new grouped
+  insight (`_commitment_drift_lines`, TIME & FOCUS) compares each
+  declared commitment against what tracked data actually shows —
+  Sleep against #126's own suggestion (so the two features can't
+  quietly disagree), everything else against the day's first tracked
+  work activity on the days it applies. Same "declared vs actual"
+  honesty pattern as #47/#99, same >=30min/n>=10 gating shape as
+  every other insight in this app.
 - **v9.11** (toolbar calendar button + #124, owner's own ask,
   2026-08-07, DONE: "this scheduling or cal shuld have its own
   button in task bar"). A 📅 button in the main toolbar opens the
@@ -3588,40 +3602,14 @@ measuring what's already there.
     (a multi-row grid save, not a single date field) left for a
     follow-up if it turns out to matter in practice.
 
-125. **Recurring-commitment drift check (TRUST — the same "declared
-    vs actual" honesty pattern the app already runs elsewhere,
-    applied to #121's new commitments; new idea 2026-08-07).**
-    Recurring commitments (day job, sleep) are declared once and easy
-    to leave stale — a job's hours change, a sleep pattern shifts,
-    and the declared window quietly stops matching reality with
-    nothing to notice. The app already does exactly this kind of
-    check elsewhere (#47's capacity-vs-actual, #99's day audits): add
-    one more — compare a commitment's declared window against what
-    the CSV/health data actually shows during that window (tracked
-    work starting well before/after a declared "Day job" start time;
-    imported sleep data consistently disagreeing with a declared
-    sleep block) and name the gap honestly, gated on enough samples
-    (n>=10 days) to mean something, same honesty-gate shape as every
-    other insight in this app. A real next insight for #86's grouped
-    Insights tab (MOMENTUM & TRENDS or a new theme), not a new
-    surface.
+125. ~~**Recurring-commitment drift check.**~~ — FIXED v9.12. See the
+    v9.12 version-history entry above for the full design
+    (`_commitment_drift_lines`, Sleep vs #126's suggestion, everything
+    else vs first tracked work activity).
 
-126. **Auto-suggest a sleep commitment from real tracked data (USABILITY
-    — resolves the "auto-set" instinct #121 deliberately deferred, now
-    backed by real data instead of a guess; new idea 2026-08-07).**
-    #121 shipped with sleep left blank on purpose — no concrete bedtime
-    was given, and guessing one would have repeated the #103 mistake
-    (acting on an assumption instead of what was actually said). But
-    the app already tracks real sleep data (`_sleep_h`, `sleep_over`,
-    imported health exports) independently of the commitments feature.
-    Fix: when opening Tools > "Recurring commitments…" with no Sleep
-    entry yet and enough real sleep history (n>=10 nights), pre-fill a
-    suggested Sleep row (median bedtime/wake time from the actual
-    data) rather than leaving it blank — the owner still confirms/
-    edits before it saves, same as every other suggestion-not-
-    decision in this app. Only for Sleep specifically; a day job's
-    hours aren't inferable from existing tracked data the same way, so
-    that scaffold row stays blank as it does today.
+126. ~~**Auto-suggest a sleep commitment from real tracked data.**~~ —
+    FIXED v9.12. See the v9.12 version-history entry above
+    (`_suggested_sleep_block`, median not mean, pre-filled not saved).
 
 127. **Task due-dates feed SIGNAL's urgency-seeded fallback (PLANNING
     — directly extends #109 with #123's new lightweight due-date

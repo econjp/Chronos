@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.12 — commitments learn from your real data
+
+Tools > "Recurring commitments…" now suggests a Sleep row from your
+actual tracked history (not a guess) when you haven't set one —
+pre-filled, fully editable, never auto-saved. And a new Insights tab
+entry flags it if a declared commitment (day job, sleep) has quietly
+drifted from what your tracked data actually shows — "declared 09:30
+but your last 15 days actually start ~10:15 — worth updating?"
+
 ### v9.11 — toolbar calendar button + due-date feasibility check
 
 A 📅 button now sits in the main toolbar (next to Start/Switch/Reset)

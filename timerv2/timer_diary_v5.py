@@ -60,6 +60,28 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.12 (#125 + #126 — commitments learn from real data, owner's
+own "just wanna automate and make it so much easier" ask, 2026-08-07):
+  - #126: Tools > "Recurring commitments…" now suggests a Sleep row
+    from real tracked data (median bedtime/wake across n>=10 real
+    nights — wake proxied by each day's own first logged activity,
+    sleep hours from `_sleep_h`) when there's no Sleep entry yet.
+    Pre-filled, not saved — shown with "↑ suggested from N real
+    tracked nights," fully editable/clearable before you hit Save.
+    Resolves the "auto-set" instinct #121 deliberately left blank
+    rather than guess at a bedtime that was never stated.
+  - #125: a new grouped insight (TIME & FOCUS) — `_commitment_drift_
+    lines` compares each declared recurring commitment against what
+    your tracked data actually shows. Sleep is checked against #126's
+    own suggestion (so the two features can't quietly disagree with
+    each other); every other commitment (day job, admin) is checked
+    against the day's own first tracked work activity, on the days
+    it's declared to apply. Only speaks up at a real >=30min median
+    gap over n>=10 matching days — "'Day job' declared 09:30 but
+    your last 15 matching days actually start ~10:15 (45min later) —
+    worth updating?" Same honesty-gate shape as every insight here,
+    same "declared vs actual" pattern #47/#99 already established.
+
 New in v9.11 (toolbar calendar button + #124 due-date feasibility
 check, owner's own ask, 2026-08-07: "this scheduling or cal shuld
 have its own button in task bar"):
@@ -4183,6 +4205,25 @@ class App(tk.Tk):
                 e.grid(row=i + 1, column=c, padx=4, pady=2)
                 row.append(e)
             grid.append(row)
+
+        # backlog #126: suggest a Sleep row from real tracked data into
+        # the first blank row, if there's no Sleep entry yet — never
+        # auto-saved, just pre-filled and immediately editable/clearable
+        if not any("sleep" in (w.get("label") or "").lower() for w in cur):
+            suggestion = self._suggested_sleep_block()
+            if suggestion:
+                bed_t, wake_t, n = suggestion
+                for i in range(len(cur), n_rows):
+                    if not grid[i][0].get().strip():
+                        grid[i][0].insert(0, "Sleep")
+                        grid[i][1].insert(0, f"{bed_t:%H:%M}")
+                        grid[i][2].insert(0, f"{wake_t:%H:%M}")
+                        ttk.Label(
+                            win, text=f"↑ suggested from {n} real tracked "
+                                     "nights — edit or clear before saving",
+                            foreground="#2e6da4", font=("Segoe UI", 8)
+                        ).grid(row=i + 1, column=4, sticky="w", padx=(4, 8))
+                        break
 
         def save():
             out = []
@@ -9992,6 +10033,133 @@ class App(tk.Tk):
                 pass
         return self._health_data().get(iso, {}).get("sleep_h")
 
+    def _suggested_sleep_block(self, days=60, min_nights=10):
+        """Backlog #126: infer a typical sleep window from real
+        tracked data instead of guessing or leaving it blank forever
+        — resolves the "auto-set" instinct #121 deliberately deferred
+        (no bedtime was ever stated, and guessing one would have
+        repeated the #103 mistake). Wake time proxied by each day's
+        own first logged activity (already tracked, no new data);
+        sleep hours from _sleep_h (override or health import). Median
+        across real nights, not an average (one very late night
+        shouldn't drag the suggestion around). A SUGGESTION only —
+        the caller pre-fills an editable field, never auto-saves.
+        Silent (None) below `min_nights` real nights — no forecast
+        beats an unfounded one, same honesty gate as everywhere else
+        in this app."""
+        by_day = {}
+        for r in read_rows():
+            by_day.setdefault(r[0], []).append(r)
+        wakes, sleep_hours = [], []
+        d = self.today - dt.timedelta(days=1)
+        end = self.today - dt.timedelta(days=days)
+        while d >= end:
+            iso = d.isoformat()
+            sl = self._sleep_h(iso)
+            rows = by_day.get(iso)
+            if sl and rows:
+                first = None
+                for r in rows:
+                    try:
+                        h, m = map(int, r[2].split(":")[:2])
+                        t = h * 60 + m
+                    except (ValueError, IndexError):
+                        continue
+                    if first is None or t < first:
+                        first = t
+                if first is not None and first < 14 * 60:   # sanity: before 14:00
+                    wakes.append(first)
+                    sleep_hours.append(sl)
+            d -= dt.timedelta(days=1)
+        if len(wakes) < min_nights:
+            return None
+        wakes.sort()
+        sleep_hours.sort()
+        med_wake = wakes[len(wakes) // 2]
+        med_sleep = sleep_hours[len(sleep_hours) // 2]
+        wake_t = dt.time(med_wake // 60, med_wake % 60)
+        bed_min = (med_wake - round(med_sleep * 60)) % 1440
+        bed_t = dt.time(bed_min // 60, bed_min % 60)
+        return bed_t, wake_t, len(wakes)
+
+    def _commitment_drift_lines(self, days=60, min_samples=10):
+        """Backlog #125: the same "declared vs actual" honesty pattern
+        already used elsewhere (#47's capacity-vs-actual, #99's day
+        audits), applied to #121's recurring commitments. Sleep is
+        checked against #126's own suggestion (the same real-data
+        inference, so the two features can't quietly disagree); every
+        other commitment is checked against the day's own first
+        tracked WORK activity on the days it's declared to apply — a
+        "Day job" starting 45min later than declared, in practice,
+        for the last N matching days. Gated on min_samples real
+        matching days per commitment; a >=30min median gap is what
+        gets named, smaller drift stays quiet (noise, not a pattern)."""
+        out = []
+        windows = self.settings.get("protected_windows", [])
+        sleep_w = next((w for w in windows
+                        if "sleep" in (w.get("label") or "").lower()), None)
+        if sleep_w:
+            try:
+                sh, sm = map(int, sleep_w["start"].split(":"))
+                declared_bed = sh * 60 + sm
+            except (ValueError, KeyError):
+                declared_bed = None
+            sugg = self._suggested_sleep_block(days, min_samples)
+            if declared_bed is not None and sugg:
+                actual_bed_t, _wake, n = sugg
+                actual_bed = actual_bed_t.hour * 60 + actual_bed_t.minute
+                diff = min((declared_bed - actual_bed) % 1440,
+                          (actual_bed - declared_bed) % 1440)
+                if diff >= 30:
+                    out.append(f"'Sleep' declared {sleep_w['start']} but "
+                              f"your last {n} tracked nights suggest "
+                              f"~{actual_bed_t:%H:%M} — worth updating?")
+
+        by_day = {}
+        for r in read_rows():
+            if r[1] != "break":
+                by_day.setdefault(r[0], []).append(r)
+        for w in windows:
+            label = w.get("label", "")
+            if not label or "sleep" in label.lower():
+                continue
+            try:
+                sh, sm = map(int, w["start"].split(":"))
+                declared_start = sh * 60 + sm
+            except (ValueError, KeyError):
+                continue
+            days_set = self._parse_weekdays(w.get("days", ""))
+            actual_starts = []
+            d = self.today - dt.timedelta(days=1)
+            end = self.today - dt.timedelta(days=days)
+            while d >= end:
+                if days_set is None or d.weekday() in days_set:
+                    rows = by_day.get(d.isoformat())
+                    if rows:
+                        times = []
+                        for r in rows:
+                            try:
+                                h, m = map(int, r[2].split(":")[:2])
+                                times.append(h * 60 + m)
+                            except (ValueError, IndexError):
+                                continue
+                        if times:
+                            actual_starts.append(min(times))
+                d -= dt.timedelta(days=1)
+            if len(actual_starts) < min_samples:
+                continue
+            actual_starts.sort()
+            med = actual_starts[len(actual_starts) // 2]
+            diff = med - declared_start
+            if abs(diff) >= 30:
+                med_t = dt.time((med // 60) % 24, med % 60)
+                direction = "later" if diff > 0 else "earlier"
+                out.append(f"'{label}' declared {w['start']} start but "
+                          f"your last {len(actual_starts)} matching days "
+                          f"actually start ~{med_t:%H:%M} "
+                          f"({abs(diff)}min {direction}) — worth updating?")
+        return out
+
     # ----- daylight (a zero-dependency source: date + latitude, nothing
     # imported, no export file to configure) -----
 
@@ -11555,6 +11723,7 @@ class App(tk.Tk):
         out += [("MOMENTUM & TRENDS", l) for l in self._best_weeks_lines()]
         out += [("MOMENTUM & TRENDS", l) for l in self._trajectory_lines()]
         out += [("MOMENTUM & TRENDS", l) for l in self._signal_tier_insight()]
+        out += [("TIME & FOCUS", l) for l in self._commitment_drift_lines()]
         return out
 
     def _signal_tier_insight(self, days=60):
