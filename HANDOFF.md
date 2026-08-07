@@ -3864,6 +3864,68 @@ measuring what's already there.
     exists finally being checked against the other number that
     already exists.
 
+145. **A quiet nudge when a locked window passes unworked (PLANNING —
+    closes #136's own silent-drop behavior into something the owner
+    actually sees; new idea 2026-08-07).** #136 deliberately drops a
+    locked window from `remaining_h` credit the moment its date
+    passes, whether or not it actually got worked — correct math, but
+    silent: if TUTA's locked 09:00-13:00 today never happens, nothing
+    says so, the owner only notices weeks later when `remaining_h`
+    has quietly crept back up with no explanation. Fix: a grouped
+    insight, same posture as #125/#127's drift checks — compare each
+    deadline's locked windows whose date is in the past against real
+    logged sessions that day/keyword; a locked window with no matching
+    work gets named once — "TUTA's locked 09:00-13:00 (04.08) doesn't
+    look like it happened — still on for today, or worth re-locking?"
+    Reuses `_locked_hours`'s own date-cutoff logic and `matched_minutes`
+    (already #4157's own `_dl_progress` primitive), no new matching
+    engine.
+
+146. **Lock-window candidates ranked energy-aware, not just biggest-
+    block-first (PLANNING — connects two subsystems built independently
+    this whole project — scheduling and the energy-forecast engine —
+    that have never talked to each other; new idea 2026-08-07).**
+    `_lock_window_candidates` ranks purely by contiguous-hours, but
+    this app has carried a real hour-quality model since way earlier
+    (`_hour_quality`/`_energy_place`/`_recommend_now`, the whole
+    `energy-forecast` selftest suite) that already knows which hours
+    of the day the owner is actually sharp versus foggy. When two
+    candidate windows tie (or are close) on raw hours, there's
+    currently no tiebreak toward the one more likely to actually get
+    used well. Fix: a secondary sort key using the existing hour-
+    quality primitive — no new modeling, just letting a signal this
+    app already trusts elsewhere (SIGNAL, deep-window recommendations)
+    also inform which slot the picker suggests first for a study lock
+    specifically, where "when" matters as much as "how much."
+
+147. **A distinct visual marker for deliberately off-marked days,
+    separate from "just naturally low capacity" (PLANNING — closes an
+    ambiguity #141 itself just introduced; new idea 2026-08-07).**
+    #141's month-view shading (via #131's existing `_day_capacity`
+    color) makes an off-marked day look IDENTICAL to a day that's
+    simply busy for other reasons (a big recurring commitment, heavy
+    calendar load) — both render as flat white. There's no way to
+    tell, at a glance, "this is deliberately off" from "this just
+    happens to be full." Fix: a small marker (e.g. a corner "×" or a
+    diagonal hatch) drawn on cells whose date is in `off_dates`,
+    checked once per cell in `_draw_calendar_month` right alongside
+    the due-date ⚑ it already draws — no new data, purely a second
+    glyph on an existing pass.
+
+148. **"Locked this week" as a concrete visible list, not just an
+    hour total, in the week-ahead block (PLANNING — turns #133's
+    already-built commitment-cost line into something actually
+    actionable, using #136's now-real `locked_windows` data; new idea
+    2026-08-07).** #133 already names HOW MANY hours are locked this
+    week (inherited free from #136, verified this session), but only
+    as a number — the owner still can't see WHAT's locked without
+    opening the calendar separately. Fix: when locked hours apply
+    this week, list them concretely under the existing line — "locked
+    this week: TUTA Wed 14:00-18:00 (4h), Thesis Fri 09:00-13:00
+    (4h)" — a plain iteration over every deadline's `locked_windows`
+    falling in the coming 7 days, sorted by date, no new computation
+    beyond what #133/#136 already produce.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
