@@ -60,6 +60,21 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.25 (#160 — auto-plan's picker is faster to work with,
+2026-08-07: "SHOULD BE LIKE THAT WAY THAT CAN MORE EASILY... choose
+slots tasks etc etc!!! everything shuld be very quickly easy!!!"):
+  - the review list now uses real multi-select (click, ctrl+click,
+    shift+click a range) instead of one row at a time.
+  - "Select all" / "Select none" / "Drop selected" / "Keep only
+    selected" — bulk actions on whatever's currently selected.
+  - right-click a row for a per-deadline shortcut — "Drop all 'TUTA'
+    blocks" / "Keep only 'TUTA' blocks" — the fastest way to say "not
+    this deadline this week" without touching individual rows.
+  - caught and fixed a real bug while testing this: the "Keep only
+    selected" button dropped everything else but never actually
+    un-dropped the kept rows if they'd been dropped in an earlier
+    action — a stale "dropped" tag could survive a "keep" click.
+
 New in v9.24 (#159 — one-off dated commitments, 2026-08-07: a real
 event week — "next week is gonna be HGW its gonna take lot of time
 like 0830-17 many days" — had no clean home; recurring commitments
@@ -13388,23 +13403,28 @@ class App(tk.Tk):
         refresh()
 
     def _auto_plan_win(self):
-        """Backlog #153: "auto-plan my week" — one button proposing a
-        full week's lock plan across every open deadline at once,
-        instead of #113/#135's one-deadline-at-a-time picker. The
-        owner's own chosen direction for the calendar work after it
-        drifted into small utility features: "GO BACK TO THE OG
+        """Backlog #153 + #160: "auto-plan my week" — one button
+        proposing a full week's lock plan across every open deadline
+        at once, instead of #113/#135's one-deadline-at-a-time picker.
+        The owner's own chosen direction for the calendar work after
+        it drifted into small utility features: "GO BACK TO THE OG
         IDEA... FUNCTIONING GOOD CALENDAR... helps me to predict,
         automate etc ANYTHING." `_auto_plan_week` does the greedy
-        allocation; this window is review-and-confirm — every row
-        starts picked, click to drop one you don't want, nothing gets
-        locked until you say so, same "recommend, never auto-apply"
-        posture as every suggestion in this app."""
+        allocation; this window is review-and-confirm, nothing gets
+        locked until "Lock accepted plan" — same "recommend, never
+        auto-apply" posture as every suggestion in this app. #160:
+        the picking itself got faster after the owner's own feedback
+        ("SHOULD BE LIKE THAT WAY THAT CAN MORE EASILY... choose slots
+        tasks etc etc!!! everything shuld be very quickly easy") —
+        native multi-select (click, ctrl+click, shift+click a range)
+        plus bulk Drop/Keep buttons and a right-click "drop/keep only
+        this deadline" shortcut, instead of one row at a time."""
         win = tk.Toplevel(self)
         win.title("Auto-plan my week")
-        win.geometry("620x480")
+        win.geometry("680x520")
 
         plan = self._auto_plan_week()
-        summary = ttk.Label(win, foreground="#2e6da4", wraplength=580,
+        summary = ttk.Label(win, foreground="#2e6da4", wraplength=640,
                             justify="left")
         summary.pack(fill="x", padx=8, pady=(8, 4))
         if not plan:
@@ -13420,10 +13440,26 @@ class App(tk.Tk):
         breakdown = ", ".join(f"{n} {h:.1f}h" for n, h in by_dl.items())
         summary.config(text=f"Proposed: {total_h:.1f}h across "
                             f"{len(by_dl)} deadline(s) this week — {breakdown}. "
-                            "Click a row to drop it, then lock the rest.")
+                            "Click rows (ctrl/shift for more), then Drop/Keep, "
+                            "or right-click a row for per-deadline shortcuts.")
+
+        bar1 = ttk.Frame(win)
+        bar1.pack(fill="x", padx=8, pady=(0, 4))
+        ttk.Button(bar1, text="Select all",
+                  command=lambda: tree.selection_set(tree.get_children())
+                  ).pack(side="left")
+        ttk.Button(bar1, text="Select none",
+                  command=lambda: tree.selection_remove(tree.selection())
+                  ).pack(side="left", padx=(4, 0))
+        ttk.Button(bar1, text="Drop selected",
+                  command=lambda: drop_rows(tree.selection())
+                  ).pack(side="left", padx=(12, 0))
+        ttk.Button(bar1, text="Keep only selected",
+                  command=lambda: keep_only(tree.selection())
+                  ).pack(side="left", padx=(4, 0))
 
         tree = ttk.Treeview(win, columns=("date", "window", "hours", "dl"),
-                            show="headings")
+                            show="headings", selectmode="extended")
         for c, label, w in (("date", "Date", 100), ("window", "Window", 120),
                             ("hours", "Hours", 60), ("dl", "Deadline", 140)):
             tree.heading(c, text=label)
@@ -13436,19 +13472,39 @@ class App(tk.Tk):
                 f"{p['date']:%a %d.%m}", f"{p['start']:%H:%M}-{p['end']:%H:%M}",
                 f"{p['hours']:.1f}h", p["dl_name"]))
 
-        def toggle(event):
+        def drop_rows(rows):
+            for row in rows:
+                dropped.add(row)
+                tree.item(row, tags=("dropped",))
+
+        def keep_rows(rows):
+            for row in rows:
+                dropped.discard(row)
+                tree.item(row, tags=())
+
+        def keep_only(rows):
+            rows = set(rows)
+            drop_rows([r for r in tree.get_children() if r not in rows])
+            keep_rows(rows)
+
+        def context_menu(event):
             row = tree.identify_row(event.y)
             if not row:
                 return
-            if row in dropped:
-                dropped.discard(row)
-                tree.item(row, tags=())
-            else:
-                dropped.add(row)
-                tree.item(row, tags=("dropped",))
-        tree.bind("<Button-1>", toggle)
+            if row not in tree.selection():
+                tree.selection_set(row)
+            name = plan[int(row)]["dl_name"]
+            same_dl = [r for r in tree.get_children()
+                      if plan[int(r)]["dl_name"] == name]
+            menu = tk.Menu(win, tearoff=0)
+            menu.add_command(label=f"Drop all '{name}' blocks",
+                             command=lambda: drop_rows(same_dl))
+            menu.add_command(label=f"Keep only '{name}' blocks",
+                             command=lambda: keep_only(same_dl))
+            menu.tk_popup(event.x_root, event.y_root)
+        tree.bind("<Button-3>", context_menu)
 
-        status = ttk.Label(win, foreground="#2e6da4", wraplength=580,
+        status = ttk.Label(win, foreground="#2e6da4", wraplength=640,
                            justify="left")
         status.pack(fill="x", padx=8, pady=(0, 4))
 

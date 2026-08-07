@@ -497,6 +497,14 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.25** (#160, 2026-08-07, DONE). Auto-plan's review list gets
+  real multi-select (click/ctrl+click/shift+click a range), bulk
+  Select all/none/Drop selected/Keep only selected buttons, and a
+  right-click per-deadline shortcut ("Drop all 'TUTA' blocks"). Owner
+  feedback: "SHOULD BE LIKE THAT WAY THAT CAN MORE EASILY... choose
+  slots tasks etc etc!!!" Caught and fixed a real bug while testing:
+  "Keep only selected" dropped everything else but didn't clear a
+  stale "dropped" tag on rows already dropped in an earlier action.
 - **v9.24** (#159, 2026-08-07, DONE). Recurring commitments editor
   gets a 6th column, "One-off date" — a window real on exactly ONE
   date instead of a recurring weekday pattern, for a real event week
@@ -4125,6 +4133,11 @@ polish — the three NOT chosen this round) when continuing this work.
     built same-round, 2026-08-07, direct real need: the owner's
     actual HGW week + one-off meetings/dinners had no clean home in
     either existing mechanism.)
+
+~~160. **Auto-plan's picker should be faster to work with — bulk
+    select, per-deadline shortcuts.**~~ — FIXED v9.25. See the v9.25
+    version-history entry above. (Direct owner feedback on #153, same
+    round it shipped.)
 
 ## How to verify changes without Windows
 

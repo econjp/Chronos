@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.25 — auto-plan's picker is faster to work with
+
+Select multiple rows at once (click, ctrl+click, shift+click a
+range), then Select all / Select none / Drop selected / Keep only
+selected. Right-click a row for "Drop all 'TUTA' blocks" or "Keep
+only 'TUTA' blocks" — the fastest way to say "not this deadline this
+week" without touching individual rows.
+
 ### v9.24 — one-off dated commitments
 
 Recurring commitments get a 6th column, "One-off date" — for a real
