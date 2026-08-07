@@ -68,7 +68,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_parse_plan_line", "_auto_capture_plans", "_parse_time_loose",
         "_upcoming_plans", "_ics_hint_for_url", "_free_evenings_from_rows",
         "_social_density_line", "_repeating_plan_suggestion",
-        "_locked_this_week_line",
+        "_locked_this_week_line", "_weekly_target_lines",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -875,6 +875,19 @@ def suite_week_ahead():
     ]}
     out4 = D._week_ahead_lines(d)
     assert any("already committed" in x and "Day job" in x for x in out4), out4
+
+    # ---- backlog #144/#148 fix: NO deadlines at all used to force an
+    # early return before plans/locked/target were ever checked,
+    # contradicting this function's own "a plans-only week still
+    # shows" docstring claim ----
+    d.deadlines = lambda: []
+    d.settings = {"protected_windows": [
+        {"label": "Concert", "start": "20:00", "end": "23:00", "days": "",
+         "skip": [], "date": (d.today + dt.timedelta(days=2)).isoformat()}]}
+    out5 = D._week_ahead_lines(d)
+    assert out5 and any("Concert" in x for x in out5), out5
+    assert not any("deadlines need" in x for x in out5), out5   # no needs -> omitted
+
     d.settings = {}   # restore for any suite that reuses d below this point
 
 
@@ -2397,6 +2410,29 @@ def suite_locked_this_week():
     assert D._locked_this_week_line(d3, week) is None
 
 
+def suite_weekly_target():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 7, 15)   # Wednesday of the week starting Mon 07-13
+    rows = [row("2026-07-13", 60, "tuta: exercises"),
+           row("2026-07-14", 60, "tuta: exercises")]
+    seed(ns, rows)
+    d = _mk(D, today=TODAY, deadlines=lambda: [
+        {"name": "TUTA", "match": "tuta", "target_h": 8.0,
+         "locked_windows": [
+             {"date": "2026-07-16", "start": "14:00", "end": "18:00"},
+             {"date": "2026-07-10", "start": "09:00", "end": "10:00"},  # past
+             {"date": "2026-07-25", "start": "09:00", "end": "10:00"}]},  # next wk
+        {"name": "Thesis", "match": "thesis"},   # no target_h -> no line
+    ])
+    lines = D._weekly_target_lines(d)
+    assert lines == ["  TUTA: 2.0h logged + 4.0h locked = 6.0h of your own "
+                     "8h/week target"], lines
+
+    # ---- silence: no deadline has target_h set ----
+    d2 = _mk(D, today=TODAY, deadlines=lambda: [{"name": "Thesis"}])
+    assert D._weekly_target_lines(d2) == []
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2445,7 +2481,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("free-evenings", suite_free_evenings),
           ("social-density", suite_social_density),
           ("repeating-plan", suite_repeating_plan),
-          ("locked-this-week", suite_locked_this_week)]
+          ("locked-this-week", suite_locked_this_week),
+          ("weekly-target", suite_weekly_target)]
 
 
 def main():

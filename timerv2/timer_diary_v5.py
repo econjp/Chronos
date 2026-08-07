@@ -60,6 +60,35 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.38 (#144 — weekly target_h check for deadlines like TUTA,
+2026-08-07, plus a real gate bug fixed along the way):
+  - deadlines can optionally set `target_h` — a weekly pace target
+    separate from the total scope (TUTA's is 8h/week) — but nothing
+    checked actual+locked hours against THAT number specifically; the
+    rest of WEEK AHEAD only knew the straight-line total/days-left
+    pace. New `_weekly_target_lines`: one line per deadline that has
+    `target_h` set — "TUTA: 2.0h logged + 4.0h locked = 6.0h of your
+    own 8h/week target" — scoped to the current calendar week
+    (Monday..Sunday), reusing the same `done_h`/`locked_h` computation
+    `_dl_progress`/`_locked_hours` already do. No threshold gate: the
+    number itself is the point, not a judgment on it.
+  - found and fixed a real bug while wiring this in: `_week_ahead_
+    lines` used to `return []` the INSTANT no deadline carried a real
+    `total_h` scope — before plans (#166) or locked windows (#148)
+    were ever even checked. This directly contradicted the function's
+    own docstring, which has claimed since v9.28 that a plans-only
+    week should still show. A week with zero scoped deadlines but a
+    real one-off plan or locked window was silently showing nothing,
+    the exact opposite of what v9.28/v9.37 were built for. Restructured
+    so an empty `needs` list only skips the overbooked/tight-day/
+    behind checks (which only mean something when there IS a
+    deadline need) instead of exiting the whole function early.
+  - new "weekly-target" selftest suite, plus a new regression case
+    added to the existing "week-ahead" suite proving the early-return
+    bug is fixed (a deadline-free week with a real plan now correctly
+    shows, and omits the "deadlines need" clause when there are none);
+    53/53 green.
+
 New in v9.37 (#148 — "locked this week" as a concrete visible list,
 2026-08-07):
   - WEEK AHEAD now names every locked window (#136) falling in the
@@ -7124,11 +7153,20 @@ class App(tk.Tk):
         exist (_day_capacity, _dl_progress, _dl_projection) — no new
         data. Silent unless something's actually worth flagging: no
         deadlines with real remaining scope, a normal week with slack
-        and nothing already behind, AND no real plans (#166) this
-        week, produce nothing at all — but a week with real one-off
-        plans (#159/#161) is worth showing on its own, even a calm one,
+        and nothing already behind, AND no real plans (#166)/locked
+        windows (#148)/weekly targets (#144) this week, produce
+        nothing at all — but a week with real one-off plans
+        (#159/#161) is worth showing on its own, even a calm one,
         since seeing what's already on the calendar is exactly the
-        "plan weeks ahead" ask this whole feature exists for."""
+        "plan weeks ahead" ask this whole feature exists for. Backlog
+        #148/#144: fixed a real gap here — this docstring's own claim
+        always said a plans-only week should still show, but the code
+        used to `return []` the instant no deadline carried a real
+        `total_h` scope, BEFORE plans/locked/target were ever checked
+        — silently contradicting itself. `needs` being empty no longer
+        short-circuits anything; the overbooked/tight-day/behind
+        checks (which only mean something when there IS a need) are
+        simply skipped instead."""
         week = [self.today + dt.timedelta(days=i) for i in range(7)]
         caps = [(d, self._day_capacity(d)) for d in week]
         total_cap = sum(c for _d, c in caps)
@@ -7144,14 +7182,17 @@ class App(tk.Tk):
             behind = bool(proj and proj["delta"] > 0)
             need = min(p["needed_per_day"] * 7, p["remaining_h"])
             needs.append((dl["name"], need, behind))
-        if not needs:
-            return []
         total_need = sum(n for _n, n, _b in needs)
-        tightest_d, tightest_h = min(caps, key=lambda x: x[1])
-        avg_cap = total_cap / 7
-        overbooked = total_need > total_cap
-        real_tight_day = tightest_h < avg_cap * 0.4 and tightest_h < 3.0
-        behind_names = [n for n, _need, b in needs if b]
+        if needs:
+            tightest_d, tightest_h = min(caps, key=lambda x: x[1])
+            avg_cap = total_cap / 7
+            overbooked = total_need > total_cap
+            real_tight_day = tightest_h < avg_cap * 0.4 and tightest_h < 3.0
+            behind_names = [n for n, _need, b in needs if b]
+        else:
+            tightest_d = tightest_h = None
+            overbooked = real_tight_day = False
+            behind_names = []
         # backlog #166: one-off plans (#159/#161 -- a dinner, an event)
         # deserve their own visible line, not just folded into the
         # generic "already committed" hours breakdown below, where a
@@ -7174,11 +7215,13 @@ class App(tk.Tk):
                              w.get("end", "")))
         plans.sort()
         locked_line = self._locked_this_week_line(week)
+        weekly_targets = self._weekly_target_lines()
         if not (overbooked or real_tight_day or behind_names or plans
-               or locked_line):
+               or locked_line or weekly_targets):
             return []                # a normal week — nothing to flag
         lines = ["", f"WEEK AHEAD: {total_cap:.1f}h free across the next "
-                    f"7 days · deadlines need ~{total_need:.1f}h"]
+                    "7 days"
+                    + (f" · deadlines need ~{total_need:.1f}h" if needs else "")]
         # backlog #133: total_cap above is already net of recurring
         # commitments (_day_capacity routes through _protected_hours),
         # but that's silent — name WHY it's smaller than raw weekday
@@ -7214,6 +7257,53 @@ class App(tk.Tk):
         density = self._social_density_line(total_cap, plans, behind_names)
         if density:
             lines.append(density)
+        lines += weekly_targets
+        return lines
+
+    def _weekly_target_lines(self):
+        """Backlog #144: deadlines can optionally set `target_h` — a
+        weekly pace target separate from the total scope (TUTA's is
+        8h/week) — but nothing checks actual+locked hours against THAT
+        number specifically; the rest of WEEK AHEAD only knows the
+        straight-line total/days-left pace. One line per deadline that
+        has `target_h` set: "TUTA: 2.0h logged + 4.0h locked = 6.0h of
+        your own 8.0h/week target" — reuses the same `done_h`/
+        `locked_h` computation `_dl_progress`/`_locked_hours` already
+        do, just scoped to the CURRENT calendar week (Monday..Sunday
+        containing today) instead of since-start-of-deadline. No new
+        data model, no threshold gate — the number itself is the
+        point, not a judgment on it."""
+        lines = []
+        monday = self.today - dt.timedelta(days=self.today.weekday())
+        sunday = monday + dt.timedelta(days=6)
+        for dl in self.deadlines():
+            target = float(dl.get("target_h") or 0)
+            if target <= 0:
+                continue
+            kws = self._match_kws(dl.get("match", ""))
+            if kws:
+                done_min = matched_minutes(kws, monday, self.today)
+            else:
+                idx = day_index()
+                mon_iso, today_iso = monday.isoformat(), self.today.isoformat()
+                done_min = sum(rec["work"] for iso, rec in idx.items()
+                              if mon_iso <= iso <= today_iso)
+            done_h = done_min / 60
+            locked_h = 0.0
+            for w in dl.get("locked_windows", []):
+                try:
+                    d = dt.date.fromisoformat(w["date"])
+                    sh, sm = map(int, w["start"].split(":"))
+                    eh, em = map(int, w["end"].split(":"))
+                except (KeyError, ValueError, TypeError):
+                    continue
+                if d < self.today or d > sunday:
+                    continue
+                locked_h += _time_span_hours(dt.time(sh, sm), dt.time(eh, em))
+            name = dl.get("name") or "this deadline"
+            lines.append(f"  {name}: {done_h:.1f}h logged + {locked_h:.1f}h "
+                         f"locked = {done_h + locked_h:.1f}h of your own "
+                         f"{target:g}h/week target")
         return lines
 
     def _locked_this_week_line(self, week):

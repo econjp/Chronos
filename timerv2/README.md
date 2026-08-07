@@ -4,6 +4,16 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.38 — Weekly target_h check (TUTA-style deadlines)
+
+A deadline with a weekly pace target (`target_h`, separate from its
+total scope) now gets checked against it directly: "TUTA: 2.0h logged
++ 4.0h locked = 6.0h of your own 8h/week target." Also fixes a real
+bug found while building this: a week with no scoped deadlines but a
+real plan or locked window used to show nothing at all, contradicting
+what the plans/locked-list features were built for — now it correctly
+shows.
+
 ### v9.37 — "Locked this week" concrete list
 
 WEEK AHEAD now names every locked window falling in the coming 7 days

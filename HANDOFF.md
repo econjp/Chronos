@@ -497,6 +497,17 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.38** (#144, 2026-08-07, DONE). New `_weekly_target_lines`:
+  deadlines with `target_h` set get checked against it directly —
+  "TUTA: 2.0h logged + 4.0h locked = 6.0h of your own 8h/week target."
+  Found and fixed a real gate bug while wiring this in:
+  `_week_ahead_lines` used to `return []` the instant no deadline
+  carried a `total_h` scope, BEFORE plans (#166) or locked windows
+  (#148) were ever checked — directly contradicting the function's own
+  docstring since v9.28. Restructured so an empty `needs` list only
+  skips the needs-dependent checks, not the whole function. New
+  "weekly-target" selftest suite plus a regression case in the
+  existing "week-ahead" suite; 53/53 green.
 - **v9.37** (#148, 2026-08-07, DONE). WEEK AHEAD now names every
   locked window (#136) falling in the coming 7 days concretely —
   "locked this week: TUTA Wed 14:00-18:00 (4.0h)". Correction: the
@@ -4007,22 +4018,10 @@ measuring what's already there.
     computation, just closing the loop between "I locked something"
     and "I locked ENOUGH" for a short-horizon deadline like an exam.
 
-144. **A weekly (not just daily) locked-vs-needed check specifically
-    for target_h deadlines like TUTA (PLANNING — TUTA already carries
-    a real `target_h: 8.0` alongside its `total_h`, unused by
-    anything; new idea 2026-08-07, re-checking real deadline data at
-    the owner's own request).** Deadlines optionally set a weekly
-    pace target (`target_h`) separate from the total scope — TUTA's
-    is 8h/week — but nothing currently checks actual + locked hours
-    against THAT number specifically; #133's week-ahead line only
-    knows the straight-line total/days-left pace, not a deliberately
-    chosen weekly rhythm. Fix: when `target_h` is set, add one line to
-    the week-ahead block (or the deadline countdown) — "TUTA: 2.0h
-    logged + 4.0h locked = 6.0h of your own 8.0h/week target" —
-    reusing `_dl_progress`'s `done_h`/`locked_h` plus the existing
-    `target_h` field, no new data model, just a number that already
-    exists finally being checked against the other number that
-    already exists.
+~~144. **A weekly (not just daily) locked-vs-needed check specifically
+    for target_h deadlines like TUTA.**~~ — DONE v9.38. See the v9.38
+    version-history entry above (also fixed a real gate bug found
+    while building it). (PLANNING; new idea 2026-08-07.)
 
 ~~145. **A quiet nudge when a locked window passes unworked.**~~ —
     FIXED v9.20. See the v9.20 version-history entry above.
