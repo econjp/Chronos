@@ -3875,6 +3875,72 @@ measuring what's already there.
 ~~145. **A quiet nudge when a locked window passes unworked.**~~ —
     FIXED v9.20. See the v9.20 version-history entry above.
 
+149. **Locked windows get their own visible trace in the day file's
+    morning header (PLANNING — extends #130's exact "sacred rule" fix
+    to locked time specifically, the same gap #130 closed for
+    recurring commitments; new idea 2026-08-07).** #130 fixed
+    commitments being invisible in the day file itself (CLAUDE.md's
+    own standing rule: "every feature must leave a visible trace in
+    the day file, a csv/settings-only feature reads as broken"). The
+    exact same gap now exists for #136's `locked_windows` — a locked
+    study block lives only in settings.json and the calendar view,
+    never in the actual .txt the owner lives in day to day. Fix: one
+    line in `_new_day_header`, same place #130's commitments line
+    lives — "locked today: TUTA 09:00-13:00" — only on days a locked
+    window actually falls, reusing the exact iteration #145 already
+    does over every deadline's `locked_windows`, just filtered to
+    `date == today` instead of `< today`.
+
+150. **Deadline postmortem names total locked-vs-actually-worked hours
+    (PLANNING — closes the loop between #145's per-window nudge and
+    the existing end-of-deadline postmortem feature; new idea
+    2026-08-07).** #145 flags individual missed locks as they happen,
+    but there's no summary at the point a deadline actually concludes
+    — `_deadline_postmortem_lines` (the existing wrap-up feature that
+    already fires on Hegemon/Thesis) doesn't know locking ever
+    happened at all. Fix: one more line in the postmortem, when
+    `locked_windows` is non-empty — "locked 12.0h total across the
+    project, 7.5h of it actually got worked (62%)" — a plain sum
+    reusing #145's own overlap check across the WHOLE deadline instead
+    of just the trailing 14 days, since a postmortem is exactly the
+    moment "the whole history" is the right window, not a rolling one.
+
+151. **A due-date-vs-locked-window contradiction check (PLANNING —
+    connects #123's task due-dates with #135's task locking, a real
+    planning mistake nothing currently catches; new idea 2026-08-07).**
+    Nothing stops (or even notices) locking time for a task AFTER its
+    own due date — set a task due 12.08, then use #135 to lock a
+    study window for it on 15.08, and the app says nothing, even
+    though that's a contradiction the owner almost certainly didn't
+    intend. Fix: a plain check in `_add_locked_windows` (or the
+    picker's `export()`) — if the target has a `due` (task) or `date`
+    (deadline) and any locked window falls after it, a plain status-
+    bar line, same "observe, don't block" posture as everywhere else
+    in this app — "note: this window (15.08) is after TUTA's due date
+    (12.08)." No new data, one date comparison against fields that
+    already exist.
+
+152. **Guard against a locked window silently double-counting once
+    it's re-imported into Outlook and re-subscribed back (PLANNING —
+    connects #113/#136's export+lock with #114's calendar subscription
+    in a way that's never been checked; new idea 2026-08-07).** The
+    intended flow is: lock a window → export .ics → import into real
+    Outlook. But this app ALSO subscribes back to that same Outlook
+    calendar (#114) and refreshes it hourly — meaning a locked window,
+    once imported, will eventually show up a second time as ordinary
+    subscribed busy time via `_busy_intervals`. `_free_slots` already
+    merges both sources as "busy" so it wouldn't offer the slot twice
+    for SCHEDULING — but `_day_capacity`'s two subtractions (busy time
+    AND, separately, nothing currently double-checks) could plausibly
+    double-subtract the same real hour under two different busy-time
+    categories once both exist for the same interval. Needs an actual
+    trace-through (not assumed) of `_day_capacity`/`_busy_data` against
+    a `locked_windows` entry whose `.ics` has round-tripped back in as
+    a subscribed event, to confirm whether this is real or the merge
+    already guards against it — flagged as PLANNING specifically
+    because it needs verification before a fix, not blind trust either
+    way.
+
 146. **Lock-window candidates ranked energy-aware, not just biggest-
     block-first (PLANNING — connects two subsystems built independently
     this whole project — scheduling and the energy-forecast engine —
