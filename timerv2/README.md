@@ -4,6 +4,16 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.35 — Dark mode for the calendar/timeline views
+
+Dark mode (v9.23) recolored the main window but left the calendar,
+timeline, trend, burndown, heatmap and forecast Canvas views on their
+own hardcoded light backgrounds. They now follow the theme too —
+backgrounds, gridlines and label text; the semantic colors (work,
+signal, events, commitments) stay the same either way. Not visually
+verified on a real Windows machine yet — confirm dark mode still
+looks right on the calendar/timeline next time you're at the PC.
+
 ### v9.34 — Detect a repeating plan, offer recurring
 
 Add "Dinner" as a one-off plan on the same weekday three weeks running

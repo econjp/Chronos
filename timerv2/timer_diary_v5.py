@@ -60,6 +60,38 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.35 (#157 — dark mode for the canvas views, 2026-08-07: the
+explicit, known gap #156 itself left open):
+  - #156's dark mode recolored the main window (toolbar, diary text,
+    status bar) but deliberately left every Canvas-drawing method
+    (calendar week/month, day timeline, trend, burndown, heatmap,
+    year rhythm, forecast bars, dashboard week/sleep bars) on their
+    own hardcoded hex backgrounds — jarring, a light rectangle
+    floating inside an otherwise-dark app. New `_theme_color(key)`:
+    a light/dark pair lookup for canvas backgrounds, gridlines, and
+    label text specifically; the semantic data colors (TL_WORK/
+    TL_SIGNAL/CAL_EVENT/CAL_COMMIT, the free-slot green) are
+    unchanged — same color either way, just what they sit on top of.
+  - every `tk.Canvas(..., background="white", ...)` across all 8
+    canvas-bearing views now reads the current theme; the calendar
+    week/month grid, the day timeline (including its empty-track
+    rectangle, drawn ON TOP of the canvas background so the widget's
+    own bg color alone never repainted it), and the forecast bars
+    view additionally get themed gridlines/labels. `_cal_shade_color`
+    (the month view's busy-to-free green blend) takes a `base` color
+    now instead of hardcoded white, so the blend starts from a dark
+    tone in dark mode instead of washing every cell out toward white.
+  - `_toggle_dark_mode` now also redraws the timeline immediately
+    (previously only `_apply_theme`'s widget-level bg change ran,
+    which the foreground rectangle draw call doesn't pick up on its
+    own) so switching modes updates it live, not just on next refresh.
+  - **UNTESTED by the selftest harness** — pure Canvas/Tkinter
+    rendering, same category as #156 itself; this Linux dev
+    environment can't visually confirm actual on-screen contrast.
+    Verified by direct code read-through of every `fill=`/
+    `background=` call touched, not just a visual check, but real
+    confirmation needs the owner's own machine with dark mode on.
+
 New in v9.34 (#169 — detect a repeating one-off plan, offer to make
 it recurring, 2026-08-07: connects #126's "learn from real data"
 pattern with #159/#161's one-off entries):
@@ -5192,6 +5224,31 @@ class App(tk.Tk):
                     "select_bg": "#264f78", "text_bg": "#1e1e1e",
                     "text_fg": "#d4d4d4"}
 
+    _CANVAS_LIGHT = {"cv_bg": "white", "grid": "#e5e5e5", "grid2": "#eeeeee",
+                     "label": "#444444", "label_bold": "#000000",
+                     "cell_bg": "#e4e7ec", "cell_bg2": "#eef1f5",
+                     "muted": "#999999", "line": "#cccccc"}
+    _CANVAS_DARK = {"cv_bg": "#1e1e1e", "grid": "#3a3a3a", "grid2": "#333333",
+                    "label": "#c8c8c8", "label_bold": "#f0f0f0",
+                    "cell_bg": "#2a2d33", "cell_bg2": "#26282d",
+                    "muted": "#8a8a8a", "line": "#4a4a4a"}
+
+    def _theme_color(self, key):
+        """Backlog #157: #156's dark mode deliberately stopped at the
+        main window (toolbar, diary text, status bar) — the several
+        Canvas-drawing methods (calendar week/month, day timeline,
+        trend/heatmap, forecast bars) draw with their own hardcoded
+        hex colors and would otherwise still render on a light/white
+        background inside an otherwise-dark app. Small light/dark pair
+        lookup for canvas BACKGROUNDS, gridlines and label text
+        specifically — the semantic data colors (TL_WORK/TL_SIGNAL/
+        CAL_EVENT/CAL_COMMIT etc.) don't change, just what they sit on
+        top of, so a tracked-work block looks the same color either
+        way."""
+        pal = (self._CANVAS_DARK if self.settings.get("dark_mode", False)
+              else self._CANVAS_LIGHT)
+        return pal.get(key, pal["cv_bg"])
+
     def _apply_theme(self):
         """Backlog #156: dark mode, hand-built with stdlib ttk only —
         no third-party theme package, per CLAUDE.md's standing stdlib-
@@ -5248,6 +5305,10 @@ class App(tk.Tk):
         self.settings["dark_mode"] = self.dark_var.get()
         save_settings(self.settings)
         self._apply_theme()
+        # backlog #157: the timeline's empty-track rectangle is drawn
+        # ON TOP of the canvas background, so toggling the widget's own
+        # bg color (above) doesn't repaint it — needs an explicit redraw
+        self._draw_timeline()
 
     QUOTES = ["Zero noise. 100% signal.",
               "Every genius in history ran at ~100% signal.",
@@ -6530,7 +6591,8 @@ class App(tk.Tk):
             cv.create_rectangle(x0, 1, max(x1, x0 + 1.5), H, fill=color,
                                 outline="")
 
-        cv.create_rectangle(0, 1, W, H, fill="#ececec", outline="#cccccc")
+        cv.create_rectangle(0, 1, W, H, fill=self._theme_color("cell_bg"),
+                            outline=self._theme_color("line"))
         band = self._sleep_band()
         if band:
             x0, x1 = W * band[0] / 1440, W * band[1] / 1440
@@ -8949,7 +9011,7 @@ class App(tk.Tk):
         win = tk.Toplevel(self)
         win.title("Tracked hours — last 8 weeks")
         W, H, PAD = 520, 300, 36
-        cv = tk.Canvas(win, width=W, height=H, background="white",
+        cv = tk.Canvas(win, width=W, height=H, background=self._theme_color("cv_bg"),
                        highlightthickness=0)
         cv.pack(padx=8, pady=8)
         mx = max((m for _, m in data), default=0) or 1
@@ -10579,27 +10641,28 @@ class App(tk.Tk):
         for i, (d, slots, free_h) in enumerate(rows):
             y = 6 + i * row_h
             weekend = d.weekday() >= 5
-            label_color = "#000000" if weekend else "#444444"
+            label_color = (self._theme_color("label_bold") if weekend
+                           else self._theme_color("label"))
             if d == self.today:
                 label_color = "#2e6da4"
             cv.create_text(6, y + row_h / 2, anchor="w",
                            text=f"{d:%a %d.%m}", fill=label_color,
                            font=("Segoe UI", 9, "bold" if weekend else "normal"))
             cv.create_rectangle(pad_l, y + 2, pad_l + bar_w, y + row_h - 4,
-                                fill="#e4e7ec", outline="")
+                                fill=self._theme_color("cell_bg"), outline="")
             for s, e in slots:
                 x0 = pad_l + bar_w * (_time_span_hours(win_start, s) / win_span)
                 x1 = pad_l + bar_w * (_time_span_hours(win_start, e) / win_span)
                 cv.create_rectangle(x0, y + 2, max(x1, x0 + 1), y + row_h - 4,
                                     fill="#5fa85f", outline="")
             cv.create_text(pad_l + bar_w + 8, y + row_h / 2, anchor="w",
-                           text=f"{free_h:.1f}h", fill="#555555",
+                           text=f"{free_h:.1f}h", fill=self._theme_color("label"),
                            font=("Segoe UI", 9))
         cv.create_text(pad_l, 6 + len(rows) * row_h + 6, anchor="nw",
-                       text=f"{win_start:%H:%M}", fill="#999999",
+                       text=f"{win_start:%H:%M}", fill=self._theme_color("muted"),
                        font=("Segoe UI", 7))
         cv.create_text(pad_l + bar_w, 6 + len(rows) * row_h + 6, anchor="ne",
-                       text=f"{win_end:%H:%M}", fill="#999999",
+                       text=f"{win_end:%H:%M}", fill=self._theme_color("muted"),
                        font=("Segoe UI", 7))
         cv.config(width=W, height=6 + len(rows) * row_h + 22)
 
@@ -10615,7 +10678,7 @@ class App(tk.Tk):
         win = tk.Toplevel(self)
         win.title("Free-time forecast — next 3 weeks")
         rows = self._day_forecast(21)
-        cv = tk.Canvas(win, background="white", highlightthickness=0)
+        cv = tk.Canvas(win, background=self._theme_color("cv_bg"), highlightthickness=0)
         cv.pack(padx=8, pady=8)
         self._draw_forecast_bars(cv, rows)
         ttk.Label(win, text="green = free · grey = busy/outside work hours",
@@ -10662,11 +10725,12 @@ class App(tk.Tk):
 
         for h in range(hours + 1):
             y = hdr_h + h * hour_h
-            cv.create_line(pad_l, y, W, y, fill="#e5e5e5")
+            cv.create_line(pad_l, y, W, y, fill=self._theme_color("grid"))
             if h < hours:
                 cv.create_text(4, y + 2, anchor="nw",
                                text=f"{self._CAL_HOUR_START + h:02d}:00",
-                               font=("Segoe UI", 7), fill="#999999")
+                               font=("Segoe UI", 7),
+                               fill=self._theme_color("muted"))
 
         events = self._calendar_events(monday, monday + dt.timedelta(days=6))
         ev_by_day = {}
@@ -10680,12 +10744,14 @@ class App(tk.Tk):
             x0 = pad_l + i * col_w
             weekend = d.weekday() >= 5
             cv.create_rectangle(x0, 0, x0 + col_w, hdr_h,
-                                fill="#e4e7ec" if weekend else "#eef1f5",
+                                fill=self._theme_color("cell_bg" if weekend
+                                                       else "cell_bg2"),
                                 outline="")
             cv.create_text(x0 + col_w / 2, hdr_h / 2, text=f"{d:%a %d.%m}",
-                           fill="#2e6da4" if d == self.today else "#333333",
+                           fill=("#2e6da4" if d == self.today else
+                                self._theme_color("label_bold")),
                            font=("Segoe UI", 8, "bold"))
-            cv.create_line(x0, 0, x0, H, fill="#eeeeee")
+            cv.create_line(x0, 0, x0, H, fill=self._theme_color("grid2"))
             for s, e, label in self._protected_intervals_named(d):
                 y0, y1 = y_for(s), max(y_for(e), y_for(s) + 9)
                 cv.create_rectangle(x0 + 2, y0, x0 + col_w - 2, y1,
@@ -10710,7 +10776,7 @@ class App(tk.Tk):
                                text=self._cal_truncate(f"{s:%H:%M} {name}",
                                                        col_w - 6),
                                font=("Segoe UI", 6), fill="white")
-        cv.create_line(pad_l, 0, pad_l, H, fill="#cccccc")
+        cv.create_line(pad_l, 0, pad_l, H, fill=self._theme_color("line"))
 
     def _week_click_to_slot(self, x, y, monday):
         """Backlog #122: the inverse of _draw_calendar_week's own
@@ -10734,15 +10800,19 @@ class App(tk.Tk):
         return d, dt.time(h, 0), dt.time(h_end, m_end)
 
     @staticmethod
-    def _cal_shade_color(ratio, target=(0xe4, 0xf5, 0xe4)):
-        """Backlog #131: white (busy) -> light green (free), ratio in
+    def _cal_shade_color(ratio, base=(0xff, 0xff, 0xff), target=(0xe4, 0xf5, 0xe4)):
+        """Backlog #131: `base` (busy) -> light green (free), ratio in
         [0, 1] — a plain linear blend, no new color math beyond what
         every other tinted-cell view in this app already does (the
-        heatmap, the day timeline)."""
+        heatmap, the day timeline). Backlog #157: `base` defaults to
+        white but the caller passes a dark base in dark mode — the
+        blend target (green) stays the same either way, same "the
+        semantic color doesn't change, just what it sits on" posture
+        as every other dark-mode canvas fix."""
         ratio = max(0.0, min(1.0, ratio))
-        r = round(255 - ratio * (255 - target[0]))
-        g = round(255 - ratio * (255 - target[1]))
-        b = round(255 - ratio * (255 - target[2]))
+        r = round(base[0] + ratio * (target[0] - base[0]))
+        g = round(base[1] + ratio * (target[1] - base[1]))
+        b = round(base[2] + ratio * (target[2] - base[2]))
         return f"#{r:02x}{g:02x}{b:02x}"
 
     def _draw_calendar_month(self, cv, year, month):
@@ -10771,7 +10841,8 @@ class App(tk.Tk):
 
         for i, wd in enumerate(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")):
             cv.create_text(pad + i * cell_w + cell_w / 2, hdr_h / 2, text=wd,
-                           font=("Segoe UI", 8, "bold"), fill="#666666")
+                           font=("Segoe UI", 8, "bold"),
+                           fill=self._theme_color("label"))
 
         range_end = next_month - dt.timedelta(days=1)
         events = self._calendar_events(first, range_end)
@@ -10798,16 +10869,19 @@ class App(tk.Tk):
             idx = start_col + day_num - 1
             row, col = idx // 7, idx % 7
             x0, y0 = pad + col * cell_w, hdr_h + pad + row * cell_h
+            dark = self.settings.get("dark_mode", False)
             if d == self.today:
-                bg = "#eaf2fb"
+                bg = "#2a3f52" if dark else "#eaf2fb"
             else:
-                bg = self._cal_shade_color(self._day_capacity(d) / 8.0)
+                base = (0x2a, 0x2d, 0x33) if dark else (0xff, 0xff, 0xff)
+                bg = self._cal_shade_color(self._day_capacity(d) / 8.0, base=base)
             cv.create_rectangle(x0, y0, x0 + cell_w, y0 + cell_h, fill=bg,
-                                outline="#e0e0e0")
+                                outline=self._theme_color("grid"))
             cv.create_text(x0 + 4, y0 + 2, anchor="nw", text=str(day_num),
                            font=("Segoe UI", 8, "bold" if d == self.today
                                  else "normal"),
-                           fill="#2e6da4" if d == self.today else "#333333")
+                           fill=("#2e6da4" if d == self.today else
+                                self._theme_color("label_bold")))
             line_y = y0 + 16
             due_color = "#c0392b" if d < self.today else "#b8621b"
             for name in due_by_day.get(d, []):
@@ -11035,7 +11109,7 @@ class App(tk.Tk):
         title_lbl = ttk.Label(top, text="", font=("Segoe UI", 9, "bold"))
         title_lbl.pack(side="left", padx=12)
 
-        cv = tk.Canvas(win, background="white", highlightthickness=0)
+        cv = tk.Canvas(win, background=self._theme_color("cv_bg"), highlightthickness=0)
         cv.pack(padx=8, pady=(0, 8))
         cv.bind("<Button-3>", on_right_click)
         render()
@@ -11546,7 +11620,7 @@ class App(tk.Tk):
         if cause:
             footers.append((cause, "#a05a00"))
         W, H, PAD = 560, 320 + 28 * len(footers), 40
-        cv = tk.Canvas(win, width=W, height=H, background="white",
+        cv = tk.Canvas(win, width=W, height=H, background=self._theme_color("cv_bg"),
                        highlightthickness=0)
         cv.pack(padx=8, pady=8)
         mx = max(ideal[-1], (actual[-1] if actual else 0), 1)
@@ -11609,7 +11683,7 @@ class App(tk.Tk):
         W, H = pad * 2 + weeks * cell, pad + 7 * cell + 30
         win = tk.Toplevel(self)
         win.title("Daily hours — last 16 weeks")
-        cv = tk.Canvas(win, width=W, height=H, background="white",
+        cv = tk.Canvas(win, width=W, height=H, background=self._theme_color("cv_bg"),
                        highlightthickness=0)
         cv.pack(padx=8, pady=8)
         seen_month = None
@@ -11675,7 +11749,7 @@ class App(tk.Tk):
         W, H = pad * 2 + weeks * cell, pad + 24 * cell + 30
         win = tk.Toplevel(self)
         win.title("Year rhythm — 52 weeks × hour of day")
-        cv = tk.Canvas(win, width=W, height=H, background="white",
+        cv = tk.Canvas(win, width=W, height=H, background=self._theme_color("cv_bg"),
                        highlightthickness=0)
         cv.pack(padx=8, pady=8)
         this_mon = self.today - dt.timedelta(days=self.today.weekday())
@@ -12332,10 +12406,10 @@ class App(tk.Tk):
         nb.pack(fill="both", expand=True, padx=8, pady=(8, 4))
 
         top_tab = ttk.Frame(nb)
-        cv = tk.Canvas(top_tab, width=660, height=150, background="white",
+        cv = tk.Canvas(top_tab, width=660, height=150, background=self._theme_color("cv_bg"),
                        highlightthickness=0)
         cv.pack(padx=4, pady=(4, 2))
-        sleep_cv = tk.Canvas(top_tab, width=660, height=80, background="white",
+        sleep_cv = tk.Canvas(top_tab, width=660, height=80, background=self._theme_color("cv_bg"),
                              highlightthickness=0)
         sleep_cv.pack(padx=4, pady=(0, 2))
         txt_today = self._scrolled_text(top_tab)

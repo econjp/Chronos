@@ -497,6 +497,17 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.35** (#157, 2026-08-07, DONE). The explicit gap #156 itself
+  left open: every Canvas-drawing view (calendar week/month, day
+  timeline, trend, burndown, heatmap, year rhythm, forecast bars,
+  dashboard bars) now follows dark mode too — new `_theme_color(key)`
+  light/dark lookup for canvas backgrounds/gridlines/labels;
+  `_cal_shade_color` takes a `base` color instead of hardcoded white.
+  Semantic data colors unchanged. `_toggle_dark_mode` now redraws the
+  timeline immediately. **UNTESTED by the selftest harness** — pure
+  Canvas rendering, same category as #156; verified by direct code
+  read-through, needs real on-screen confirmation on the owner's
+  machine.
 - **v9.34** (#169, 2026-08-07, DONE). A one-off plan repeating on the
   same weekday 3+ weeks running (same-ish time, within 45min) now gets
   offered as a real recurring commitment when the editor opens — same
@@ -4164,24 +4175,11 @@ polish — the three NOT chosen this round) when continuing this work.
     redirect: "theres rn many problems... fonts etc kinda weird...
     ALSO darkmode lol for whole software could be usable.")
 
-157. **Dark mode for the calendar/heatmap/timeline CANVAS views
-    (PLANNING — explicit, known gap left by #156, not silently left
-    half-done; new idea 2026-08-07).** #156 recolors the main window
-    (toolbar, diary text, status bar) but deliberately does NOT touch
-    the several Canvas-drawing methods that use their own hardcoded
-    hex colors — `_draw_calendar_week`/`_draw_calendar_month` (#120,
-    the CAL_EVENT/CAL_WORK/CAL_COMMIT constants, `_cal_shade_color`'s
-    white-to-green blend), the day timeline bar (`TL_WORK`/`TL_BREAK`/
-    `TL_SIGNAL`/`TL_SLEEP`), and any heatmap-style grid. In dark mode
-    right now these views would still render on a light/white canvas
-    background inside an otherwise-dark app — jarring, not actually
-    "whole software" dark mode yet. Fix: a small `_theme_color(key)`
-    lookup (light/dark pairs for canvas backgrounds specifically;
-    the semantic event/commitment/work colors likely don't need to
-    change, just what they sit on top of) threaded through each
-    drawing method's `cv.create_rectangle(..., fill=...)` background
-    calls — more files to touch than #156, but the same pattern,
-    not a new concept.
+~~157. **Dark mode for the calendar/heatmap/timeline CANVAS views.**~~
+    — DONE v9.35. See the v9.35 version-history entry above.
+    **UNTESTED by the selftest harness** — needs real on-screen
+    confirmation on the owner's machine. (Explicit, known gap left by
+    #156, not silently left half-done; new idea 2026-08-07.)
 
 158. **Quick visualization/filter tools — small, secondary charts
     that trigger off a click or filter, not a main view (PLANNING —
