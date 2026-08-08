@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.60 — Plan confirmation nudge
+
+A one-off plan inside 48h of its own date with nothing marking it
+confirmed now gets a quiet morning-header nudge — "still on? Dinner
+w/ Sam (today)". Upcoming Plans gained a "Confirm" button next to
+Cancel; confirming silences it for good. Direct answer to plans
+sneaking up unconfirmed.
+
 ### v9.59 — Recurring admin reminders
 
 Tools > "Recurring admin reminders…" — a lightweight list for chores

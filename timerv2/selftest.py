@@ -81,7 +81,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_locked_vs_worked_hours", "_locked_after_due_note",
         "_add_locked_windows", "_evening_event_matches", "_evening_event_lines",
         "_multiweek_digest_lines", "_recurring_reminders_due",
-        "_recurring_reminders_line",
+        "_recurring_reminders_line", "_stale_plan_line",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
         "_planned_hours_from_file", "_planner_realism_factor"}
@@ -3075,6 +3075,37 @@ def suite_recurring_reminders():
     assert D._recurring_reminders_line(d4) is None
 
 
+def suite_stale_plan():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 10)
+    settings = {"protected_windows": [
+        {"label": "Dinner w/ Sam", "date": "2026-08-10", "start": "19:00",
+         "end": "21:00"},                                        # today
+        {"label": "Concert", "date": "2026-08-11", "start": "20:00",
+         "end": "23:00", "confirmed": True},                     # tomorrow, confirmed -> silent
+        {"label": "Meetup", "date": "2026-08-11", "start": "", "end": ""},  # tomorrow
+        {"label": "Trip", "date": "2026-08-12", "start": "", "end": ""},   # in 2 days
+        {"label": "Far off", "date": "2026-08-20", "start": "", "end": ""},  # outside window
+    ]}
+    d = _mk(D, today=TODAY, settings=settings)
+    line = D._stale_plan_line(d)
+    assert line == ("still on? Dinner w/ Sam (today), Meetup (tomorrow), "
+                    "Trip (in 2 days)"), line
+
+    # ---- silence: everything confirmed or outside the window ----
+    settings2 = {"protected_windows": [
+        {"label": "X", "date": "2026-08-10", "start": "", "end": "",
+         "confirmed": True},
+        {"label": "Y", "date": "2026-08-20", "start": "", "end": ""},
+    ]}
+    d2 = _mk(D, today=TODAY, settings=settings2)
+    assert D._stale_plan_line(d2) is None
+
+    # ---- silence: no plans at all ----
+    d3 = _mk(D, today=TODAY, settings={})
+    assert D._stale_plan_line(d3) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -3141,7 +3172,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("exdates", suite_exdates),
           ("ics-rrule", suite_ics_rrule),
           ("locked-today", suite_locked_today),
-          ("recurring-reminders", suite_recurring_reminders)]
+          ("recurring-reminders", suite_recurring_reminders),
+          ("stale-plan", suite_stale_plan)]
 
 
 def main():

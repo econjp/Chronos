@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.60 (#184 — plan confirmation staleness nudge, 2026-08-08,
+direct response to "often end up making plans for next two days"):
+  - #163's PLAN: capture and #164's upcoming-plans list both surface a
+    social commitment once it's written down, but nothing
+    distinguished a firm plan from one still tentative and about to
+    sneak up unconfirmed — exactly the pattern described. A one-off
+    plan inside 48h of its own date with no `confirmed` flag now gets
+    one quiet morning-header nudge — "still on? Dinner w/ Sam (today),
+    Meetup (tomorrow)" — same observe-don't-block posture as
+    everywhere else. The Upcoming Plans window gained a "Confirm"
+    button right next to Cancel; confirming silences the nudge for
+    good, no re-nagging.
+  - new `_stale_plan_line`: plain date/flag filter over
+    `_upcoming_plans`'s own list — no new data, no new settings shape
+    beyond one boolean field on an entry that already exists.
+  - new "stale-plan" selftest suite (today/tomorrow/2-days-out
+    phrasing, a confirmed plan staying silent even inside the window,
+    and full silence with nothing configured); 71/71 green.
+
 New in v9.59 (#183 — recurring admin/chore reminders, 2026-08-08,
 direct response to "planning etc ADMIN generally takes a big chunk of
 my life"):
@@ -5704,6 +5723,38 @@ class App(tk.Tk):
         out.sort(key=lambda iw: (iw[1]["date"], iw[1].get("start", "")))
         return out
 
+    def _stale_plan_line(self):
+        """Backlog #184: direct response to "often end up making plans
+        for next two days" — #163's PLAN: capture and #164's upcoming-
+        plans list both surface a social commitment once it's written
+        down, but nothing distinguishes a firm plan from one that's
+        still tentative and about to sneak up unconfirmed, which is
+        the exact pattern described. A one-off plan inside 48h of its
+        own date with no `confirmed` flag set gets one quiet nudge —
+        same observe-don't-block posture as everywhere else in this
+        app. Marking it confirmed (the Upcoming Plans window's own
+        toggle) silences it for good, no re-nagging. None when nothing
+        qualifies."""
+        cutoff = self.today + dt.timedelta(days=2)
+        parts = []
+        for _i, w in self._upcoming_plans():
+            if w.get("confirmed"):
+                continue
+            try:
+                d = dt.date.fromisoformat(w["date"])
+            except (KeyError, ValueError):
+                continue
+            if not (self.today <= d <= cutoff):
+                continue
+            label = w.get("label") or "(untitled)"
+            when = ("today" if d == self.today else
+                   "tomorrow" if d == self.today + dt.timedelta(days=1) else
+                   "in 2 days")
+            parts.append(f"{label} ({when})")
+        if not parts:
+            return None
+        return "still on? " + ", ".join(parts)
+
     def _upcoming_plans_win(self):
         """Backlog #164: a small read-only(-ish) chronological list of
         every upcoming one-off plan, with a quick Cancel per row — the
@@ -5738,8 +5789,9 @@ class App(tk.Tk):
                 return
             for r, (idx, w) in enumerate(plans):
                 d = dt.date.fromisoformat(w["date"])
+                tag = "  ✓ confirmed" if w.get("confirmed") else ""
                 text = (f"{d:%a %d.%m}  {w.get('start', '')}-"
-                       f"{w.get('end', '')}  {w.get('label', '')}")
+                       f"{w.get('end', '')}  {w.get('label', '')}{tag}")
                 ttk.Label(frame, text=text).grid(
                     row=r, column=0, sticky="w", padx=4, pady=3)
 
@@ -5751,8 +5803,22 @@ class App(tk.Tk):
                     self.status.config(text=f"Cancelled '{label}'.")
                     render()
 
+                # backlog #184: confirming a still-tentative plan
+                # silences the header's "still on?" nudge for good
+                if not w.get("confirmed"):
+                    def confirm(idx=idx, label=w.get("label", "")):
+                        windows = self.settings.get("protected_windows", [])
+                        if 0 <= idx < len(windows):
+                            windows[idx]["confirmed"] = True
+                            save_settings(self.settings)
+                        self.status.config(text=f"'{label}' confirmed.")
+                        render()
+
+                    ttk.Button(frame, text="Confirm", command=confirm).grid(
+                        row=r, column=1, padx=(8, 4), pady=3)
+
                 ttk.Button(frame, text="Cancel", command=cancel).grid(
-                    row=r, column=1, padx=(8, 4), pady=3)
+                    row=r, column=2, padx=(4, 4), pady=3)
 
         render()
 
@@ -7905,6 +7971,9 @@ class App(tk.Tk):
         reminder_line = self._recurring_reminders_line()
         if reminder_line:
             parts.append(reminder_line)
+        stale_line = self._stale_plan_line()
+        if stale_line:
+            parts.append(stale_line)
         parts += self._day_schedule_lines()
         if self.today.weekday() == 0:
             parts += self._week_review_block()

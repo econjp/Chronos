@@ -497,6 +497,14 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.60** (#184, 2026-08-08, DONE). Plan confirmation staleness
+  nudge — direct response to "often end up making plans for next two
+  days." A one-off plan inside 48h of its own date with no
+  `confirmed` flag gets one quiet morning-header nudge; Upcoming Plans
+  gained a "Confirm" button next to Cancel that silences it for good.
+  New `_stale_plan_line` is a plain date/flag filter over
+  `_upcoming_plans`'s own list — one new boolean field, no new
+  settings shape. New "stale-plan" selftest suite. 71/71 green.
 - **v9.59** (#183, 2026-08-08, DONE). Recurring admin/chore reminders
   — direct response to "planning etc admin generally takes a big
   chunk of my life." Tools > "Recurring admin reminders…" holds a
@@ -4415,19 +4423,8 @@ polish — the three NOT chosen this round) when continuing this work.
 183. ~~**Recurring admin/chore reminders with a lookahead window.**~~
     — DONE v9.59. See the v9.59 version-history entry above.
 
-184. **Plan confirmation staleness nudge (PLANNING; new idea
-    2026-08-08, direct response to "often end up making plans for next
-    two days").** #163's PLAN: capture and #164's upcoming-plans list
-    both surface a social commitment once it's written down — but
-    nothing distinguishes a firm plan from one that's still tentative
-    and about to sneak up unconfirmed, which is exactly the "everything
-    happens last-minute" pattern the owner describes. Fix: a plan
-    inside 48h of its own date with no corresponding locked window
-    (#136) and no `confirmed` flag gets one quiet nudge — "Dinner w/
-    Sam is in 2 days — still on?" — a plain date/flag check over
-    `_upcoming_plans`'s own list, same observe-don't-block posture as
-    everywhere else; a plan explicitly marked confirmed (or already
-    past) never nags twice.
+184. ~~**Plan confirmation staleness nudge.**~~ — DONE v9.60. See the
+    v9.60 version-history entry above.
 
 ## How to verify changes without Windows
 
