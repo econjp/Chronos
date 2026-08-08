@@ -72,6 +72,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_looks_like_pto", "_pto_skip_suggestion", "_lock_picker_progress_line",
         "_locked_windows_for_week", "_due_date_feasibility_line",
         "_deadline_editor_feasibility_lines", "_todays_plan_from_segments",
+        "_evening_window",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -2318,12 +2319,12 @@ def suite_free_evenings():
 
 def suite_social_density():
     D, ns = fresh()
-    d = _mk(D)
+    d = _mk(D, settings={})
 
     plans = [(dt.date(2026, 7, 14), "Concert", "18:00", "22:00"),
             (dt.date(2026, 7, 16), "Dinner", "19:00", "21:00")]   # 4h + 2h
 
-    # ---- crosses the 40% threshold -> names the total ----
+    # ---- crosses the 40% default threshold -> names the total ----
     line = D._social_density_line(d, 10.0, plans)
     assert line == ("  this week is social-heavy: 6.0h of plans vs "
                     "10.0h total free"), line
@@ -2341,6 +2342,13 @@ def suite_social_density():
     # ---- malformed/missing times are safely skipped, not a crash ----
     bad_plans = [(dt.date(2026, 7, 14), "X", "", "")]
     assert D._social_density_line(d, 10.0, bad_plans) is None
+
+    # ---- backlog #175: a customized threshold overrides the default ----
+    d2 = _mk(D, settings={"social_density_threshold": 0.2})
+    line3 = D._social_density_line(d2, 20.0, plans)   # 6/20 = 0.3 > 0.2
+    assert line3 is not None, line3
+    d3 = _mk(D, settings={"social_density_threshold": 0.8})
+    assert D._social_density_line(d3, 10.0, plans) is None   # 6/10=0.6 < 0.8
 
 
 def suite_repeating_plan():
@@ -2579,6 +2587,27 @@ def suite_todays_plan():
     assert D._todays_plan_from_segments(d, [], [], [], []) == []
 
 
+def suite_evening_window():
+    D, ns = fresh()
+    d = _mk(D, settings={})
+    assert D._evening_window(d) == (dt.time(18, 0), dt.time(23, 0))
+
+    d2 = _mk(D, settings={"evening_window": ["19:00", "22:30"]})
+    assert D._evening_window(d2) == (dt.time(19, 0), dt.time(22, 30))
+
+    # ---- malformed falls back to the default ----
+    d3 = _mk(D, settings={"evening_window": ["bad", "22:30"]})
+    assert D._evening_window(d3) == (dt.time(18, 0), dt.time(23, 0))
+
+    # ---- a customized window actually changes free-evenings output ----
+    rows = [(dt.date(2026, 8, 10), [(dt.time(19, 0), dt.time(22, 0))], 3.0)]
+    out_default = D._free_evenings_from_rows(d, rows, min_h=2.0)
+    assert out_default == [(dt.date(2026, 8, 10), "19-22")], out_default
+    out_custom = D._free_evenings_from_rows(
+        d, rows, min_h=2.0, evening_start=dt.time(20, 0), evening_end=dt.time(23, 0))
+    assert out_custom == [(dt.date(2026, 8, 10), "20-22")], out_custom
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2633,7 +2662,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("lock-picker-progress", suite_lock_picker_progress),
           ("locked-windows-for-week", suite_locked_windows_for_week),
           ("deadline-feasibility", suite_deadline_feasibility),
-          ("todays-plan", suite_todays_plan)]
+          ("todays-plan", suite_todays_plan),
+          ("evening-window", suite_evening_window)]
 
 
 def main():

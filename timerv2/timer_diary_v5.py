@@ -60,6 +60,28 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.45 (#175 — two hardcoded numbers become real settings,
+2026-08-08, direct owner request: "other customisation things
+available that can toggle or filter etc like change different
+thing[s]"):
+  - Tools > "Evening window (free evenings finder)…" — #167 hardcoded
+    18:00-23:00 as "the evening"; now a real HH:MM/HH:MM setting, same
+    dialog shape as the existing work-day window setting.
+  - Tools > "Social-plan density threshold…" — #168 hardcoded 40% of
+    free capacity as "worth flagging"; now a 5-95% setting.
+  - new `_evening_window`: reads the setting, falls back to the
+    18:00-23:00 default on anything unset or malformed. `_social_
+    density_line` now reads `social_density_threshold` from settings
+    the same way, defaulting to the original 40%.
+  - `_free_evenings_from_rows` gained optional `evening_start`/
+    `evening_end` parameters (default None → the class constants) so
+    the pure function itself stays fully testable independent of
+    settings plumbing.
+  - new "evening-window" selftest suite (default, customized, a
+    malformed setting falling back to default, and the customized
+    window actually changing free-evenings output); "social-density"
+    suite extended with a customized-threshold case; 59/59 green.
+
 New in v9.44 (#174 — a toolbar dark-mode button, 2026-08-08, direct
 owner request: "dark mode would be rlyy useful mbe like button for it
 also"):
@@ -4287,6 +4309,10 @@ class App(tk.Tk):
         toolsm.add_command(label="Daily target…", command=self._set_target)
         toolsm.add_command(label="Work-day window (free-slot finder)…",
                            command=self._set_work_window)
+        toolsm.add_command(label="Evening window (free evenings finder)…",
+                           command=self._set_evening_window)
+        toolsm.add_command(label="Social-plan density threshold…",
+                           command=self._set_social_density_threshold)
         toolsm.add_command(label="Recurring commitments (lunch, day job, sleep, admin)…",
                            command=self._set_protected_windows)
         m.add_cascade(label="Tools", menu=toolsm)
@@ -4962,6 +4988,50 @@ class App(tk.Tk):
             return
         self.settings["work_window"] = [s, e]
         save_settings(self.settings)
+
+    def _set_evening_window(self):
+        """Backlog #175: the free-evenings finder (#167) hardcoded
+        18:00-23:00 as "the evening" — a real customization gap for
+        anyone whose actual evening runs earlier or later. Same
+        HH:MM/HH:MM dialog shape as `_set_work_window` right above."""
+        s0, e0 = self._evening_window()
+        s = simpledialog.askstring(
+            APP_NAME, "Evening window start (HH:MM) — the free evenings "
+                      "finder only looks inside this range:",
+            initialvalue=f"{s0:%H:%M}", parent=self)
+        if s is None:
+            return
+        e = simpledialog.askstring(
+            APP_NAME, "Evening window end (HH:MM):",
+            initialvalue=f"{e0:%H:%M}", parent=self)
+        if e is None:
+            return
+        try:
+            for v in (s, e):
+                h, m = map(int, v.split(":"))
+                assert 0 <= h <= 23 and 0 <= m <= 59
+        except (ValueError, AssertionError):
+            messagebox.showerror(APP_NAME, "Use HH:MM, e.g. 18:00")
+            return
+        self.settings["evening_window"] = [s, e]
+        save_settings(self.settings)
+        self.status.config(text=f"Evening window set to {s}-{e}.")
+
+    def _set_social_density_threshold(self):
+        """Backlog #175: the social-heavy week warning (#168)
+        hardcoded a 40% share of free capacity as "worth flagging" —
+        someone more or less tolerant of a social-heavy week should be
+        able to move that bar."""
+        cur = round(self.settings.get(
+            "social_density_threshold", self._SOCIAL_DENSITY_THRESHOLD) * 100)
+        v = simpledialog.askinteger(
+            APP_NAME, "Flag a week as \"social-heavy\" once plans cross "
+                      "this % of the week's free capacity:",
+            initialvalue=cur, minvalue=5, maxvalue=95, parent=self)
+        if v is not None:
+            self.settings["social_density_threshold"] = v / 100
+            save_settings(self.settings)
+            self.status.config(text=f"Social-density threshold set to {v}%.")
 
     def _quick_add_plan(self, prefill_date=None, prefill_start=None, on_save=None):
         """Backlog #161: a fast, purpose-built way to jot down a one-
@@ -7698,7 +7768,9 @@ class App(tk.Tk):
                 continue
             if dur > 0:
                 plan_hours += dur
-        if total_cap <= 0 or plan_hours / total_cap <= self._SOCIAL_DENSITY_THRESHOLD:
+        threshold = self.settings.get("social_density_threshold",
+                                      self._SOCIAL_DENSITY_THRESHOLD)
+        if total_cap <= 0 or plan_hours / total_cap <= threshold:
             return None
         line = (f"  this week is social-heavy: {plan_hours:.1f}h of plans "
                f"vs {total_cap:.1f}h total free")
@@ -11093,22 +11165,27 @@ class App(tk.Tk):
     _EVENING_START = dt.time(18, 0)
     _EVENING_END = dt.time(23, 0)
 
-    def _free_evenings_from_rows(self, rows, min_h=2.0):
-        """Backlog #167: the pure filter/format half of the free-
+    def _free_evenings_from_rows(self, rows, min_h=2.0,
+                                 evening_start=None, evening_end=None):
+        """Backlog #167/#175: the pure filter/format half of the free-
         evenings finder — takes `_day_forecast`-shaped rows
         [(date, free_slots, free_hours), ...] and clips each day's free
-        slots to the evening window (18:00-23:00), naming the day if a
-        SINGLE contiguous free block there clears `min_h`. Split out
-        from `_free_evenings` (below, which does the real _free_slots
-        fetch) specifically so this filtering/formatting logic is
-        pure and testable without the calendar-fetch dependency chain
-        _free_slots carries — same "the math is a pure function, the
-        data fetch is a thin wrapper" split used elsewhere. A day whose
-        entire 24h is free (nothing busy or protected at all) is named
-        'all day' instead of just the evening slice, since that's a
-        strictly better answer to the same question. Returns
-        [(date, label), ...]; a day that doesn't clear min_h is
-        omitted entirely, not shown as empty."""
+        slots to the evening window (default 18:00-23:00, overridable
+        per backlog #175's "customization/toggle" ask — a night-owl or
+        early-riser's real evening isn't always 18-23), naming the day
+        if a SINGLE contiguous free block there clears `min_h`. Split
+        out from `_free_evenings` (below, which does the real
+        _free_slots fetch) specifically so this filtering/formatting
+        logic is pure and testable without the calendar-fetch
+        dependency chain _free_slots carries — same "the math is a
+        pure function, the data fetch is a thin wrapper" split used
+        elsewhere. A day whose entire 24h is free (nothing busy or
+        protected at all) is named 'all day' instead of just the
+        evening slice, since that's a strictly better answer to the
+        same question. Returns [(date, label), ...]; a day that
+        doesn't clear min_h is omitted entirely, not shown as empty."""
+        ev_start = evening_start or self._EVENING_START
+        ev_end = evening_end or self._EVENING_END
         out = []
         for d, slots, _free_h in rows:
             full_day = (len(slots) == 1 and slots[0][0] <= dt.time(0, 1)
@@ -11118,7 +11195,7 @@ class App(tk.Tk):
                 continue
             best = None
             for s, e in slots:
-                cs, ce = max(s, self._EVENING_START), min(e, self._EVENING_END)
+                cs, ce = max(s, ev_start), min(e, ev_end)
                 if cs >= ce:
                     continue
                 dur = _time_span_hours(cs, ce)
@@ -11131,6 +11208,22 @@ class App(tk.Tk):
                 out.append((d, f"{fmt(cs)}-{fmt(ce)}"))
         return out
 
+    def _evening_window(self):
+        """Backlog #175: the free-evenings finder's evening window,
+        customizable via Tools > "Evening window…" (default 18:00-
+        23:00, same default #167 shipped with) — falls back to the
+        class default on anything unset or malformed, same lenient-
+        degrade posture as every other settings-backed field here."""
+        raw = self.settings.get("evening_window")
+        if not raw or len(raw) != 2:
+            return self._EVENING_START, self._EVENING_END
+        try:
+            sh, sm = map(int, raw[0].split(":"))
+            eh, em = map(int, raw[1].split(":"))
+            return dt.time(sh, sm), dt.time(eh, em)
+        except (ValueError, AttributeError):
+            return self._EVENING_START, self._EVENING_END
+
     def _free_evenings(self, weeks=2, min_h=2.0):
         """Backlog #167: knowing WHICH evenings are actually free is
         the first question before checking any event listing for
@@ -11139,8 +11232,10 @@ class App(tk.Tk):
         `_day_forecast` (the same `_free_slots` every scheduling
         primitive already uses), filtered to evenings — no new
         capacity math, a filtered read of what already exists."""
+        ev_start, ev_end = self._evening_window()
         return self._free_evenings_from_rows(
-            self._day_forecast(weeks * 7), min_h)
+            self._day_forecast(weeks * 7), min_h,
+            evening_start=ev_start, evening_end=ev_end)
 
     def _free_evenings_lines(self, weeks=2, min_h=2.0):
         evenings = self._free_evenings(weeks, min_h)

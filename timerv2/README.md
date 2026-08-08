@@ -4,6 +4,13 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.45 — Two settings you can now actually change
+
+Tools > "Evening window (free evenings finder)…" and "Social-plan
+density threshold…" — the 18:00-23:00 evening window and the 40%
+social-heavy warning bar used to be fixed in code; now they're real
+settings with sane defaults.
+
 ### v9.44 — Toolbar dark mode button
 
 Dark mode is now one click away — a 🌙/☀️ button in the main toolbar,

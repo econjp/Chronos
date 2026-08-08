@@ -497,6 +497,15 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.45** (#175, 2026-08-08, DONE). Two hardcoded numbers become
+  real settings — direct owner request for more toggle/filter
+  customization. Tools > "Evening window…" (#167's 18:00-23:00) and
+  "Social-plan density threshold…" (#168's 40%). New `_evening_window`
+  (falls back to default on unset/malformed); `_social_density_line`
+  now reads `social_density_threshold` from settings the same way.
+  `_free_evenings_from_rows` gained optional evening_start/end params.
+  New "evening-window" selftest suite, "social-density" extended;
+  59/59 green.
 - **v9.44** (#174, 2026-08-08, DONE). A 🌙/☀️ dark-mode button now
   sits in the main toolbar, next to compact-mode — direct owner
   request. `_toggle_dark_mode` computes state from `settings` so the
@@ -4296,6 +4305,12 @@ polish — the three NOT chosen this round) when continuing this work.
     — DONE v9.44. See the v9.44 version-history entry above. (Direct
     owner request, 2026-08-08: "dark mode would be rlyy useful mbe
     like button for it also.")
+
+~~175. **Real customization/filter toggles for hardcoded thresholds
+    (#167's evening window, #168's density threshold).**~~ — DONE
+    v9.45. See the v9.45 version-history entry above. (Direct owner
+    request, 2026-08-08: "other customisation things available that
+    can toggle or filter etc like change different thing[s].")
 
 ## How to verify changes without Windows
 
