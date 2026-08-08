@@ -497,6 +497,12 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.48** (#171, 2026-08-08, DONE). PTO-skip suggestions (#137) now
+  surface up to 3 matches per pass instead of just 1 — one "Add skip"
+  button per matching commitment row. New `_pto_skip_suggestions`
+  (plural, `max_n` param); `_pto_skip_suggestion` (singular) is now a
+  thin wrapper over it. "pto-skip" selftest suite extended; 59/59
+  green.
 - **v9.47** (#170, 2026-08-08, DONE). Locked windows now show in the
   month calendar view too — "locked: TUTA" inside each day cell,
   alongside events/work sessions, same truncation. Split
@@ -4265,19 +4271,10 @@ polish — the three NOT chosen this round) when continuing this work.
     "don't silently half-finish it" discipline as #157; new idea
     2026-08-07.)
 
-171. **`_pto_skip_suggestion` only ever surfaces ONE match per open
-    (ANALYSIS/USABILITY — a real limitation in what shipped this
-    round; new idea 2026-08-07).** v9.39 returns the single soonest
-    PTO-looking event matched to a recurring commitment, then stops —
-    if the subscribed calendar shows two separate holiday weeks this
-    month against two different commitments (Day job AND a weekly
-    class), only the first ever gets offered; the second needs the
-    editor reopened after the first is actioned to even be noticed.
-    Fix: change the return shape to a list of ALL non-overlapping
-    matches found (still capped, e.g. top 3, so the editor doesn't
-    turn into a wall of suggestion rows), one Add-skip button per row
-    — same one-click mechanic, just not artificially limited to one
-    at a time.
+~~171. **`_pto_skip_suggestion` only ever surfaces ONE match per
+    open.**~~ — DONE v9.48. See the v9.48 version-history entry above.
+    (ANALYSIS/USABILITY — a real limitation in what shipped v9.39;
+    new idea 2026-08-07.)
 
 172. **Weekly target_h line (v9.38) never actually flags falling
     behind (PLANNING — the note that shipped it explicitly chose "no

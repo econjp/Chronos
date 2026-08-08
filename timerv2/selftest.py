@@ -69,7 +69,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_upcoming_plans", "_ics_hint_for_url", "_free_evenings_from_rows",
         "_social_density_line", "_repeating_plan_suggestion",
         "_locked_this_week_line", "_weekly_target_lines",
-        "_looks_like_pto", "_pto_skip_suggestion", "_lock_picker_progress_line",
+        "_looks_like_pto", "_pto_skip_suggestion", "_pto_skip_suggestions",
+        "_lock_picker_progress_line",
         "_locked_windows_for_week", "_locked_windows_for_range",
         "_due_date_feasibility_line",
         "_deadline_editor_feasibility_lines", "_todays_plan_from_segments",
@@ -2482,6 +2483,30 @@ def suite_pto_skip():
     assert D._pto_skip_suggestion(
         d4, [(dt.date(2026, 8, 10), dt.time(9, 0), dt.time(17, 0), "Standup")]
     ) is None
+
+    # ---- backlog #171: multiple suggestions, one per distinct label ----
+    events2 = [
+        (dt.date(2026, 8, 10), dt.time(0, 0), dt.time(23, 59), "Loma"),  # Mon
+        (dt.date(2026, 8, 12), dt.time(0, 0), dt.time(23, 59), "Loma"),  # Wed
+        (dt.date(2026, 8, 17), dt.time(0, 0), dt.time(23, 59), "Loma"),  # Mon again
+    ]
+    d5 = _mk(D, today=TODAY, settings={"protected_windows": [
+        {"label": "Day job", "start": "09:00", "end": "17:00",
+         "days": "Mon-Fri", "skip": []},
+        {"label": "Class", "start": "18:00", "end": "20:00",
+         "days": "Wed", "skip": []}]})
+    subs = D._pto_skip_suggestions(d5, events2)
+    assert subs == [
+        ("Day job", "2026-08-10", "Loma"),
+        ("Class", "2026-08-12", "Loma"),
+    ], subs   # the second Day job match (08-17) is skipped, one per label
+
+    # ---- max_n caps the result ----
+    subs2 = D._pto_skip_suggestions(d5, events2, max_n=1)
+    assert subs2 == [("Day job", "2026-08-10", "Loma")], subs2
+
+    # ---- _pto_skip_suggestion (singular) is just the strongest match ----
+    assert D._pto_skip_suggestion(d5, events2) == ("Day job", "2026-08-10", "Loma")
 
 
 def suite_lock_picker_progress():

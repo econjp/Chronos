@@ -4,6 +4,13 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.48 — PTO-skip suggests up to 3 at once
+
+The Recurring Commitments editor's PTO-skip suggestion (v9.39) used
+to offer only the single soonest match. Now it offers up to 3 at
+once — one "Add skip" button per matching commitment — instead of
+needing the editor reopened after each one gets actioned.
+
 ### v9.47 — Locked windows in month view too
 
 v9.41's locked-windows layer only reached the week calendar view;

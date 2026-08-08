@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.48 (#171 — the PTO-skip suggestion (#137) surfaces up to 3
+matches, not just 1, 2026-08-08):
+  - v9.39 returned only the single soonest PTO-looking event matched
+    to a recurring commitment, then stopped — if the subscribed
+    calendar showed two separate holiday weeks against two different
+    commitments (Day job AND a weekly class), the second never got
+    offered until the editor was reopened after the first was
+    actioned. The Recurring Commitments editor now offers up to 3, one
+    "Add skip" button per matching row, at most one suggestion per
+    distinct commitment label per pass.
+  - `_pto_skip_suggestion` (singular) kept as a thin wrapper over the
+    new `_pto_skip_suggestions` (plural, `max_n` parameter, default 3)
+    — same shape it originally shipped with, for any caller that only
+    wants the strongest match.
+  - "pto-skip" selftest suite extended (multiple distinct-label
+    matches, a second match on an already-suggested label correctly
+    skipped, `max_n` capping, the singular wrapper still returns just
+    the strongest one); 59/59 green.
+
 New in v9.47 (#170 — locked windows visible in the month calendar
 view too, 2026-08-08, the explicit gap #138 itself left open):
   - v9.41's locked-windows layer only reached the WEEK calendar view;
@@ -5269,8 +5288,8 @@ class App(tk.Tk):
         text = (summary or "").lower()
         return any(kw in text for kw in self._PTO_KEYWORDS)
 
-    def _pto_skip_suggestion(self, events):
-        """Backlog #137: #132 fixed the DATA MODEL for skipping a
+    def _pto_skip_suggestions(self, events, max_n=3):
+        """Backlog #137/#171: #132 fixed the DATA MODEL for skipping a
         recurring commitment on one specific day, but it's still
         manual typing. The app already parses real calendar events
         (`_calendar_events`); an all-day-ish event whose text matches
@@ -5282,13 +5301,24 @@ class App(tk.Tk):
         already uses. Checks every recurring (non one-off) commitment's
         weekday pattern against every PTO-looking event date, skipping
         anything already in that window's own `skip` list or already
-        past. Returns the single strongest (soonest) suggestion —
-        (label, date_iso, event_summary) — or None. Same "insight,
+        past. Backlog #171: v9.39 shipped returning only the single
+        soonest match and stopping there — if the calendar shows two
+        separate holiday weeks against two different commitments (Day
+        job AND a weekly class), the second never got offered until
+        the editor was reopened after the first was actioned. Now
+        returns up to `max_n` matches, at most one per distinct
+        commitment label (so the same recurring commitment doesn't
+        queue up multiple nudges in one pass — the first matching date
+        is enough to act on). Returns [(label, date_iso, event_
+        summary), ...], soonest first, possibly empty. Same "insight,
         never auto-applied" posture as every other suggestion here
         (#126/#169)."""
         pto_days = sorted({(d, summary) for d, s, e, summary in events
                            if self._looks_like_pto(summary, s, e)})
+        out, seen_labels = [], set()
         for d, summary in pto_days:
+            if len(out) >= max_n:
+                break
             if d < self.today:
                 continue
             wd = d.weekday()
@@ -5296,15 +5326,25 @@ class App(tk.Tk):
                 if w.get("date"):
                     continue        # a one-off plan, not recurring
                 label = (w.get("label") or "").strip()
-                if not label:
+                if not label or label in seen_labels:
                     continue
                 days = self._parse_weekdays(w.get("days", ""))
                 if days is not None and wd not in days:
                     continue
                 if d.isoformat() in (w.get("skip") or []):
                     continue
-                return (label, d.isoformat(), summary)
-        return None
+                out.append((label, d.isoformat(), summary))
+                seen_labels.add(label)
+                break
+        return out
+
+    def _pto_skip_suggestion(self, events):
+        """Backlog #137: the single-strongest-match half of
+        `_pto_skip_suggestions` — kept as its own name for callers
+        that only want one, same shape it originally shipped with.
+        Returns (label, date_iso, event_summary), or None."""
+        matches = self._pto_skip_suggestions(events, max_n=1)
+        return matches[0] if matches else None
 
     def _set_protected_windows(self):
         """Backlog #50/#121: named recurring windows subtracted from
@@ -5404,18 +5444,19 @@ class App(tk.Tk):
                         ).grid(row=i + 1, column=6, sticky="w", padx=(4, 8))
                         break
 
-        # backlog #137: suggest skipping a recurring commitment on a
-        # day the subscribed calendar already shows as PTO/holiday —
+        # backlog #137/#171: suggest skipping a recurring commitment on
+        # a day the subscribed calendar already shows as PTO/holiday —
         # same "insight, never auto-applied" posture as #126/#169
-        # above, one click to fill Skip dates instead of typing it
+        # above, one click to fill Skip dates instead of typing it.
+        # Up to 3 suggestions now (was 1) — a calendar can show more
+        # than one real holiday window against more than one recurring
+        # commitment in the same 30-day scan.
         try:
             events = self._calendar_events(
                 self.today, self.today + dt.timedelta(days=30))
         except Exception:
             events = []
-        pto = self._pto_skip_suggestion(events)
-        if pto:
-            pto_label, pto_date, pto_summary = pto
+        for pto_label, pto_date, pto_summary in self._pto_skip_suggestions(events):
             for i, row in enumerate(grid):
                 if row[0].get().strip() == pto_label:
                     def add_skip(i=i, date_iso=pto_date):
