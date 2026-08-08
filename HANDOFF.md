@@ -497,6 +497,16 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.53** (#149, 2026-08-08, DONE). Locked windows get their own
+  trace in the day file header, the exact same "sacred rule" gap #130
+  closed for recurring commitments. A locked study block (#113/#122/
+  #135/#136) used to live only in settings.json and the calendar view
+  — never in the .txt file the owner actually lives in day to day. New
+  `_locked_today_line` reuses #170's `_locked_windows_for_range`
+  filtered to today (no new computation), wired into `_new_day_header`
+  right after the existing commitments line — "locked today: TUTA
+  09:00-13:00". Silent on a day with nothing locked. New "locked-
+  today" selftest suite; 64/64 green.
 - **v9.52** (#177, 2026-08-08, DONE). Tools > "Automated backup (Task
   Scheduler)…" — opt-in registration of a real Windows Task Scheduler
   entry (daily 03:00, reuses `backup_if_due()` via a new `--backup`
@@ -4075,21 +4085,9 @@ measuring what's already there.
 ~~145. **A quiet nudge when a locked window passes unworked.**~~ —
     FIXED v9.20. See the v9.20 version-history entry above.
 
-149. **Locked windows get their own visible trace in the day file's
-    morning header (PLANNING — extends #130's exact "sacred rule" fix
-    to locked time specifically, the same gap #130 closed for
-    recurring commitments; new idea 2026-08-07).** #130 fixed
-    commitments being invisible in the day file itself (CLAUDE.md's
-    own standing rule: "every feature must leave a visible trace in
-    the day file, a csv/settings-only feature reads as broken"). The
-    exact same gap now exists for #136's `locked_windows` — a locked
-    study block lives only in settings.json and the calendar view,
-    never in the actual .txt the owner lives in day to day. Fix: one
-    line in `_new_day_header`, same place #130's commitments line
-    lives — "locked today: TUTA 09:00-13:00" — only on days a locked
-    window actually falls, reusing the exact iteration #145 already
-    does over every deadline's `locked_windows`, just filtered to
-    `date == today` instead of `< today`.
+149. ~~**Locked windows get their own visible trace in the day file's
+    morning header.**~~ — DONE v9.53. See the v9.53 version-history
+    entry above.
 
 150. **Deadline postmortem names total locked-vs-actually-worked hours
     (PLANNING — closes the loop between #145's per-window nudge and

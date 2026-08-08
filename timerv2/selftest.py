@@ -76,7 +76,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_locked_windows_for_week", "_locked_windows_for_range",
         "_due_date_feasibility_line",
         "_deadline_editor_feasibility_lines", "_todays_plan_from_segments",
-        "_evening_window", "_ics_refresh_min",
+        "_evening_window", "_ics_refresh_min", "_locked_today_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -2837,6 +2837,29 @@ def suite_ics_rrule():
         dt.date(2026, 8, 3), dt.date(2026, 8, 10), dt.date(2026, 8, 12)], evs3
 
 
+def suite_locked_today():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 10)
+    d = _mk(D, today=TODAY, deadlines=lambda: [
+        {"name": "TUTA", "locked_windows": [
+            {"date": "2026-08-10", "start": "09:00", "end": "13:00"},
+            {"date": "2026-08-11", "start": "09:00", "end": "10:00"}]},  # tomorrow
+        {"name": "Thesis", "locked_windows": [
+            {"date": "2026-08-10", "start": "18:00", "end": "20:00"}]},
+    ])
+    line = D._locked_today_line(d)
+    assert line == "locked today: TUTA 09:00-13:00, Thesis 18:00-20:00", line
+
+    # ---- silence: nothing locked today ----
+    d2 = _mk(D, today=TODAY, deadlines=lambda: [{"name": "TUTA", "locked_windows": [
+        {"date": "2026-08-11", "start": "09:00", "end": "10:00"}]}])
+    assert D._locked_today_line(d2) is None
+
+    # ---- silence: no deadlines at all ----
+    d3 = _mk(D, today=TODAY, deadlines=lambda: [])
+    assert D._locked_today_line(d3) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2896,7 +2919,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("ics-refresh-min", suite_ics_refresh_min),
           ("rrule", suite_rrule),
           ("exdates", suite_exdates),
-          ("ics-rrule", suite_ics_rrule)]
+          ("ics-rrule", suite_ics_rrule),
+          ("locked-today", suite_locked_today)]
 
 
 def main():

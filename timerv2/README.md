@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.53 — Locked windows get their own trace in the day file
+
+The morning header now adds "locked today: TUTA 09:00-13:00" whenever
+a locked study window actually falls on today — the same fix v9.13
+made for recurring commitments (settings.json/calendar-only isn't
+enough, it has to be visible in the day file itself), now closed for
+locked windows too.
+
 ### v9.52 — Opt-in automated backup (Task Scheduler)
 
 Tools > "Automated backup (Task Scheduler)…" — backups used to only

@@ -60,6 +60,23 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.53 (#149 — locked windows get their own trace in the day
+file header, 2026-08-08, the exact same "sacred rule" gap #130 closed
+for recurring commitments):
+  - a locked study block (#113/#122/#135/#136) used to live only in
+    settings.json and the calendar view — never in the actual .txt
+    file the owner lives in day to day, the same blind spot #130
+    already fixed once for recurring commitments. The morning header
+    now adds "locked today: TUTA 09:00-13:00" whenever a locked window
+    actually falls on today, right next to the existing commitments
+    line.
+  - new `_locked_today_line`: reuses `_locked_windows_for_range`
+    (#170's shared primitive) filtered to just today — no new
+    computation, pure assembly. Silent on a day with nothing locked.
+  - new "locked-today" selftest suite (multiple deadlines each
+    contributing a window sorted by start time, a window on a
+    different day excluded, both silence paths); 64/64 green.
+
 New in v9.52 (#177 — opt-in Windows Task Scheduler backup, 2026-08-08,
 a research-pass finding):
   - `backup_if_due()` only ever ran when the app itself got launched —
@@ -7613,6 +7630,9 @@ class App(tk.Tk):
         commit_line = self._commitments_today_line()
         if commit_line:
             parts.append(commit_line)
+        locked_line = self._locked_today_line()
+        if locked_line:
+            parts.append(locked_line)
         parts += self._day_schedule_lines()
         if self.today.weekday() == 0:
             parts += self._week_review_block()
@@ -10580,6 +10600,24 @@ class App(tk.Tk):
         total = sum(by_label.values())
         parts = ", ".join(f"{label} {h:.1f}h" for label, h in by_label.items())
         return f"commitments today: {parts} ({total:.1f}h of 24h already spoken for)"
+
+    def _locked_today_line(self):
+        """Backlog #149: the exact same "sacred rule" gap #130 closed
+        for recurring commitments (CLAUDE.md's own standing rule —
+        "every feature must leave a visible trace in the day file, a
+        csv/settings-only feature reads as broken") also existed for
+        #136's `locked_windows` — a locked study block lived only in
+        settings.json and the calendar view, never in the actual .txt
+        the owner lives in day to day. Reuses `_locked_windows_for_
+        range` (#170's shared primitive) filtered to just today — no
+        new computation. None on a day with nothing locked."""
+        today = self.today
+        windows = self._locked_windows_for_range(today, today)
+        if not windows:
+            return None
+        parts = ", ".join(f"{name} {s:%H:%M}-{e:%H:%M}"
+                          for _d, s, e, name in sorted(windows, key=lambda w: w[1]))
+        return f"locked today: {parts}"
 
     def _undated_admin_tasks(self):
         """Backlog #140: the real "grey admin" pile — normal-priority
