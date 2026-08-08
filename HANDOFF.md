@@ -497,6 +497,13 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.44** (#174, 2026-08-08, DONE). A 🌙/☀️ dark-mode button now
+  sits in the main toolbar, next to compact-mode — direct owner
+  request. `_toggle_dark_mode` computes state from `settings` so the
+  toolbar button and the View-menu checkbutton stay in sync regardless
+  of which fires. Hidden/restored in compact mode alongside the
+  calendar/auto-plan buttons. **UNTESTED by the selftest harness** —
+  pure Tkinter wiring, same category as #157.
 - **v9.43** (#139, 2026-08-07, DONE). View > Planning > "Today's
   plan…" — one composed ordered list (commitments + calendar events +
   locked windows + free slots) instead of four separate views: "06:00-
@@ -4284,6 +4291,11 @@ polish — the three NOT chosen this round) when continuing this work.
     caller become a plain filter/comprehension over one list instead
     of five copies of the same parsing logic — the kind of
     consolidation worth doing before a 6th caller shows up, not after.
+
+~~174. **A toolbar button for dark mode, not just the View menu.**~~
+    — DONE v9.44. See the v9.44 version-history entry above. (Direct
+    owner request, 2026-08-08: "dark mode would be rlyy useful mbe
+    like button for it also.")
 
 ## How to verify changes without Windows
 

@@ -60,6 +60,27 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.44 (#174 — a toolbar dark-mode button, 2026-08-08, direct
+owner request: "dark mode would be rlyy useful mbe like button for it
+also"):
+  - dark mode (#156/#157) was previously only reachable via View menu
+    > Dark mode — a real friction point for something worth flipping
+    often (bright room vs dark room, day vs evening). A 🌙/☀️ button
+    now sits in the main toolbar next to the compact-mode button,
+    always visible outside compact mode, one click.
+  - `_toggle_dark_mode` now computes the new state directly from
+    `settings` instead of trusting the View menu's `dark_var` — the
+    toolbar button and the menu checkbutton both call the same method
+    and land on the same correct state regardless of which one fired.
+  - hidden in compact mode alongside the calendar/auto-plan buttons
+    (same real-estate discipline #156 established for that 330px
+    window) and correctly restored in position when compact mode
+    turns back off.
+  - **UNTESTED by the selftest harness** — pure Tkinter widget
+    wiring, same category as #157/#138; verified by direct code
+    read-through of the pack-order restoration logic, needs real
+    on-screen confirmation.
+
 New in v9.43 (#139 — "Today's plan," one composed timeline instead
 of four separate checks, 2026-08-07):
   - "so much of this... just wanna automate and make it so much
@@ -5425,6 +5446,10 @@ class App(tk.Tk):
         self.compact_btn = ttk.Button(self.top, text="—", width=3,
                                       command=self._toggle_compact)
         self.compact_btn.pack(side="right")
+        self.dark_btn = ttk.Button(
+            self.top, width=3, command=self._toggle_dark_mode,
+            text="☀️" if self.settings.get("dark_mode", False) else "🌙")
+        self.dark_btn.pack(side="right", padx=(0, 4))
         self.calendar_btn = ttk.Button(
             self.top, text="📅", width=3,
             command=self._tracked("Calendar view", self._calendar_view_win))
@@ -5605,9 +5630,20 @@ class App(tk.Tk):
             self.dl_dot.config(bg="SystemButtonFace")
 
     def _toggle_dark_mode(self):
-        self.settings["dark_mode"] = self.dark_var.get()
+        """Backlog #174: two entry points now share this — the View
+        menu checkbutton (which tkinter auto-toggles `dark_var` before
+        calling this) and the new toolbar button (backlog #157's own
+        follow-up, direct owner ask: "dark mode would be rlyy useful
+        mbe like button for it also"). Computed fresh from `settings`
+        rather than trusting `dark_var`, so either entry point lands
+        on the same correct state regardless of which one fired."""
+        self.settings["dark_mode"] = not self.settings.get("dark_mode", False)
+        self.dark_var.set(self.settings["dark_mode"])
         save_settings(self.settings)
         self._apply_theme()
+        if hasattr(self, "dark_btn"):
+            self.dark_btn.config(
+                text="☀️" if self.settings["dark_mode"] else "🌙")
         # backlog #157: the timeline's empty-track rectangle is drawn
         # ON TOP of the canvas background, so toggling the widget's own
         # bg color (above) doesn't repaint it — needs an explicit redraw
@@ -5670,6 +5706,7 @@ class App(tk.Tk):
         self.compact = not self.compact
         if self.compact:
             self.task_row.pack_forget()
+            self.dark_btn.pack_forget()
             self.calendar_btn.pack_forget()
             self.auto_plan_btn.pack_forget()
             self.body.pack_forget()
@@ -5684,6 +5721,7 @@ class App(tk.Tk):
             self.geometry(NORMAL_GEO)
             self.auto_plan_btn.pack(side="right", padx=(0, 4), before=self.reset_btn)
             self.calendar_btn.pack(side="right", padx=(0, 4), before=self.auto_plan_btn)
+            self.dark_btn.pack(side="right", padx=(0, 4), before=self.calendar_btn)
             self.task_row.pack(side="left", fill="x", expand=True, padx=(12, 8))
             self.body.pack(fill="both", expand=True)
             self.status.pack(fill="x", side="bottom", padx=8, pady=(0, 4))

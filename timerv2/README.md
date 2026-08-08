@@ -4,6 +4,12 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.44 — Toolbar dark mode button
+
+Dark mode is now one click away — a 🌙/☀️ button in the main toolbar,
+next to the compact-mode button, instead of buried in the View menu.
+Hidden in compact mode along with the calendar/auto-plan buttons.
+
 ### v9.43 — "Today's plan," one composed view
 
 View > Planning > "Today's plan…" — one ordered list combining
