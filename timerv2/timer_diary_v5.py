@@ -60,6 +60,24 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.54 (#150 — deadline postmortem names total locked-vs-worked
+hours, 2026-08-08, closes the loop between #145's per-window nudge and
+the existing postmortem feature):
+  - #145 flags an individual missed locked window as it happens, but
+    nothing summarizes locking at the point a deadline actually
+    concludes — the postmortem (#28) didn't know locking ever happened
+    at all. Now it does: "locked 12.0h total across the project, 7.5h
+    of it actually got worked (62%)" — one more line, only when the
+    deadline ever locked anything.
+  - new `_locked_vs_worked_hours`: reuses #145's exact overlap check
+    (a locked window counts as "worked" if any real WORK session
+    overlaps it, no partial credit) across the WHOLE deadline history
+    instead of just the trailing 14 days — a postmortem is exactly the
+    moment "the whole history" is the right window.
+  - new "locked-vs-worked" selftest suite (a deadline with two locked
+    windows, one worked one missed; a deadline that never locked
+    anything gets no line at all); 65/65 green.
+
 New in v9.53 (#149 — locked windows get their own trace in the day
 file header, 2026-08-08, the exact same "sacred rule" gap #130 closed
 for recurring commitments):
@@ -6627,6 +6645,47 @@ class App(tk.Tk):
             line += f".  +1h/day from now → {pr['sooner']}d sooner"
         return line
 
+    def _locked_vs_worked_hours(self, dl):
+        """Backlog #150: closes the loop between #145's per-window nudge
+        (which only looks at the trailing lookback_days) and the
+        postmortem below — at the point a deadline actually concludes,
+        "the whole history" is the right window, not a rolling one.
+        Reuses #145's exact overlap check (a locked window counts as
+        "worked" if any real WORK session overlaps it at all, no partial
+        credit) across every locked_windows entry the deadline ever had.
+        Returns (locked_h, worked_h), or None if this deadline never
+        locked anything."""
+        windows = dl.get("locked_windows", [])
+        if not windows:
+            return None
+        work_ivs_by_day = {}
+        locked_h = worked_h = 0.0
+        for w in windows:
+            try:
+                d = dt.date.fromisoformat(w["date"])
+                sh, sm = map(int, w["start"].split(":"))
+                eh, em = map(int, w["end"].split(":"))
+                s, e = dt.time(sh, sm), dt.time(eh, em)
+            except (KeyError, ValueError):
+                continue
+            locked_h += _time_span_hours(s, e)
+            iso = d.isoformat()
+            if iso not in work_ivs_by_day:
+                ivs = []
+                for r in read_rows():
+                    if r[0] != iso or r[1] != "work":
+                        continue
+                    try:
+                        wsh, wsm = map(int, r[2].split(":"))
+                        weh, wem = map(int, r[3].split(":"))
+                        ivs.append((dt.time(wsh, wsm), dt.time(weh, wem)))
+                    except (ValueError, IndexError):
+                        continue
+                work_ivs_by_day[iso] = ivs
+            if any(s < e2 and s2 < e for s2, e2 in work_ivs_by_day[iso]):
+                worked_h += _time_span_hours(s, e)
+        return (locked_h, worked_h) if locked_h else None
+
     def _deadline_postmortem_lines(self, dl):
         """Backlog #28: once a scoped deadline's due date has passed,
         one retro block instead of the deadline just quietly
@@ -6745,6 +6804,14 @@ class App(tk.Tk):
             lines.append(f"  pace kept: {avg_active_h:.1f}h on active days, "
                         f"active {round(100 * active / span)}% of the "
                         f"{span} day(s) since {lo:%d.%m.%Y}")
+
+        lw = self._locked_vs_worked_hours(dl)
+        if lw:
+            locked_h, worked_h = lw
+            pct = round(100 * worked_h / locked_h) if locked_h else 0
+            lines.append(f"  locked {locked_h:.1f}h total across the "
+                        f"project, {worked_h:.1f}h of it actually got "
+                        f"worked ({pct}%)")
         return lines
 
     def _run_deadline_postmortems(self):

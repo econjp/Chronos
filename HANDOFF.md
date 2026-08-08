@@ -497,6 +497,15 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.54** (#150, 2026-08-08, DONE). Deadline postmortem names total
+  locked-vs-worked hours — closes the loop between #145's per-window
+  missed-lock nudge (trailing 14 days only) and the postmortem (#28),
+  which never knew locking happened at all. New
+  `_locked_vs_worked_hours` reuses #145's exact overlap check across
+  the WHOLE deadline history; one more postmortem line, only when the
+  deadline ever locked anything — "locked 12.0h total across the
+  project, 7.5h of it actually got worked (62%)". New "locked-vs-
+  worked" selftest suite; 65/65 green.
 - **v9.53** (#149, 2026-08-08, DONE). Locked windows get their own
   trace in the day file header, the exact same "sacred rule" gap #130
   closed for recurring commitments. A locked study block (#113/#122/
@@ -4089,19 +4098,9 @@ measuring what's already there.
     morning header.**~~ — DONE v9.53. See the v9.53 version-history
     entry above.
 
-150. **Deadline postmortem names total locked-vs-actually-worked hours
-    (PLANNING — closes the loop between #145's per-window nudge and
-    the existing end-of-deadline postmortem feature; new idea
-    2026-08-07).** #145 flags individual missed locks as they happen,
-    but there's no summary at the point a deadline actually concludes
-    — `_deadline_postmortem_lines` (the existing wrap-up feature that
-    already fires on Hegemon/Thesis) doesn't know locking ever
-    happened at all. Fix: one more line in the postmortem, when
-    `locked_windows` is non-empty — "locked 12.0h total across the
-    project, 7.5h of it actually got worked (62%)" — a plain sum
-    reusing #145's own overlap check across the WHOLE deadline instead
-    of just the trailing 14 days, since a postmortem is exactly the
-    moment "the whole history" is the right window, not a rolling one.
+150. ~~**Deadline postmortem names total locked-vs-actually-worked
+    hours.**~~ — DONE v9.54. See the v9.54 version-history entry
+    above.
 
 151. **A due-date-vs-locked-window contradiction check (PLANNING —
     connects #123's task due-dates with #135's task locking, a real

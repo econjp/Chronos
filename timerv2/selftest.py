@@ -78,6 +78,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_deadline_editor_feasibility_lines", "_todays_plan_from_segments",
         "_evening_window", "_ics_refresh_min", "_locked_today_line",
         "_estimate_factor", "_deadline_postmortem_lines",
+        "_locked_vs_worked_hours",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
         "_planned_hours_from_file", "_planner_realism_factor"}
@@ -1600,6 +1601,37 @@ def suite_deadline_postmortem():
     assert out2 == [], out2      # already marked -> never repeats
 
 
+def suite_locked_vs_worked():
+    D, ns = fresh()
+    dl = {"name": "TUTA", "locked_windows": [
+        {"date": "2026-07-01", "start": "09:00", "end": "11:00"},   # worked
+        {"date": "2026-07-02", "start": "09:00", "end": "10:00"},   # missed
+    ]}
+    seed(ns, [["2026-07-01", "work", "09:00", "11:00", "120",
+                "tuta: study", ""]])
+    d = _mk(D, today=dt.date(2026, 7, 10))
+    out = D._locked_vs_worked_hours(d, dl)
+    assert out == (3.0, 2.0), out
+
+    # ---- silence: deadline never locked anything ----
+    assert D._locked_vs_worked_hours(d, {"name": "X"}) is None
+
+    # ---- wired into the postmortem, whole-history window (not the
+    # trailing 14 days #145 uses) ----
+    dl2 = {"name": "TUTA", "date": "2026-07-15", "total_h": 3,
+           "start": "2026-07-01", "locked_windows": dl["locked_windows"]}
+    d2 = _mk(D, today=dt.date(2026, 8, 1))
+    lines = D._deadline_postmortem_lines(d2, dl2)
+    assert any("locked 3.0h total across the project, 2.0h of it "
+              "actually got worked (67%)" in ln for ln in lines), lines
+
+    # ---- no line at all when the deadline never locked anything ----
+    dl3 = dict(dl2)
+    del dl3["locked_windows"]
+    lines3 = D._deadline_postmortem_lines(d2, dl3)
+    assert not any("locked" in ln and "worked" in ln for ln in lines3), lines3
+
+
 def suite_deadline_renegotiation():
     D, ns = fresh()
     revise = ns["_deadline_revisions_after_save"]
@@ -2890,6 +2922,7 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("annual-theme", suite_annual_theme),
           ("lifetime-ledger", suite_lifetime_ledger),
           ("deadline-postmortem", suite_deadline_postmortem),
+          ("locked-vs-worked", suite_locked_vs_worked),
           ("deadline-renegotiation", suite_deadline_renegotiation),
           ("one-less", suite_one_less),
           ("sensor-health", suite_sensor_health),

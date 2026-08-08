@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.54 — Deadline postmortem names locked-vs-worked hours
+
+The end-of-deadline retro now also says "locked 12.0h total across
+the project, 7.5h of it actually got worked (62%)" whenever the
+deadline ever locked study time — closes the loop between the
+individual missed-lock nudge and the wrap-up summary, which never
+knew locking happened at all.
+
 ### v9.53 — Locked windows get their own trace in the day file
 
 The morning header now adds "locked today: TUTA 09:00-13:00" whenever
