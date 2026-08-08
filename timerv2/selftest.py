@@ -80,7 +80,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_locked_vs_worked_hours", "_locked_after_due_note",
         "_add_locked_windows", "_evening_event_matches", "_evening_event_lines",
-        "_multiweek_digest_lines",
+        "_multiweek_digest_lines", "_recurring_reminders_due",
+        "_recurring_reminders_line",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
         "_planned_hours_from_file", "_planner_realism_factor"}
@@ -3027,6 +3028,53 @@ def suite_locked_today():
     assert D._locked_today_line(d3) is None
 
 
+def suite_recurring_reminders():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 10)
+    settings = {"recurring_reminders": [
+        # due 2026-11-08 (90d after 08.08), lookahead 7 -> not due yet
+        {"name": "Visa renewal", "interval_days": 90,
+         "last_done": "2026-08-08", "lookahead_days": 7},
+        # due 2026-08-12 (2d from today), lookahead 5 -> inside window
+        {"name": "Subscriptions review", "interval_days": 30,
+         "last_done": "2026-07-13", "lookahead_days": 5},
+        # due 2026-08-05 (5d ago) -> overdue, still shown
+        {"name": "Backup check", "interval_days": 7,
+         "last_done": "2026-07-29", "lookahead_days": 3},
+        # malformed entry -> silently skipped, not a crash
+        {"name": "Broken", "interval_days": "not a number",
+         "last_done": "2026-08-01"},
+    ]}
+    d = _mk(D, today=TODAY, settings=settings)
+    due = D._recurring_reminders_due(d)
+    assert due == [
+        ("Backup check", dt.date(2026, 8, 5), -5),
+        ("Subscriptions review", dt.date(2026, 8, 12), 2),
+    ], due
+
+    line = D._recurring_reminders_line(d)
+    assert line == ("due soon: Backup check (overdue), "
+                    "Subscriptions review (in 2d)"), line
+
+    # ---- due exactly today reads "today" ----
+    d2 = _mk(D, today=TODAY, settings={"recurring_reminders": [
+        {"name": "X", "interval_days": 1, "last_done": "2026-08-09",
+         "lookahead_days": 3}]})
+    assert D._recurring_reminders_line(d2) == "due soon: X (today)", \
+        D._recurring_reminders_line(d2)
+
+    # ---- silence: nothing configured ----
+    d3 = _mk(D, today=TODAY, settings={})
+    assert D._recurring_reminders_due(d3) == []
+    assert D._recurring_reminders_line(d3) is None
+
+    # ---- silence: everything outside its own lookahead window ----
+    d4 = _mk(D, today=TODAY, settings={"recurring_reminders": [
+        {"name": "Visa", "interval_days": 90, "last_done": "2026-08-08",
+         "lookahead_days": 7}]})
+    assert D._recurring_reminders_line(d4) is None
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -3092,7 +3140,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("rrule", suite_rrule),
           ("exdates", suite_exdates),
           ("ics-rrule", suite_ics_rrule),
-          ("locked-today", suite_locked_today)]
+          ("locked-today", suite_locked_today),
+          ("recurring-reminders", suite_recurring_reminders)]
 
 
 def main():

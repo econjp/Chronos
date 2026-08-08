@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.59 — Recurring admin reminders
+
+Tools > "Recurring admin reminders…" — a lightweight list for chores
+that don't fit deadlines or tasks (renewals, subscription reviews):
+name, interval in days, last-done date, a "Mark done today" button.
+Once inside its own lookahead window it shows up in the morning
+header — "due soon: Subscriptions review (in 2d)".
+
 ### v9.58 — Multi-week digest
 
 View > Planning > "Multi-week digest…" — a plain, day-by-day text

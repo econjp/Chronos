@@ -60,6 +60,29 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.59 (#183 — recurring admin/chore reminders, 2026-08-08,
+direct response to "planning etc ADMIN generally takes a big chunk of
+my life"):
+  - a recurring admin chore ("renew the visa every 90 days", "review
+    subscriptions quarterly") has no real scope or progress to track
+    — exactly why it never fit deadlines (#1) or tasks (#123) and so
+    just lived in the owner's head instead. Tools > "Recurring admin
+    reminders…" now holds a lightweight list — name, interval in days,
+    last-done date, and its own lookahead window — with a one-click
+    "Mark done today" per row. Once inside its own lookahead window it
+    surfaces in the morning header — "due soon: Subscriptions review
+    (in 2d)" — same "sacred rule" visibility as #130/#149, silent
+    otherwise.
+  - new `_recurring_reminders_due`/`_recurring_reminders_line`: plain
+    date arithmetic over the settings list, no total_h/progress,
+    nothing #135 could ever lock time against — deliberately lighter
+    than a deadline or task, matching how little a "renew this" chore
+    actually needs.
+  - new "recurring-reminders" selftest suite (one item outside its
+    lookahead window, one inside, one already overdue, a malformed
+    entry silently skipped, "today" phrasing, and full silence with
+    nothing configured); 70/70 green.
+
 New in v9.58 (#182 — a plain-text, multi-week day-by-day digest,
 2026-08-08, direct response to "would be great if could plan
 everything like weeks ahead"):
@@ -4825,6 +4848,8 @@ class App(tk.Tk):
                            command=self._set_backup_task)
         toolsm.add_command(label="Recurring commitments (lunch, day job, sleep, admin)…",
                            command=self._set_protected_windows)
+        toolsm.add_command(label="Recurring admin reminders (visa, renewals…)…",
+                           command=self._set_recurring_reminders)
         m.add_cascade(label="Tools", menu=toolsm)
 
         self.menu = m
@@ -6029,6 +6054,81 @@ class App(tk.Tk):
 
         ttk.Button(win, text="Save", command=save).grid(
             row=n_rows + 1, column=5, sticky="e", padx=4, pady=8)
+
+    def _set_recurring_reminders(self):
+        """Backlog #183: a lightweight settings editor for the admin/
+        chore reminders in `_recurring_reminders_due` above — same
+        small-grid-of-entries pattern as Recurring Commitments/Goals/
+        Deadlines. "Mark done today" only fills today's date into that
+        row's Last-done entry; Save is still what actually persists it
+        — same edit-then-save discipline every suggestion button in
+        this app already follows (#126/#169/#171's skip suggestions)."""
+        win = tk.Toplevel(self)
+        win.title("Recurring admin reminders (visa renewal, subscription review...)")
+        win.resizable(False, False)
+        win.grab_set()
+        cols = ("Name", "Every N days", "Last done (YYYY-MM-DD, blank=today)",
+                "Remind N days ahead")
+        for c, lbl in enumerate(cols):
+            ttk.Label(win, text=lbl).grid(row=0, column=c, padx=4, pady=(8, 2))
+        cur = self.settings.get("recurring_reminders", [])
+        n_rows = max(6, len(cur))
+        grid = []
+        for i in range(n_rows):
+            r = cur[i] if i < len(cur) else {}
+            row = []
+            for c, key in enumerate(("name", "interval_days", "last_done",
+                                     "lookahead_days")):
+                e = ttk.Entry(win, width=24 if c == 0 else 14)
+                e.insert(0, str(r.get(key, "")) if r.get(key, "") != "" else "")
+                e.grid(row=i + 1, column=c, padx=4, pady=2)
+                row.append(e)
+
+            def mark_done(i=i):
+                grid[i][2].delete(0, "end")
+                grid[i][2].insert(0, self.today.isoformat())
+            ttk.Button(win, text="Mark done today", command=mark_done).grid(
+                row=i + 1, column=4, padx=4, pady=2)
+            grid.append(row)
+
+        def save():
+            out = []
+            for row in grid:
+                name = row[0].get().strip()
+                if not name:
+                    continue
+                try:
+                    interval = int(row[1].get().strip())
+                    assert interval > 0
+                except (ValueError, AssertionError):
+                    messagebox.showerror(
+                        APP_NAME, f"'{name}' needs a positive whole-number "
+                                 "day interval.", parent=win)
+                    return
+                last_raw = row[2].get().strip()
+                try:
+                    last_done = (dt.date.fromisoformat(last_raw) if last_raw
+                                else self.today).isoformat()
+                except ValueError:
+                    messagebox.showerror(
+                        APP_NAME, f"Use YYYY-MM-DD for '{name}'s last-done "
+                                 "date.", parent=win)
+                    return
+                try:
+                    lookahead = int(row[3].get().strip() or 7)
+                except ValueError:
+                    messagebox.showerror(
+                        APP_NAME, f"'{name}'s lookahead must be a whole "
+                                 "number of days.", parent=win)
+                    return
+                out.append({"name": name, "interval_days": interval,
+                           "last_done": last_done, "lookahead_days": lookahead})
+            self.settings["recurring_reminders"] = out
+            save_settings(self.settings)
+            win.destroy()
+
+        ttk.Button(win, text="Save", command=save).grid(
+            row=n_rows + 1, column=3, sticky="e", padx=4, pady=8)
 
     def _set_target(self):
         cur = self.settings.get("target_min", 0)
@@ -7802,6 +7902,9 @@ class App(tk.Tk):
         locked_line = self._locked_today_line()
         if locked_line:
             parts.append(locked_line)
+        reminder_line = self._recurring_reminders_line()
+        if reminder_line:
+            parts.append(reminder_line)
         parts += self._day_schedule_lines()
         if self.today.weekday() == 0:
             parts += self._week_review_block()
@@ -10836,6 +10939,51 @@ class App(tk.Tk):
         parts = ", ".join(f"{name} {s:%H:%M}-{e:%H:%M}"
                           for _d, s, e, name in sorted(windows, key=lambda w: w[1]))
         return f"locked today: {parts}"
+
+    def _recurring_reminders_due(self):
+        """Backlog #183: direct response to "planning etc ADMIN
+        generally takes a big chunk of my life" — a recurring admin
+        chore ("renew the visa every 90 days", "review subscriptions
+        quarterly") has no real scope or progress to track, which is
+        exactly why it never fit #1's deadlines or #123's tasks and so
+        just lived in the owner's head instead. `settings["recurring_
+        reminders"]`: name, interval_days, last_done, and its own
+        lookahead_days (days before the next due date it should start
+        surfacing) — deliberately no total_h/progress, nothing #135
+        could ever lock time against. Returns [(name, due_date,
+        days_left), ...] soonest-first, only entries already inside
+        their own lookahead window (days_left <= lookahead — negative
+        means overdue, still shown, not dropped)."""
+        out = []
+        for r in self.settings.get("recurring_reminders", []):
+            try:
+                interval = int(r["interval_days"])
+                last_done = dt.date.fromisoformat(r["last_done"])
+                lookahead = int(r.get("lookahead_days", 7))
+            except (KeyError, ValueError, TypeError):
+                continue
+            due = last_done + dt.timedelta(days=interval)
+            days_left = (due - self.today).days
+            if days_left <= lookahead:
+                out.append((r.get("name", ""), due, days_left))
+        out.sort(key=lambda x: x[1])
+        return out
+
+    def _recurring_reminders_line(self):
+        """Backlog #183: the day-header trace for the reminders above
+        — same "sacred rule" posture as #130/#149: settings-only isn't
+        enough, it has to show up where the owner actually looks every
+        morning. None on a day with nothing inside its lookahead
+        window."""
+        due = self._recurring_reminders_due()
+        if not due:
+            return None
+        parts = []
+        for name, due_d, days_left in due:
+            when = ("overdue" if days_left < 0 else
+                   "today" if days_left == 0 else f"in {days_left}d")
+            parts.append(f"{name} ({when})")
+        return "due soon: " + ", ".join(parts)
 
     def _undated_admin_tasks(self):
         """Backlog #140: the real "grey admin" pile — normal-priority

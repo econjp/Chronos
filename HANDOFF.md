@@ -497,6 +497,15 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.59** (#183, 2026-08-08, DONE). Recurring admin/chore reminders
+  — direct response to "planning etc admin generally takes a big
+  chunk of my life." Tools > "Recurring admin reminders…" holds a
+  lightweight name/interval-days/last-done/lookahead-days list, no
+  total_h/progress (deliberately lighter than #1's deadlines or
+  #123's tasks). Once inside its own lookahead window, surfaces in
+  the morning header — same sacred-rule visibility as #130/#149. New
+  `_recurring_reminders_due`/`_recurring_reminders_line`; new
+  "recurring-reminders" selftest suite. 70/70 green.
 - **v9.58** (#182, 2026-08-08, DONE). A plain-text, multi-week day-by-
   day digest — View > Planning > "Multi-week digest…" shows 3 weeks,
   one line per day: free hours, locked windows, plans. #42's week-
@@ -4403,20 +4412,8 @@ polish — the three NOT chosen this round) when continuing this work.
     not a canvas.**~~ — DONE v9.58. See the v9.58 version-history entry
     above.
 
-183. **Recurring admin/chore reminders with a lookahead window
-    (PLANNING; new idea 2026-08-08, direct response to "planning etc
-    ADMIN generally takes a big chunk of my life").** Deadlines (#1)
-    and tasks (#123) both assume real scope/progress tracking — too
-    heavy for "renew the visa every 90 days" or "review subscriptions
-    quarterly," which is exactly the class of admin overhead the owner
-    describes losing time to remembering manually. Fix: a lightweight
-    `recurring_reminders` settings list — name, an interval (days), a
-    last-done date, and a lookahead window (days before due it should
-    start surfacing) — no total_h/progress, nothing #135 could ever
-    lock time against. Surfaces in the morning header once inside its
-    own lookahead window, same "silent until relevant" posture as
-    every other day-header line; marking it done resets last-done and
-    it goes quiet again until the next interval.
+183. ~~**Recurring admin/chore reminders with a lookahead window.**~~
+    — DONE v9.59. See the v9.59 version-history entry above.
 
 184. **Plan confirmation staleness nudge (PLANNING; new idea
     2026-08-08, direct response to "often end up making plans for next
