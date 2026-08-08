@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.58 (#182 — a plain-text, multi-week day-by-day digest,
+2026-08-08, direct response to "would be great if could plan
+everything like weeks ahead"):
+  - #42's week-ahead line and the month/multi-week canvas cover
+    capacity in aggregate or visually — nothing produced a scannable,
+    DAY-BY-DAY text block spanning more than a week, something you can
+    read start to finish or paste into a message. View > Planning >
+    "Multi-week digest…" now shows exactly that, 3 weeks by default —
+    "Tue 11.08: 2.5h free · TUTA 09:00-13:00 · Dinner 19:00-21:00" —
+    one line per day, every day shown (a full outlook, not a filtered
+    insight, so a quiet day still gets a line).
+  - new `_multiweek_digest_lines`: composes primitives that already
+    exist per-day (`_day_capacity`, `_locked_windows_for_range`,
+    `_upcoming_plans`) into that line — no new capacity math, same
+    "compose, don't recompute" discipline as every other digest here.
+  - new "multiweek-digest" selftest suite (locked windows and a plan
+    both landing on their right days, a plan with no start/end still
+    showing without a stray time suffix); 69/69 green.
+
 New in v9.57 (#181 — free-evening/event overlay, 2026-08-08, the
 legitimate, subscription-based answer to "I manually check event sites
 for something to do" — the scraper idea itself stays declined on
@@ -4692,6 +4711,9 @@ class App(tk.Tk):
         planm.add_command(label="Free evenings…",
                           command=self._tracked("Free evenings",
                                                 self._free_evenings_win))
+        planm.add_command(label="Multi-week digest…",
+                          command=self._tracked("Multi-week digest",
+                                                self._multiweek_digest_win))
         planm.add_command(label="Today's plan…",
                           command=self._tracked("Today's plan",
                                                 self._todays_plan_win))
@@ -11985,6 +12007,57 @@ class App(tk.Tk):
         for d, st, en, name in matches:
             lines.append(f"  {d:%a %d.%m} {st:%H:%M}-{en:%H:%M}: {name}")
         return lines
+
+    def _multiweek_digest_lines(self, weeks=2):
+        """Backlog #182: #42/#118's week-ahead line and the month/
+        multi-week canvas views cover capacity in aggregate or
+        visually — nothing produces a scannable, DAY-BY-DAY text block
+        spanning more than a week, something you can glance at start
+        to finish or paste into a message, the direct answer to
+        "would be great if could plan everything like weeks ahead."
+        Composes primitives that already exist per-day (_day_capacity,
+        _locked_windows_for_range, _upcoming_plans) into one line per
+        day across a configurable multi-week horizon — same "compose,
+        don't recompute" discipline every digest-style feature here
+        follows. Every day in range gets a line, even a bare one —
+        this is a full outlook, not a filtered insight."""
+        start = self.today
+        end = start + dt.timedelta(days=weeks * 7 - 1)
+        locked_by_day = {}
+        for d, s, e, name in self._locked_windows_for_range(start, end):
+            locked_by_day.setdefault(d, []).append(f"{name} {s:%H:%M}-{e:%H:%M}")
+        plans_by_day = {}
+        for _i, w in self._upcoming_plans():
+            try:
+                d = dt.date.fromisoformat(w["date"])
+            except (KeyError, ValueError):
+                continue
+            if start <= d <= end:
+                label = w.get("label", "")
+                s, e = w.get("start", ""), w.get("end", "")
+                when = f"{s}-{e}" if s or e else ""
+                plans_by_day.setdefault(d, []).append(f"{label} {when}".strip())
+        lines = [f"MULTI-WEEK DIGEST — {start:%d.%m} to {end:%d.%m}:"]
+        d = start
+        while d <= end:
+            items = [f"{self._day_capacity(d):.1f}h free"]
+            items += locked_by_day.get(d, [])
+            items += plans_by_day.get(d, [])
+            lines.append(f"  {d:%a %d.%m}: " + " · ".join(items))
+            d += dt.timedelta(days=1)
+        return lines
+
+    def _multiweek_digest_win(self):
+        """Backlog #182: opens the digest above in a plain scrollable
+        text dialog, same shape as every other on-demand text-report
+        window here (Free evenings, Outlook)."""
+        win = tk.Toplevel(self)
+        win.title("Multi-week digest")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10),
+                      width=70, height=24)
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        txt.insert("1.0", "\n".join(self._multiweek_digest_lines(weeks=3)))
+        txt.config(state="disabled")
 
     def _free_evenings_win(self):
         """Backlog #167: the direct answer to "which evenings are

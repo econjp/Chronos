@@ -80,6 +80,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_locked_vs_worked_hours", "_locked_after_due_note",
         "_add_locked_windows", "_evening_event_matches", "_evening_event_lines",
+        "_multiweek_digest_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
         "_planned_hours_from_file", "_planner_realism_factor"}
@@ -2472,6 +2473,35 @@ def suite_evening_event_overlay():
     assert D._evening_event_lines(d3, weeks=2) == []
 
 
+def suite_multiweek_digest():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 10)      # Monday
+    deadlines = [{"name": "TUTA", "locked_windows": [
+        {"date": "2026-08-11", "start": "09:00", "end": "13:00"}]}]
+    settings = {"protected_windows": [
+        {"label": "Dinner", "date": "2026-08-12", "start": "19:00",
+         "end": "21:00"}]}
+    caps = {dt.date(2026, 8, 10): 3.0, dt.date(2026, 8, 11): 2.5,
+            dt.date(2026, 8, 12): 5.0}
+    d = _mk(D, today=TODAY, deadlines=lambda: deadlines, settings=settings,
+           _day_capacity=lambda dd: caps.get(dd, 4.0))
+    lines = D._multiweek_digest_lines(d, weeks=1)
+    assert lines[0] == "MULTI-WEEK DIGEST — 10.08 to 16.08:", lines
+    assert lines[1] == "  Mon 10.08: 3.0h free", lines
+    assert lines[2] == "  Tue 11.08: 2.5h free · TUTA 09:00-13:00", lines
+    assert lines[3] == "  Wed 12.08: 5.0h free · Dinner 19:00-21:00", lines
+    assert lines[4] == "  Thu 13.08: 4.0h free", lines
+    assert len(lines) == 8, lines           # header + 7 days
+
+    # ---- a plan with no start/end still shows, just no time suffix ----
+    settings2 = {"protected_windows": [
+        {"label": "Trip", "date": "2026-08-14"}]}
+    d2 = _mk(D, today=TODAY, deadlines=lambda: [], settings=settings2,
+            _day_capacity=lambda dd: 4.0)
+    lines2 = D._multiweek_digest_lines(d2, weeks=1)
+    assert lines2[5] == "  Fri 14.08: 4.0h free · Trip", lines2
+
+
 def suite_social_density():
     D, ns = fresh()
     d = _mk(D, settings={})
@@ -3031,6 +3061,7 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("locked-after-due", suite_locked_after_due),
           ("locked-double-count", suite_locked_double_count),
           ("evening-event-overlay", suite_evening_event_overlay),
+          ("multiweek-digest", suite_multiweek_digest),
           ("deadline-renegotiation", suite_deadline_renegotiation),
           ("one-less", suite_one_less),
           ("sensor-health", suite_sensor_health),

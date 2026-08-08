@@ -497,6 +497,14 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.58** (#182, 2026-08-08, DONE). A plain-text, multi-week day-by-
+  day digest — View > Planning > "Multi-week digest…" shows 3 weeks,
+  one line per day: free hours, locked windows, plans. #42's week-
+  ahead line and the canvas views cover this in aggregate or visually;
+  nothing produced a scannable text block spanning more than a week.
+  New `_multiweek_digest_lines` composes `_day_capacity`,
+  `_locked_windows_for_range`, `_upcoming_plans` — no new capacity
+  math. New "multiweek-digest" selftest suite; 69/69 green.
 - **v9.57** (#181, 2026-08-08, DONE). Free-evening/event overlay — the
   legitimate, subscription-based answer to manually checking event
   sites (the scraper idea itself stays declined). #167's free-evenings
@@ -4391,21 +4399,9 @@ polish — the three NOT chosen this round) when continuing this work.
     based answer to "I manually check event sites".**~~ — DONE v9.57.
     See the v9.57 version-history entry above.
 
-182. **A plain-text, multi-week "outlook" digest — one Tools-menu
-    action, not a canvas (PLANNING; new idea 2026-08-08, direct
-    response to "would be great if could plan everything like weeks
-    ahead").** #42's week-ahead line covers 7 days as aggregate
-    numbers; the month/multi-week canvas views are visual, not
-    something you can glance at or paste into a message. Nothing
-    currently produces a scannable DAY-BY-DAY text block spanning more
-    than a week — "Mon 10.08: 3.2h free · Tue 11.08: TUTA locked
-    09:00-13:00 · Wed 12.08: Dinner w/ Sam 19:00 · ..." across a
-    configurable 2-4 week horizon. Fix: a new `_outlook_digest_lines`
-    composing primitives that already exist per-day (`_day_capacity`,
-    `_locked_windows_for_range`, `_upcoming_plans`, `_calendar_events`)
-    into one line per day, shown in a plain scrollable/copyable dialog
-    — same "compose, don't recompute" discipline every digest-style
-    feature here has followed.
+182. ~~**A plain-text, multi-week "outlook" digest — one menu action,
+    not a canvas.**~~ — DONE v9.58. See the v9.58 version-history entry
+    above.
 
 183. **Recurring admin/chore reminders with a lookahead window
     (PLANNING; new idea 2026-08-08, direct response to "planning etc

@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.58 — Multi-week digest
+
+View > Planning > "Multi-week digest…" — a plain, day-by-day text
+readout across the next 3 weeks: free hours, locked windows, and
+plans, one line per day. The direct answer to "would be great if
+could plan everything like weeks ahead" — a full scannable outlook,
+not another chart.
+
 ### v9.57 — Free-evening/event overlay
 
 Free evenings > now also names anything already on a subscribed
