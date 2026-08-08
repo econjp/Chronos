@@ -497,6 +497,12 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.46** (#176, 2026-08-08, DONE). The Tasks/Library window gains
+  a live text filter (name/goal/deadline/source) plus "someday"/
+  "blocked" toggle checkboxes — direct continuation of #175's
+  toggle/filter customization ask. Pure UI wiring inside `_tasks_win`'s
+  `refresh` closure. **UNTESTED by the selftest harness** — pure
+  Tkinter filtering, same category as #157/#174.
 - **v9.45** (#175, 2026-08-08, DONE). Two hardcoded numbers become
   real settings — direct owner request for more toggle/filter
   customization. Tools > "Evening window…" (#167's 18:00-23:00) and
@@ -4311,6 +4317,11 @@ polish — the three NOT chosen this round) when continuing this work.
     v9.45. See the v9.45 version-history entry above. (Direct owner
     request, 2026-08-08: "other customisation things available that
     can toggle or filter etc like change different thing[s].")
+
+~~176. **A live filter row in the Tasks/Library window.**~~ — DONE
+    v9.46. See the v9.46 version-history entry above. (Same direct
+    "toggle or filter" request as #175, continued into the one view
+    most likely to grow past a screenful.)
 
 ## How to verify changes without Windows
 

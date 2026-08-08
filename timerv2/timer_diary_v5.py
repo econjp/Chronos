@@ -60,6 +60,20 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.46 (#176 — Tasks/Library filter row, 2026-08-08, the same
+"toggle or filter" customization ask #175 already started):
+  - the Tasks window gains a live text filter (name/goal/deadline/
+    source, case-insensitive substring, updates on every keystroke)
+    plus two checkboxes — "someday" and "blocked" — to hide either
+    category at a glance instead of scanning past them. A library
+    that's grown past a screenful finally has a way to narrow it down
+    without leaving the window.
+  - pure UI/filtering wiring inside `_tasks_win`'s existing `refresh`
+    closure — no new data, no new primitive, same "assembly, not
+    computation" shape as tonight's other small customization work.
+  - **UNTESTED by the selftest harness** — pure Tkinter filtering
+    logic inside a closure, same category as #157/#174.
+
 New in v9.45 (#175 — two hardcoded numbers become real settings,
 2026-08-08, direct owner request: "other customisation things
 available that can toggle or filter etc like change different
@@ -11886,6 +11900,27 @@ class App(tk.Tk):
         win.geometry("780x420")
         density_lbl = ttk.Label(win, foreground="#777777", font=("Segoe UI", 9))
         density_lbl.pack(fill="x", padx=8, pady=(8, 0))
+
+        # backlog #175: direct owner request for real filter/toggle
+        # customization — a quick text filter across name/goal/
+        # deadline/source, same live-as-you-type feel as the diary
+        # search's own filter box
+        filter_row = ttk.Frame(win)
+        filter_row.pack(fill="x", padx=8, pady=(4, 0))
+        ttk.Label(filter_row, text="Filter:").pack(side="left")
+        filter_var = tk.StringVar()
+        filter_entry = ttk.Entry(filter_row, textvariable=filter_var)
+        filter_entry.pack(side="left", fill="x", expand=True, padx=(4, 4))
+        show_someday_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(filter_row, text="someday", variable=show_someday_var,
+                       command=lambda: refresh()).pack(side="left", padx=(4, 0))
+        show_blocked_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(filter_row, text="blocked", variable=show_blocked_var,
+                       command=lambda: refresh()).pack(side="left", padx=(4, 0))
+        ttk.Button(filter_row, text="Clear",
+                  command=lambda: (filter_var.set(""), refresh())
+                  ).pack(side="left", padx=(4, 0))
+
         cols = ("pri", "task", "est", "actual", "goal", "deadline", "due", "source")
         heads = {"pri": "!", "task": "task", "est": "est", "actual": "actual",
                  "goal": "goal", "deadline": "deadline", "due": "due",
@@ -11915,7 +11950,15 @@ class App(tk.Tk):
                         f"~{est_sum:.1f}h estimated total, undated")
             else:
                 density_lbl.config(text="")
+            needle = filter_var.get().strip().lower()
             for i, t in enumerate(self.settings.get("tasks", [])):
+                if not show_someday_var.get() and t.get("priority") == "someday":
+                    continue
+                if not show_blocked_var.get() and t.get("blocked_by"):
+                    continue
+                if needle and needle not in " ".join(str(t.get(k, "")) for k in
+                        ("name", "goal", "deadline", "source")).lower():
+                    continue
                 pri = t.get("priority", "normal")
                 est = t.get("est_h")
                 tag = "blocked" if t.get("blocked_by") else pri
@@ -12121,6 +12164,7 @@ class App(tk.Tk):
             hint += f"  Your history: actuals run ×{ef[0]:.1f} your estimates."
         ttk.Label(win, text=hint, foreground="#777777",
                   wraplength=760).pack(anchor="w", padx=8, pady=(0, 6))
+        filter_entry.bind("<KeyRelease>", lambda e: refresh())
         refresh()
 
     def _planned_hours_from_file(self, iso):

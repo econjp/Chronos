@@ -4,6 +4,12 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.46 — Tasks window filter row
+
+The Tasks/Library window now has a live text filter plus "someday"/
+"blocked" toggle checkboxes — narrow down a library that's grown past
+a screenful instead of scrolling past everything.
+
 ### v9.45 — Two settings you can now actually change
 
 Tools > "Evening window (free evenings finder)…" and "Social-plan
