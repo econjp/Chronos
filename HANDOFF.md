@@ -4573,6 +4573,118 @@ polish — the three NOT chosen this round) when continuing this work.
     new code per metric" idea one step further — anomaly detection
     that costs nothing to add per new metric either.
 
+195. **A "quiet week" detector — flag when an upcoming week has
+    NOTHING locked or planned at all (PLANNING; new idea 2026-08-08,
+    directly closes the loop on the very first complaint that started
+    this whole arc: "sometimes its kinda hard to plan!!! and often
+    endup making plans for next two days").** Every feature since has
+    been about doing MORE once something's already planned — #133's
+    week-ahead line only speaks when overbooked/tight/behind/has
+    plans; a week with real open deadlines but genuinely ZERO locked
+    windows and ZERO one-off plans currently produces no signal at
+    all, even though that's the literal failure state the owner
+    originally described. Fix: one more OR condition in
+    `_week_ahead_lines` — when a week has open deadlines with real
+    remaining scope but `_locked_hours` and #166's `plans` are both
+    empty, say so plainly: "nothing locked or planned for next week
+    yet — worth an Auto-plan pass?" No new primitive, just naming the
+    zero case the same honesty-gate machinery already tracks.
+
+196. **Locked windows re-checked against freshly-detected calendar
+    changes (PLANNING — connects #185's still-open calendar-delta
+    digest with #136's locked-window credit and #145's missed-lock
+    nudge, a genuinely new failure mode neither covers; new idea
+    2026-08-08).** #145 catches a locked window that quietly passed
+    unworked; #185 (open) would catch a calendar event appearing/
+    moving/vanishing since the last fetch — but nothing connects them
+    yet: a locked window created BEFORE a new calendar event showed up
+    can now silently collide in the real world, and the app has no way
+    to notice since `_free_slots` only re-checks busy time going
+    FORWARD from locking, never re-validates an existing lock against
+    calendar data that arrived after. Fix: when #185's diff finds a
+    new/moved event, check it against every FUTURE `locked_windows`
+    entry for real overlap; if one exists, one line — "TUTA's locked
+    Thu 14:00-18:00 now overlaps a newly added 'Team sync' — re-lock?"
+    Reuses #185's diff and #136's own overlap-check shape, no new
+    concept.
+
+197. **Correlate social-plan density against next-day output — turn
+    #168's assumed threshold into a measured one (PLANNING — connects
+    #189's real correlation engine to #168's hand-picked heuristic;
+    new idea 2026-08-08).** #168 warns when a week looks "social-
+    heavy" past a configurable threshold (#175), but that threshold
+    was chosen by feel, not by this owner's own real data — and #189
+    just proved this app can run a real Pearson correlation over any
+    two tracked series. Fix: correlate "plan-hours the evening before"
+    against "next day's tracked work hours," same n>=15 honesty gate,
+    surfaced once as a real finding — "your data shows no real
+    correlation between evening plans and next-day output (r=0.08) —
+    #168's warning may be more caution than this owner actually needs"
+    or the opposite, confirming it. Either way, replaces a guess with
+    a number, the same instinct that justified #189 existing at all.
+
+198. **Predict tomorrow's day-archetype from what's already locked/
+    planned, not just cluster PAST days (PLANNING — makes #190's
+    k-means model forward-looking, not only retrospective; new idea
+    2026-08-08).** #190 clusters real historical days into archetypes
+    after the fact; nothing yet classifies an UPCOMING day using the
+    same centroids. Fix: build tomorrow's feature vector from what's
+    already known before it happens (locked hours, plan count, day-
+    of-week) and assign it to the nearest existing cluster from #190's
+    own model — "tomorrow looks like your 'scattered' archetype (3
+    plans, 2 locked hours) — historically a lower-output shape for
+    you." Pure k-means inference (nearest-centroid assignment), no new
+    training, no new concept — #190's own model, asked a forward
+    question instead of only a backward one.
+
+199. **Data-doctor cleanup for expired one-off plans and stale locked
+    windows (PLANNING — the hygiene instinct #173 already named for
+    CODE, applied to the DATA this whole arc's features accumulate;
+    new idea 2026-08-08).** `protected_windows` now holds one-off
+    dated entries (#159/#161/#163) that never get cleaned up once
+    their date passes — after a few months of real use (this app's
+    own stated design horizon), the Recurring Commitments editor and
+    `_upcoming_plans_win` (#164) both silently accumulate dead rows
+    that only ever return `[]` from `_protected_intervals_named` again
+    once past. Fix: fold into the existing "Data doctor — check &
+    clean history" flow — count one-off `protected_windows` entries
+    (and `locked_windows` per deadline) whose date is well in the
+    past (e.g., over 90 days), offer to remove them in one confirmed
+    batch, same "observe, then ask, never auto-delete" posture as
+    everything else the app already offers to clean up.
+
+200. **A credential-free "digest to file" Task Scheduler mode — the
+    legitimate version of #180's declined AI/email digest (PLANNING —
+    reuses #177's exact opt-in mechanism, sidesteps every security
+    concern #180 was declined over; new idea 2026-08-08).** #180 was
+    correctly declined — an LLM API key and SMTP app-password living
+    in plain-JSON settings is a real security question nobody signed
+    off on. But the actual WANT underneath it (a report waiting for
+    you without opening the app) doesn't need either: #177 already
+    proved a `<app> --flag` headless run via Task Scheduler works
+    safely, opt-in, no new attack surface. Fix: a `--digest` flag
+    alongside the existing `--backup` one, running #182's own
+    multi-week digest function headlessly and writing it to a plain
+    `.txt` file next to the app (or a chosen folder) on the same daily
+    schedule #177 already registers — no LLM, no email, no
+    credentials anywhere, the file's just there when you open your
+    laptop.
+
+201. **The day-outcome predictor should reuse the day-archetype
+    model's feature extraction, not duplicate it (HYGIENE — spotted
+    while reading tonight's #190/#192 pair; new idea 2026-08-08).**
+    #190's k-means clustering and #192's (open, not yet built)
+    logistic-regression day-outcome predictor will both need
+    essentially the same per-day feature vector (hours worked, plan
+    count, locked hours, day-of-week, recent pace) built from the
+    same underlying data. Worth building #192 so its feature
+    extraction explicitly reuses whatever #190 already assembles per
+    day, rather than a second, slightly-different version of the same
+    plumbing — the same "one parser, no new code per metric"
+    discipline #194 already leans on, applied to feature engineering
+    instead of metric parsing. A note for whoever builds #192, not a
+    standalone feature on its own.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
