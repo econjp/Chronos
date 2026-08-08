@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.61 — Metric correlation engine
+
+View > Memory > "Metric correlations…" — real Pearson correlation
+across every tracked daily metric (work hours, distinct tasks, and
+whatever METRICS: keys you've typed), not another hand-picked check.
+The first genuine statistics addition: your own data finding its own
+relationships, ranked by actual correlation strength.
+
 ### v9.60 — Plan confirmation nudge
 
 A one-off plan inside 48h of its own date with nothing marking it

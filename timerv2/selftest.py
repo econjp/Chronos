@@ -37,7 +37,7 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "load_settings", "save_settings", "_deadline_revisions_after_save",
        "_pick_one_less", "_parse_milestones",
        "_parse_rrule", "_rrule_occurrences", "parse_ics_intervals",
-       "parse_ics_events", "_parse_exdates"}
+       "parse_ics_events", "_parse_exdates", "_pearson_r"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -82,6 +82,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_add_locked_windows", "_evening_event_matches", "_evening_event_lines",
         "_multiweek_digest_lines", "_recurring_reminders_due",
         "_recurring_reminders_line", "_stale_plan_line",
+        "_metric_series", "_metric_correlations", "_correlation_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
         "_planned_hours_from_file", "_planner_realism_factor"}
@@ -3028,6 +3029,60 @@ def suite_locked_today():
     assert D._locked_today_line(d3) is None
 
 
+def suite_metric_correlations():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    TODAY = dt.date(2026, 7, 21)      # strictly after every seeded day below
+    rows = []
+    for i in range(1, 21):
+        iso = dt.date(2026, 7, i).isoformat()
+        work_h = i
+        rows.append(row(iso, work_h * 60, "solo"))
+        with open(os.path.join(tmp, f"{iso}.txt"), "w", encoding="utf-8") as f:
+            f.write(f"METRICS: water={2 * work_h}\n")
+    seed(ns, rows)
+    d = _mk(D, today=TODAY,
+           diary_path=lambda dd: os.path.join(tmp, dd.isoformat() + ".txt"))
+
+    series = D._metric_series(d, days=90)
+    assert series["work_h"]["2026-07-05"] == 5.0, series
+    assert series["water"]["2026-07-05"] == 10.0, series
+    assert series["task_count"]["2026-07-05"] == 1.0, series
+
+    pairs = D._metric_correlations(d, days=90)
+    match = next((p for p in pairs if set(p[:2]) == {"water", "work_h"}), None)
+    assert match is not None, pairs
+    _k1, _k2, r, n = match
+    assert abs(r - 1.0) < 1e-9, match
+    assert n == 20, match
+    # task_count is constant (always 1 distinct task/day) -> zero
+    # variance -> correlates with nothing, correctly excluded
+    assert not any("task_count" in p[:2] for p in pairs), pairs
+
+    lines = D._correlation_lines(d, days=90)
+    assert lines[0].startswith("METRIC CORRELATIONS"), lines
+    assert any("water" in ln and "work_h" in ln and "r=+1.00" in ln
+              for ln in lines), lines
+
+    # ---- not enough overlapping data: the honest empty message ----
+    D2, ns2 = fresh()
+    tmp2 = os.path.dirname(ns2["SESSIONS_CSV"])
+    rows2 = []
+    for i in range(1, 4):
+        iso = dt.date(2026, 7, i).isoformat()
+        rows2.append(row(iso, 60, "solo"))
+        with open(os.path.join(tmp2, f"{iso}.txt"), "w", encoding="utf-8") as f:
+            f.write("METRICS: water=5\n")
+    seed(ns2, rows2)
+    d2 = _mk(D2, today=dt.date(2026, 7, 4),
+            diary_path=lambda dd: os.path.join(tmp2, dd.isoformat() + ".txt"))
+    assert D2._metric_correlations(d2, days=90) == []
+    lines2 = D2._correlation_lines(d2, days=90)
+    assert lines2 == ["Not enough overlapping tracked data yet to find "
+                      "real correlations — needs 15+ days where two "
+                      "metrics were both logged."]
+
+
 def suite_recurring_reminders():
     D, ns = fresh()
     TODAY = dt.date(2026, 8, 10)
@@ -3173,7 +3228,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("ics-rrule", suite_ics_rrule),
           ("locked-today", suite_locked_today),
           ("recurring-reminders", suite_recurring_reminders),
-          ("stale-plan", suite_stale_plan)]
+          ("stale-plan", suite_stale_plan),
+          ("metric-correlations", suite_metric_correlations)]
 
 
 def main():

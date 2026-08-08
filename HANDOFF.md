@@ -497,6 +497,16 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.61** (#189, 2026-08-08, DONE). A real metric correlation
+  engine — the first genuine statistics/ML addition; every existing
+  insight before this was a hand-picked heuristic. View > Memory >
+  "Metric correlations…" computes actual Pearson r across every pair
+  of tracked daily metrics (work_h, task_count, every METRICS: key
+  ever typed), ranked by strength, gated on real overlap (15+ days)
+  and a real coefficient (|r|>=0.35). New `_pearson_r` (module-level,
+  pure, no numpy — stdlib-only end to end) plus
+  `_metric_series`/`_metric_correlations`/`_correlation_lines`. New
+  "metric-correlations" selftest suite. 72/72 green.
 - **v9.60** (#184, 2026-08-08, DONE). Plan confirmation staleness
   nudge — direct response to "often end up making plans for next two
   days." A one-off plan inside 48h of its own date with no
@@ -4483,6 +4493,13 @@ polish — the three NOT chosen this round) when continuing this work.
     "compose, don't recompute" pattern as every other capacity
     adjustment here. Omit the field entirely and behavior is unchanged
     — a quiet chore stays a quiet nudge.
+
+189. ~~**A real metric correlation engine — Pearson r across every
+    tracked daily metric, not another hand-picked heuristic.**~~ —
+    DONE v9.61 (owner asked directly: "think if theres like more
+    machine learning or AI or anything to incorporate... data
+    analysis or recommendations visualisation"). See the v9.61
+    version-history entry above.
 
 ## How to verify changes without Windows
 

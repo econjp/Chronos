@@ -60,6 +60,33 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.61 (#189 — a real metric correlation engine, 2026-08-08, the
+first genuine statistics/ML addition in this app: every existing
+"insight" here is a hand-picked heuristic — a rolling average, a
+percentile band, a same-day/lagged pairing someone thought to write a
+check for. This computes actual Pearson correlation coefficients over
+whatever you're actually tracking, finding relationships nobody named
+in advance):
+  - View > Memory > "Metric correlations…" scans every pair of tracked
+    daily metrics — the two always-available built-ins (work hours,
+    distinct-task count) plus whatever METRICS: keys you've ever typed
+    (meditation, water, caffeine, anything — the health-hub pivot's
+    generic key=value parser, now finally correlated against itself,
+    not just logged) — and surfaces the strongest real relationships,
+    ranked by |r|, only pairs with real overlap (15+ shared days) and
+    a real coefficient (|r|>=0.35).
+  - new `_pearson_r` (module-level, pure): the actual statistic, no
+    numpy/scipy — this app is stdlib-only end to end, so it's the
+    textbook covariance/variance formula in plain Python. New
+    `_metric_series`/`_metric_correlations`/`_correlation_lines`
+    compose it over real data with zero new capacity/insight math
+    duplicated.
+  - new "metric-correlations" selftest suite (a clean r=1.00 linear
+    relationship recovered exactly; a constant series correctly
+    correlating with nothing, not "everything" or "nothing" by
+    accident; the honest empty message under 15 days of overlap);
+    72/72 green.
+
 New in v9.60 (#184 — plan confirmation staleness nudge, 2026-08-08,
 direct response to "often end up making plans for next two days"):
   - #163's PLAN: capture and #164's upcoming-plans list both surface a
@@ -3360,6 +3387,26 @@ def _time_span_hours(s, e):
             - dt.datetime.combine(dt.date.min, s)).total_seconds() / 3600
 
 
+def _pearson_r(xs, ys):
+    """Backlog #189: plain Pearson correlation coefficient between two
+    equal-length numeric series — the actual statistic behind "these
+    two things move together," not a threshold-based heuristic. None
+    when there isn't enough data to mean anything (fewer than 2 points,
+    mismatched lengths) or either series is constant (zero variance
+    correlates with nothing, not "perfectly" or "not at all" — the
+    question doesn't apply)."""
+    n = len(xs)
+    if n < 2 or n != len(ys):
+        return None
+    mean_x, mean_y = sum(xs) / n, sum(ys) / n
+    cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    var_y = sum((y - mean_y) ** 2 for y in ys)
+    if var_x == 0 or var_y == 0:
+        return None
+    return cov / math.sqrt(var_x * var_y)
+
+
 def _free_from_busy(win_start, win_end, busy):
     """Free (start, end) time ranges inside [win_start, win_end) once
     `busy` intervals are merged and subtracted — the pure core of
@@ -4772,6 +4819,8 @@ class App(tk.Tk):
                          command=self._tracked("Search", self._search_diary))
         memm.add_command(label="Decision log…",
                          command=self._tracked("Decision log", self._decision_log_view))
+        memm.add_command(label="Metric correlations…",
+                         command=self._tracked("Correlations", self._correlations_win))
         viewm.add_cascade(label="Memory  (the archive)", menu=memm)
 
         valm = tk.Menu(viewm, tearoff=0)
@@ -9375,6 +9424,19 @@ class App(tk.Tk):
         else:
             for date, text in decisions:
                 txt.insert("end", f"{date}  {text}\n")
+        txt.config(state="disabled")
+
+    def _correlations_win(self):
+        """Backlog #189: opens `_correlation_lines` in a plain text
+        dialog, same shape as Decision log/Free evenings — a real
+        Pearson correlation scan over every tracked daily metric,
+        found automatically instead of hand-picked."""
+        win = tk.Toplevel(self)
+        win.title("Metric correlations")
+        win.geometry("560x360")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10))
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        txt.insert("1.0", "\n".join(self._correlation_lines()))
         txt.config(state="disabled")
 
     def _themed_writing(self, event=None):
@@ -14946,6 +15008,81 @@ class App(tk.Tk):
                     f"{verb} ({n_in}d logged vs {n_out}d not) — worth "
                     "tracking on purpose, not by accident"]
         return []
+
+    def _metric_series(self, days=90):
+        """Backlog #189: per-day numeric series for every tracked daily
+        metric — the raw material `_metric_correlations` below runs
+        real Pearson correlation over. Two always-available built-ins
+        (work_h, task_count — how many distinct tasks got touched that
+        day, a plain fragmentation proxy already available in
+        day_index()'s own `tasks` dict, no new computation) plus
+        whatever `METRICS:` keys have actually been typed (#health-hub
+        pivot's generic key=value parser) — same "one parser, no new
+        code per metric" idea extended one step further: now they can
+        be correlated against each other too, not just logged. Only
+        numeric METRICS values count (a value like "mood=anxious" that
+        never parsed as a float is a category, not a number to
+        correlate). {key: {date_iso: value}}, only days with real
+        tracked work."""
+        idx = day_index()
+        cutoff = self.today - dt.timedelta(days=days)
+        series = {}
+        d = cutoff
+        while d <= self.today:
+            iso = d.isoformat()
+            rec = idx.get(iso)
+            if rec and rec["work"] > 0:
+                series.setdefault("work_h", {})[iso] = rec["work"] / 60
+                series.setdefault("task_count", {})[iso] = float(len(rec["tasks"]))
+                for k, v in self._day_metrics(d).items():
+                    if isinstance(v, (int, float)):
+                        series.setdefault(k, {})[iso] = v
+            d += dt.timedelta(days=1)
+        return series
+
+    def _metric_correlations(self, days=90, min_n=15, min_r=0.35):
+        """Backlog #189: real Pearson correlation across every pair of
+        tracked daily metrics — the general-purpose successor to this
+        app's existing hand-picked same-day/lagged checks (#8's lens
+        overlap, #12's lag correlations), which only ever look at
+        pairs someone thought to name in advance. Any two numeric
+        series with enough real overlap (min_n days) and a real
+        coefficient (min_r) surface here, ranked by strength — your
+        own data finding its own relationships instead of waiting for
+        a bespoke check to be written for each one. Returns [(key1,
+        key2, r, n), ...] sorted by |r| descending."""
+        series = self._metric_series(days)
+        keys = sorted(series)
+        pairs = []
+        for i, k1 in enumerate(keys):
+            for k2 in keys[i + 1:]:
+                common = sorted(set(series[k1]) & set(series[k2]))
+                if len(common) < min_n:
+                    continue
+                xs = [series[k1][iso] for iso in common]
+                ys = [series[k2][iso] for iso in common]
+                r = _pearson_r(xs, ys)
+                if r is not None and abs(r) >= min_r:
+                    pairs.append((k1, k2, r, len(common)))
+        pairs.sort(key=lambda p: -abs(p[2]))
+        return pairs
+
+    def _correlation_lines(self, days=90, max_n=5):
+        """Formatted view of `_metric_correlations` above, capped to
+        the strongest `max_n` relationships — a wall of every pair
+        that clears the bar isn't more useful than the handful that
+        actually matter."""
+        pairs = self._metric_correlations(days)
+        if not pairs:
+            return ["Not enough overlapping tracked data yet to find "
+                    "real correlations — needs 15+ days where two "
+                    "metrics were both logged."]
+        lines = [f"METRIC CORRELATIONS (last {days} days, your own data "
+                "— not a general claim):"]
+        for k1, k2, r, n in pairs[:max_n]:
+            strength = "strong" if abs(r) >= 0.6 else "moderate"
+            lines.append(f"  {k1} ↔ {k2}: r={r:+.2f} ({strength}, n={n})")
+        return lines
 
     @staticmethod
     def _mood_from_text(text):
