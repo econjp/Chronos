@@ -4515,6 +4515,64 @@ polish — the three NOT chosen this round) when continuing this work.
     each day's own shape, plus a scatter-plot visualization.**~~ —
     DONE v9.62. See the v9.62 version-history entry above.
 
+191. **Regression-based confidence for deadline projections (PLANNING;
+    new idea 2026-08-08, the ML push's natural next step for
+    forecasting specifically).** `_dl_projection` already extrapolates
+    a landing date from recent pace, but the number comes bare — no
+    sense of how NOISY that pace actually is, so a wildly erratic
+    week and a rock-steady one produce equally confident-sounding
+    dates. Fix: a real least-squares linear regression (cumulative
+    hours vs day, pure Python — sums of x, y, xy, x² are all this
+    needs, no numpy) over the same trailing window `_dl_velocity`
+    already uses, reporting R² alongside the projected date — "lands
+    ~24.08 (R²=0.31 — noisy pace, treat this loosely)" vs "R²=0.89 —
+    a reliable trend." Same honesty-gate posture as everywhere else:
+    a low R² doesn't hide the projection, it just names how much to
+    trust it.
+
+192. **A day-outcome predictor — logistic regression, pure Python
+    (PLANNING; new idea 2026-08-08).** #189/#190 both look BACKWARD
+    (what correlated, what pattern already happened); nothing yet
+    looks forward from this morning's own known features (day of
+    week, plans already on the books, recent pace) to a probability
+    of hitting today's declared target. A from-scratch logistic
+    regression (gradient descent, a handful of features, trained
+    fresh each time on real history — no persisted model file, no
+    versioning problem) could report "68% chance of hitting today's
+    target, based on 40 similar mornings" right in the header — a
+    genuine prediction, not another rule someone wrote by hand. Needs
+    real sample-size honesty gates (n>=30 comparable mornings) same as
+    every statistical feature here, and should stay silent rather than
+    output a number built on thin data.
+
+193. **Rank free-time slots by what historically produced good signal,
+    not just chronologically (PLANNING; new idea 2026-08-08, connects
+    #189's correlation engine to actual scheduling).** #167/#182's
+    free-evening and multi-week digest list open slots in date order —
+    but if #189 ever finds "work_h correlates with a morning start"
+    or a similar time-of-day pattern, nothing acts on it. Fix: when
+    picking a slot to suggest (auto-plan #153, the lock-window picker
+    #113), weight candidates by a plain historical score — average
+    signal% logged in sessions that started around that same time of
+    day — so two otherwise-equal free slots aren't presented as
+    equivalent when the owner's own data says one of them usually
+    goes better. A ranking tweak over data already computed, not a
+    new capacity model; ties broken by earliest-first exactly as now.
+
+194. **Generalized anomaly detection over every METRICS key, not just
+    the hand-picked ones (PLANNING; new idea 2026-08-08, the anomaly-
+    watch counterpart to #189's correlation engine).** `_anomaly_lines`
+    checks a fixed list of signals (sleep-week extremity, etc.) named
+    in advance; #189's correlation engine proved the METRICS system
+    can support fully generic statistics. Fix: for every tracked
+    METRICS key, a plain z-score check — today's (or this week's)
+    value vs that key's own historical mean/stdev — flags anything
+    beyond ±2 standard deviations as a real statistical outlier, using
+    `statistics.mean`/`statistics.stdev` (stdlib) same as everywhere
+    else. Same n>=15 honesty gate as #189; extends the "one parser, no
+    new code per metric" idea one step further — anomaly detection
+    that costs nothing to add per new metric either.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
