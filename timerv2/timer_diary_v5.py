@@ -60,6 +60,28 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.51 (#178 — configurable calendar refresh interval, 2026-08-08,
+the same customization ask as #175/#176):
+  - Tools > "Calendar refresh interval…" — `ICS_REFRESH_MIN` (how
+    stale a cached calendar fetch has to be before re-fetching) was a
+    fixed 60-minute module constant. Someone watching a fast-changing
+    shared calendar might want a shorter interval than someone on a
+    mostly-static personal one who'd rather not hit the source as
+    often. Same settings-with-fallback pattern #175 established.
+  - `resolve_ics_source` gained an optional `refresh_min` parameter
+    (defaults to the module constant, unchanged behavior for any
+    caller that doesn't pass one); new `_ics_refresh_min` reads the
+    setting with a lenient-degrade fallback on anything unset,
+    malformed, or non-positive. All 3 real call sites now pass the
+    owner's own configured value.
+  - new "ics-refresh-min" selftest suite (default, customized,
+    malformed/zero/negative all falling back to the default) — the
+    harness gained a small extension along the way: module-level
+    constants a tested function references (not just class attrs) now
+    get extracted from the real source into the test namespace too,
+    so this stays impossible to silently drift from the app's real
+    default; 63/63 green.
+
 New in v9.50 (#179 — RRULE EXDATE support, the honest follow-up gap
 v9.49 itself left open, 2026-08-08):
   - v9.49's RRULE expansion handled the recurring PATTERN correctly
@@ -3192,7 +3214,7 @@ def _source_cache_key(raw):
     return hashlib.md5(raw.encode("utf-8")).hexdigest()[:10]
 
 
-def resolve_ics_source(raw, force=False, cache_key=None):
+def resolve_ics_source(raw, force=False, cache_key=None, refresh_min=None):
     """Backlog #114 + #155: `raw` (a calendar source's own url/path)
     can be a local file (old behavior, unchanged) OR a calendar's own
     publish/subscribe link (webcal:// or http(s)://, e.g. Outlook/
@@ -3201,11 +3223,15 @@ def resolve_ics_source(raw, force=False, cache_key=None):
     to a local cache file (data_dir()/calendar_cache.ics, or
     calendar_cache_<cache_key>.ics when the owner has more than one
     subscribed calendar — #155), refreshed when the cache is older
-    than ICS_REFRESH_MIN minutes or `force`; a fetch failure (offline,
-    link revoked) silently keeps serving whatever was cached last
-    rather than going blank. Returns a local path either way —
-    parse_ics_intervals/parse_ics_busy never need to know the
-    difference."""
+    than `refresh_min` minutes (backlog #178: caller-supplied, from
+    the owner's own setting — a fast-changing shared calendar wants a
+    shorter interval than a mostly-static personal one; defaults to
+    the module constant `ICS_REFRESH_MIN` when not given, unchanged
+    behavior for any caller that doesn't pass one) or `force`; a fetch
+    failure (offline, link revoked) silently keeps serving whatever
+    was cached last rather than going blank. Returns a local path
+    either way — parse_ics_intervals/parse_ics_busy never need to know
+    the difference."""
     if not raw:
         return raw
     if raw.lower().startswith("webcal://"):
@@ -3217,8 +3243,9 @@ def resolve_ics_source(raw, force=False, cache_key=None):
     cache_name = (f"calendar_cache_{cache_key}.ics" if cache_key
                  else "calendar_cache.ics")
     cache_path = os.path.join(data_dir(), cache_name)
+    refresh_min = ICS_REFRESH_MIN if refresh_min is None else refresh_min
     stale = force or not os.path.exists(cache_path) or (
-        (time.time() - os.path.getmtime(cache_path)) / 60 >= ICS_REFRESH_MIN)
+        (time.time() - os.path.getmtime(cache_path)) / 60 >= refresh_min)
     if stale:
         try:
             with urllib.request.urlopen(url, timeout=10) as resp:
@@ -4558,6 +4585,8 @@ class App(tk.Tk):
                            command=self._set_evening_window)
         toolsm.add_command(label="Social-plan density threshold…",
                            command=self._set_social_density_threshold)
+        toolsm.add_command(label="Calendar refresh interval…",
+                           command=self._set_ics_refresh_interval)
         toolsm.add_command(label="Recurring commitments (lunch, day job, sleep, admin)…",
                            command=self._set_protected_windows)
         m.add_cascade(label="Tools", menu=toolsm)
@@ -5277,6 +5306,23 @@ class App(tk.Tk):
             self.settings["social_density_threshold"] = v / 100
             save_settings(self.settings)
             self.status.config(text=f"Social-density threshold set to {v}%.")
+
+    def _set_ics_refresh_interval(self):
+        """Backlog #178: `ICS_REFRESH_MIN` (how stale a cached
+        calendar fetch has to be before re-fetching) was a fixed
+        module constant. Same customization pattern #175 already
+        established for the evening window/density threshold."""
+        v = simpledialog.askinteger(
+            APP_NAME, "Re-fetch a subscribed calendar after this many "
+                      "minutes since the last check (a shorter interval "
+                      "for a fast-changing shared calendar, longer for a "
+                      "mostly-static personal one):",
+            initialvalue=self._ics_refresh_min(), minvalue=5, maxvalue=1440,
+            parent=self)
+        if v is not None:
+            self.settings["ics_refresh_min"] = v
+            save_settings(self.settings)
+            self.status.config(text=f"Calendar refresh interval set to {v}min.")
 
     def _quick_add_plan(self, prefill_date=None, prefill_start=None, on_save=None):
         """Backlog #161: a fast, purpose-built way to jot down a one-
@@ -9990,7 +10036,9 @@ class App(tk.Tk):
             return {}
         resolved = []
         for s in sources:
-            path = resolve_ics_source(s["url"], cache_key=_source_cache_key(s["url"]))
+            path = resolve_ics_source(
+                s["url"], cache_key=_source_cache_key(s["url"]),
+                refresh_min=self._ics_refresh_min())
             if path and os.path.exists(path):
                 resolved.append(path)
         if not resolved:
@@ -10021,7 +10069,9 @@ class App(tk.Tk):
             return {}
         resolved = []
         for s in sources:
-            path = resolve_ics_source(s["url"], cache_key=_source_cache_key(s["url"]))
+            path = resolve_ics_source(
+                s["url"], cache_key=_source_cache_key(s["url"]),
+                refresh_min=self._ics_refresh_min())
             if path and os.path.exists(path):
                 resolved.append(path)
         if not resolved:
@@ -10057,7 +10107,9 @@ class App(tk.Tk):
         multi = len(sources) > 1
         out = []
         for s in sources:
-            path = resolve_ics_source(s["url"], cache_key=_source_cache_key(s["url"]))
+            path = resolve_ics_source(
+                s["url"], cache_key=_source_cache_key(s["url"]),
+                refresh_min=self._ics_refresh_min())
             if not path or not os.path.exists(path):
                 continue
             reader = (parse_csv_events if path.lower().endswith(".csv")
@@ -11474,6 +11526,22 @@ class App(tk.Tk):
                                  else f"{t.hour}:{t.minute:02d}")
                 out.append((d, f"{fmt(cs)}-{fmt(ce)}"))
         return out
+
+    def _ics_refresh_min(self):
+        """Backlog #178: `ICS_REFRESH_MIN` (how stale a cached
+        calendar fetch has to be before re-fetching) used to be a
+        fixed module constant. Customizable via Tools > "Calendar
+        refresh interval…" now — a fast-changing shared calendar
+        wants a shorter interval than a mostly-static personal one.
+        Falls back to the module default on anything unset or
+        non-positive, same lenient-degrade posture as every other
+        settings-backed field here."""
+        v = self.settings.get("ics_refresh_min")
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            return ICS_REFRESH_MIN
+        return v if v > 0 else ICS_REFRESH_MIN
 
     def _evening_window(self):
         """Backlog #175: the free-evenings finder's evening window,

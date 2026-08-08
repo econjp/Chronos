@@ -4,6 +4,12 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.51 — Configurable calendar refresh interval
+
+Tools > "Calendar refresh interval…" — the fixed 60-minute cache
+window for subscribed calendars is now a real setting, same pattern
+as the evening window/social-density threshold.
+
 ### v9.50 — Cancelled occurrences (EXDATE) respected
 
 A recurring event's individually-cancelled dates ("every Wednesday

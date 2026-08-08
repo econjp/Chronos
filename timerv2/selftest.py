@@ -76,7 +76,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_locked_windows_for_week", "_locked_windows_for_range",
         "_due_date_feasibility_line",
         "_deadline_editor_feasibility_lines", "_todays_plan_from_segments",
-        "_evening_window",
+        "_evening_window", "_ics_refresh_min",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -88,6 +88,10 @@ CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "_COMMIT_RE", "_FOCUS_SIG_WD", "_WEEKDAY_ABBR", "_PLAN_RE",
                "_ICS_HINT_PATTERNS", "_EVENING_START", "_EVENING_END",
                "_SOCIAL_DENSITY_THRESHOLD", "_PTO_KEYWORDS"}
+# module-level (not class) constants some TOP/METH functions reference —
+# extracted from the real source so a value change there can't silently
+# drift from what the tests assert against
+MODULE_CONSTS = {"ICS_REFRESH_MIN"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -95,6 +99,7 @@ _top_nodes = [n for n in _tree.body
               if isinstance(n, ast.FunctionDef) and n.name in TOP]
 _meth_src = {}
 _attr_src = {}
+_const_src = {}
 for _node in _tree.body:
     if isinstance(_node, ast.ClassDef) and _node.name == "App":
         for _s in _node.body:
@@ -104,10 +109,17 @@ for _node in _tree.body:
                     and isinstance(_s.targets[0], ast.Name)
                     and _s.targets[0].id in CLASS_ATTRS):
                 _attr_src[_s.targets[0].id] = ast.get_source_segment(_text, _s)
+    elif (isinstance(_node, ast.Assign) and len(_node.targets) == 1
+          and isinstance(_node.targets[0], ast.Name)
+          and _node.targets[0].id in MODULE_CONSTS):
+        _const_src[_node.targets[0].id] = ast.get_source_segment(_text, _node)
 
 _missing = (TOP - {n.name for n in _top_nodes}) | (METH - set(_meth_src))
 if _missing:
     sys.exit(f"selftest: functions missing from app file: {_missing}")
+_missing_consts = MODULE_CONSTS - set(_const_src)
+if _missing_consts:
+    sys.exit(f"selftest: module constants missing from app file: {_missing_consts}")
 
 
 def fresh():
@@ -123,6 +135,8 @@ def fresh():
           "_ROWS_CACHE": {"key": None, "rows": [], "idx_key": None,
                           "days": {}},
           "data_dir": lambda: tmp}
+    for src in _const_src.values():
+        exec(src, ns)
     for n in _top_nodes:
         exec(compile(ast.Module([n], []), SRC, "exec"), ns)
 
@@ -2644,6 +2658,25 @@ def suite_evening_window():
     assert out_custom == [(dt.date(2026, 8, 10), "20-22")], out_custom
 
 
+def suite_ics_refresh_min():
+    D, ns = fresh()
+    default = ns["ICS_REFRESH_MIN"]
+
+    d = _mk(D, settings={})
+    assert D._ics_refresh_min(d) == default
+
+    d2 = _mk(D, settings={"ics_refresh_min": 15})
+    assert D._ics_refresh_min(d2) == 15
+
+    # ---- malformed/non-positive falls back to the default ----
+    d3 = _mk(D, settings={"ics_refresh_min": "bad"})
+    assert D._ics_refresh_min(d3) == default
+    d4 = _mk(D, settings={"ics_refresh_min": 0})
+    assert D._ics_refresh_min(d4) == default
+    d5 = _mk(D, settings={"ics_refresh_min": -5})
+    assert D._ics_refresh_min(d5) == default
+
+
 def suite_rrule():
     D, ns = fresh()
     parse_rrule = ns["_parse_rrule"]
@@ -2860,6 +2893,7 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("deadline-feasibility", suite_deadline_feasibility),
           ("todays-plan", suite_todays_plan),
           ("evening-window", suite_evening_window),
+          ("ics-refresh-min", suite_ics_refresh_min),
           ("rrule", suite_rrule),
           ("exdates", suite_exdates),
           ("ics-rrule", suite_ics_rrule)]

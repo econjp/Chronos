@@ -497,6 +497,13 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.51** (#178, 2026-08-08, DONE). Tools > "Calendar refresh
+  interval…" — `ICS_REFRESH_MIN` (fixed 60min module constant)
+  becomes a real setting, same pattern as #175. `resolve_ics_source`
+  gained an optional `refresh_min` param; new `_ics_refresh_min`
+  reads the setting with lenient fallback. New "ics-refresh-min"
+  selftest suite; harness extended to extract module-level constants
+  (not just class attrs) from the real source for tests. 63/63 green.
 - **v9.50** (#179, 2026-08-08, DONE). RRULE EXDATE support — a
   cancelled single occurrence of a recurring series used to still
   render as a phantom event. New `_parse_exdates` (multi-line, multi-
@@ -4349,17 +4356,10 @@ polish — the three NOT chosen this round) when continuing this work.
     can't do; scope the exact `schtasks` argument set carefully before
     building blind.
 
-178. **Configurable calendar refresh interval, not just the evening
-    window/density threshold (PLANNING — the same customization ask
-    as #175/#176, one more hardcoded number found during the
-    integrations research pass; new idea 2026-08-08).** `ICS_REFRESH_
-    MIN` (how stale a cached calendar fetch has to be before
-    `resolve_ics_source` re-fetches) is a fixed module constant.
-    Someone checking a fast-changing calendar (a shared team calendar
-    getting same-day updates) might want a shorter interval than
-    someone on a mostly-static personal one who'd rather not hit the
-    source as often. Same `_evening_window`-style settings-with-
-    fallback pattern #175 already established — small, mechanical.
+~~178. **Configurable calendar refresh interval, not just the evening
+    window/density threshold.**~~ — DONE v9.51. See the v9.51 version-
+    history entry above. (Same customization ask as #175/#176, found
+    during the integrations research pass; new idea 2026-08-08.)
 
 ~~179. **RRULE EXDATE support — a cancelled single occurrence in an
     otherwise-recurring series.**~~ — DONE v9.50. See the v9.50
