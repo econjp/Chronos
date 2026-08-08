@@ -1672,6 +1672,38 @@ def suite_locked_after_due():
     assert note4 and "Report" in note4, note4
 
 
+def suite_locked_double_count():
+    """Backlog #152: verifies (rather than assumes) that a locked
+    window whose exported .ics later round-trips back in as an
+    ordinary subscribed calendar event doesn't get double-subtracted
+    from free time. _free_slots merges _busy_intervals() (calendar)
+    and _locked_intervals() (locked_windows) into one `busy` list
+    before handing it to _free_from_busy — this suite proves that
+    function is safe against the SAME real hour appearing twice in
+    that list, which is exactly what a round-tripped lock produces."""
+    _, ns = fresh()
+    free_from_busy = ns["_free_from_busy"]
+    span_hours = ns["_time_span_hours"]
+    win_start, win_end = dt.time(9, 0), dt.time(17, 0)
+    once = [(dt.time(10, 0), dt.time(11, 0))]
+    duplicated = once + once      # same hour via both busy AND locked
+
+    free_once = free_from_busy(win_start, win_end, once)
+    free_dup = free_from_busy(win_start, win_end, duplicated)
+    assert free_once == free_dup, (free_once, free_dup)
+    total_free = sum(span_hours(s, e) for s, e in free_dup)
+    assert abs(total_free - 7.0) < 1e-9, total_free  # 8h window - 1h, not 2h
+
+    # ---- overlapping-but-not-identical duplicates (locked 10:00-11:00,
+    # re-imported calendar event drifted slightly to 10:30-11:30) also
+    # merge correctly, not double-subtracted ----
+    overlapping = [(dt.time(10, 0), dt.time(11, 0)),
+                  (dt.time(10, 30), dt.time(11, 30))]
+    free_overlap = free_from_busy(win_start, win_end, overlapping)
+    total_overlap = sum(span_hours(s, e) for s, e in free_overlap)
+    assert abs(total_overlap - 6.5) < 1e-9, total_overlap  # 8h - 1.5h span
+
+
 def suite_deadline_renegotiation():
     D, ns = fresh()
     revise = ns["_deadline_revisions_after_save"]
@@ -2964,6 +2996,7 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("deadline-postmortem", suite_deadline_postmortem),
           ("locked-vs-worked", suite_locked_vs_worked),
           ("locked-after-due", suite_locked_after_due),
+          ("locked-double-count", suite_locked_double_count),
           ("deadline-renegotiation", suite_deadline_renegotiation),
           ("one-less", suite_one_less),
           ("sensor-health", suite_sensor_health),

@@ -4,6 +4,16 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.56 — Locked-window double-count risk, investigated and closed
+
+A long-flagged question — could a locked window get counted busy
+twice once its exported .ics round-trips back in as a real calendar
+event? — got an actual trace-through instead of staying an open
+worry. Verdict: no, the free-time math already merges duplicate
+ranges before subtracting. No code changed behavior; a regression
+test now proves it and a comment on `_free_slots` records the reason
+so it doesn't need re-deriving later.
+
 ### v9.55 — Due-date-vs-locked-window contradiction check
 
 Locking study time for a task or deadline AFTER its own due date used

@@ -60,6 +60,38 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.56 (#152 — locked-window double-count risk investigated and
+verified safe, 2026-08-08, this one was flagged as PLANNING
+specifically because it needed a real trace-through before deciding
+whether a fix was even needed, not blind trust either way):
+  - the concern: lock a window (#113/#136) → export .ics → import into
+    real Outlook → this app ALSO subscribes back to that Outlook
+    calendar (#114) → the same real hour could end up counted busy
+    TWICE — once via `_locked_intervals` (the raw locked_windows
+    entry) and once via `_busy_intervals` (the re-imported calendar
+    event) — both merged into one `busy` list inside `_free_slots`.
+  - the trace-through: `_free_from_busy` (the function that actually
+    turns a busy list into free slots) merges overlapping/duplicate
+    ranges via `_merge_time_intervals` BEFORE subtracting — a
+    duplicated interval still only removes that one real hour, not
+    two. Separately, `_day_capacity`/`_avail_hours` (the aggregate-
+    hours side used for feasibility checks) never subtracts
+    locked_windows at all — only calendar busy time and protected
+    hours — so there's no double-subtraction risk there either. The
+    two ledgers (`_dl_progress`'s remaining_h credit from
+    `_locked_hours`, and capacity's busy-time reduction once the
+    calendar catches up) are complementary, not overlapping: one
+    reflects how much work is still owed, the other how much time is
+    still open, and a locked-then-reimported window correctly reduces
+    both by the same one hour, not either one twice.
+  - verdict: no fix needed, the merge-before-subtract design already
+    guards against it. Documented as a docstring invariant on
+    `_free_slots` so a future reader doesn't have to re-derive this,
+    plus a new "locked-double-count" selftest suite that proves it
+    directly against `_free_from_busy` (an exact duplicate interval,
+    and a partially-overlapping one, both merge correctly instead of
+    double-subtracting); 67/67 green.
+
 New in v9.55 (#151 — a due-date-vs-locked-window contradiction check,
 2026-08-08, connects #123's task due-dates with #135/#136's window
 locking, a real planning mistake nothing previously caught):
@@ -10683,7 +10715,18 @@ class App(tk.Tk):
         AGGREGATE hours `_day_capacity` reports — the time-of-day
         picture here stayed blind to it, so a lock-window picker would
         happily offer a slot on a day you'd already declared off. Now
-        checked first, same as _day_capacity already does."""
+        checked first, same as _day_capacity already does.
+
+        Backlog #152, verified not just assumed: a locked window
+        (_locked_intervals) whose exported .ics later round-trips back
+        in as an ordinary subscribed event (_busy_intervals) would
+        list the SAME real hour twice in `busy` below. That's safe —
+        _free_from_busy merges overlapping/duplicate ranges before
+        subtracting, so a duplicated interval still only removes that
+        one hour, not two. _day_capacity is the aggregate-hours
+        sibling of this method and never subtracts locked_windows at
+        all (only calendar busy time + protected hours), so there's no
+        double-subtraction risk on that side either."""
         if d.isoformat() in self.settings.get("off_dates", []):
             return []
         win_start, win_end = self._work_window()

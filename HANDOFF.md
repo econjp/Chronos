@@ -497,6 +497,20 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.56** (#152, 2026-08-08, VERIFIED SAFE — no fix needed). The
+  long-flagged locked-window double-count risk (lock → export .ics →
+  import to Outlook → re-subscribed back in as an ordinary calendar
+  event → could the same hour count busy twice?) got an actual trace-
+  through. `_free_from_busy` merges overlapping/duplicate ranges via
+  `_merge_time_intervals` before subtracting, so a duplicated interval
+  in `_free_slots`'s busy list still only removes that one real hour.
+  `_day_capacity`/`_avail_hours` never subtract locked_windows at all
+  (only calendar busy + protected hours), so no risk on that side
+  either — `_dl_progress`'s remaining_h credit and capacity's busy-
+  time reduction are complementary ledgers, not overlapping ones. No
+  behavior changed; documented as an invariant on `_free_slots`'s
+  docstring plus a new "locked-double-count" selftest suite that
+  proves it directly against `_free_from_busy`. 67/67 green.
 - **v9.55** (#151, 2026-08-08, DONE). A due-date-vs-locked-window
   contradiction check — nothing previously stopped or noticed locking
   time for a target AFTER its own due date. New
@@ -4114,26 +4128,10 @@ measuring what's already there.
 151. ~~**A due-date-vs-locked-window contradiction check.**~~ — DONE
     v9.55. See the v9.55 version-history entry above.
 
-152. **Guard against a locked window silently double-counting once
-    it's re-imported into Outlook and re-subscribed back (PLANNING —
-    connects #113/#136's export+lock with #114's calendar subscription
-    in a way that's never been checked; new idea 2026-08-07).** The
-    intended flow is: lock a window → export .ics → import into real
-    Outlook. But this app ALSO subscribes back to that same Outlook
-    calendar (#114) and refreshes it hourly — meaning a locked window,
-    once imported, will eventually show up a second time as ordinary
-    subscribed busy time via `_busy_intervals`. `_free_slots` already
-    merges both sources as "busy" so it wouldn't offer the slot twice
-    for SCHEDULING — but `_day_capacity`'s two subtractions (busy time
-    AND, separately, nothing currently double-checks) could plausibly
-    double-subtract the same real hour under two different busy-time
-    categories once both exist for the same interval. Needs an actual
-    trace-through (not assumed) of `_day_capacity`/`_busy_data` against
-    a `locked_windows` entry whose `.ics` has round-tripped back in as
-    a subscribed event, to confirm whether this is real or the merge
-    already guards against it — flagged as PLANNING specifically
-    because it needs verification before a fix, not blind trust either
-    way.
+152. ~~**Guard against a locked window silently double-counting once
+    it's re-imported into Outlook and re-subscribed back.**~~ —
+    VERIFIED SAFE v9.56, no fix needed. See the v9.56 version-history
+    entry above for the full trace-through.
 
 **Scope correction, 2026-08-07** — after #141/#145/#149-152, the
 owner flagged that calendar work had drifted into small "connect the
