@@ -4,6 +4,13 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.50 — Cancelled occurrences (EXDATE) respected
+
+A recurring event's individually-cancelled dates ("every Wednesday
+EXCEPT the 20th") used to still show up as phantom occurrences after
+v9.49's recurring-event support. Now correctly excluded, in both
+capacity math and the calendar view.
+
 ### v9.49 — Recurring calendar events now actually count
 
 A subscribed calendar's recurring events (a weekly class, a daily

@@ -60,6 +60,29 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.50 (#179 — RRULE EXDATE support, the honest follow-up gap
+v9.49 itself left open, 2026-08-08):
+  - v9.49's RRULE expansion handled the recurring PATTERN correctly
+    but had no idea a specific occurrence had been cancelled — a real
+    .ics shape ("every Wednesday EXCEPT the 20th") via an `EXDATE:`
+    line next to the `RRULE:` one. That cancelled date used to still
+    render as a phantom occurrence. Now excluded correctly, in both
+    capacity math (`parse_ics_intervals`) and the calendar view
+    (`parse_ics_events`).
+  - new `_parse_exdates`: every date named across one or more EXDATE
+    lines in a VEVENT block (a block can carry several lines, and one
+    line can list several comma-separated dates — both handled).
+    `_rrule_occurrences` gained an `exdates` parameter — an excluded
+    date still counts toward the rule's own COUNT (it happened, in
+    the rule's own bookkeeping; it just doesn't render), so exclusion
+    is applied to what's returned, not to occurrence-counting itself.
+  - new "exdates" selftest suite (single date, comma-separated
+    multiple, multiple EXDATE lines, no-EXDATE silence, a malformed
+    token safely skipped) plus new cases in "rrule" (exdates excluded
+    but still counted, exdates on the unsupported-FREQ fallback path)
+    and "ics-rrule" (end-to-end through a real temp .ics file with
+    both RRULE and EXDATE); 62/62 green.
+
 New in v9.49 (#117 — recurring (RRULE) calendar events, previously
 silently skipped entirely, 2026-08-08, found during a research pass
 on realistic remaining integrations/automations):
@@ -3253,9 +3276,27 @@ def _parse_rrule(rrule_str):
     return out
 
 
+def _parse_exdates(block):
+    """Backlog #179: every date named in one or more `EXDATE:` lines
+    inside a VEVENT block — a real .ics feed cancels individual
+    occurrences of a recurring series this way ("every Wednesday
+    EXCEPT the 20th"). A block can carry multiple EXDATE lines, and
+    one line can list several comma-separated dates; both shapes are
+    handled. Malformed tokens are skipped, not fatal. Returns a set
+    of plain `dt.date` values."""
+    out = set()
+    for m in re.finditer(r"^EXDATE[^:\n]*:([^\r\n]+)", block, re.M):
+        for tok in m.group(1).split(","):
+            try:
+                out.add(dt.datetime.strptime(tok.strip()[:8], "%Y%m%d").date())
+            except ValueError:
+                continue
+    return out
+
+
 def _rrule_occurrences(rrule_str, dtstart, dtend, window_start, window_end,
-                       max_occurrences=500):
-    """Backlog #117: expands one recurring event into its concrete
+                       max_occurrences=500, exdates=None):
+    """Backlog #117/#179: expands one recurring event into its concrete
     (occurrence_start, occurrence_end) datetime pairs — but ONLY the
     ones landing inside [window_start, window_end] (plain dates), same
     "only compute what a caller actually asked to see" discipline as
@@ -3266,10 +3307,18 @@ def _rrule_occurrences(rrule_str, dtstart, dtend, window_start, window_end,
     nowhere near this bound. Falls back to a single (dtstart, dtend)
     pair when `_parse_rrule` doesn't recognize the FREQ, matching the
     pre-RRULE-support behavior exactly for anything genuinely
-    unsupported."""
+    unsupported. `exdates` (backlog #179) is an optional set of plain
+    dates to exclude — a real .ics feed often cancels one specific
+    occurrence of an otherwise-recurring series ("every Wednesday
+    EXCEPT the 20th") via an EXDATE line next to the RRULE; a
+    cancelled date still counts toward the rule's own COUNT (it
+    happened, in the rule's own bookkeeping — it just doesn't render),
+    so the exclusion is applied to what gets returned, not to the
+    occurrence-counting itself."""
+    exdates = exdates or set()
     rule = _parse_rrule(rrule_str)
     if rule is None:
-        return [(dtstart, dtend)]
+        return [] if dtstart.date() in exdates else [(dtstart, dtend)]
     duration = dtend - dtstart
     freq, interval = rule["freq"], rule["interval"]
     count, until, byday = rule.get("count"), rule.get("until"), rule.get("byday")
@@ -3289,7 +3338,8 @@ def _rrule_occurrences(rrule_str, dtstart, dtend, window_start, window_end,
             seen += 1
             if count is not None and seen > count:
                 break
-            if window_start <= cur.date() <= window_end:
+            if (cur.date() not in exdates
+                    and window_start <= cur.date() <= window_end):
                 out.append((cur, cur + duration))
         if freq == "DAILY":
             cur += dt.timedelta(days=interval)
@@ -3347,7 +3397,8 @@ def parse_ics_intervals(path, start, end):
         if not sdt or not edt or edt <= sdt:
             continue
         rr = re.search(r"^RRULE:([^\r\n]+)", block, re.M)
-        occurrences = (_rrule_occurrences(rr.group(1), sdt, edt, start, end)
+        occurrences = (_rrule_occurrences(rr.group(1), sdt, edt, start, end,
+                                          exdates=_parse_exdates(block))
                       if rr else [(sdt, edt)])
         for occ_start, occ_end in occurrences:
             cur = occ_start
@@ -3413,7 +3464,8 @@ def parse_ics_events(path, start, end):
         if not sdt or not edt or edt <= sdt:
             continue
         rr = re.search(r"^RRULE:([^\r\n]+)", block, re.M)
-        occurrences = (_rrule_occurrences(rr.group(1), sdt, edt, start, end)
+        occurrences = (_rrule_occurrences(rr.group(1), sdt, edt, start, end,
+                                          exdates=_parse_exdates(block))
                       if rr else [(sdt, edt)])
         for occ_start, occ_end in occurrences:
             cur = occ_start

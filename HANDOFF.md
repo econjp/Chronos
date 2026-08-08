@@ -497,6 +497,12 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.50** (#179, 2026-08-08, DONE). RRULE EXDATE support — a
+  cancelled single occurrence of a recurring series used to still
+  render as a phantom event. New `_parse_exdates` (multi-line, multi-
+  date-per-line); `_rrule_occurrences` gained an `exdates` param
+  (excluded from output, still counted against COUNT). New "exdates"
+  selftest suite plus new cases in "rrule"/"ics-rrule"; 62/62 green.
 - **v9.49** (#117, 2026-08-08, DONE). Recurring (RRULE) calendar
   events used to be silently skipped entirely — a real, previously-
   known risk. New `_parse_rrule`/`_rrule_occurrences`: a deliberately
@@ -4355,19 +4361,10 @@ polish — the three NOT chosen this round) when continuing this work.
     source as often. Same `_evening_window`-style settings-with-
     fallback pattern #175 already established — small, mechanical.
 
-179. **RRULE EXDATE support — a cancelled single occurrence in an
-    otherwise-recurring series (PLANNING — the honest, immediate
-    follow-up gap in what v9.49 just shipped; new idea 2026-08-08).**
-    v9.49's `_rrule_occurrences` expands DAILY/WEEKLY/MONTHLY
-    recurrence correctly, but a real .ics feed often also carries
-    `EXDATE:` lines next to the `RRULE:` — "this weekly class happens
-    every Wednesday EXCEPT the 20th, which got cancelled." Right now
-    that cancelled date still shows up as a phantom occurrence, since
-    EXDATE is never read. Fix: parse `EXDATE:` values from the same
-    VEVENT block (same field-extraction pattern already used for
-    DTSTART/DTEND/RRULE) into a set of excluded dates, and skip any
-    `_rrule_occurrences` result whose date matches — a filter step
-    added to the existing expansion, not a new capability.
+~~179. **RRULE EXDATE support — a cancelled single occurrence in an
+    otherwise-recurring series.**~~ — DONE v9.50. See the v9.50
+    version-history entry above. (The honest, immediate follow-up gap
+    in what v9.49 shipped; new idea 2026-08-08.)
 
 180. **AI-written weekly report / email digest — DELIBERATELY NOT
     BUILT, needs an explicit owner decision first (PLANNING — a

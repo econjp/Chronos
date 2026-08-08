@@ -37,7 +37,7 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "load_settings", "save_settings", "_deadline_revisions_after_save",
        "_pick_one_less", "_parse_milestones",
        "_parse_rrule", "_rrule_occurrences", "parse_ics_intervals",
-       "parse_ics_events"}
+       "parse_ics_events", "_parse_exdates"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -2701,6 +2701,43 @@ def suite_rrule():
     assert [o.date() for o, _e in out5] == [
         dt.date(2026, 1, 31), dt.date(2026, 2, 28), dt.date(2026, 3, 31)], out5
 
+    # ---- backlog #179: exdates excludes specific occurrences but
+    # still counts them against the rule's own COUNT ----
+    out6 = occ("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4", dtstart, dtend,
+              dt.date(2026, 8, 1), dt.date(2026, 8, 31),
+              exdates={dt.date(2026, 8, 5)})
+    assert [o.date() for o, _e in out6] == [
+        dt.date(2026, 8, 3), dt.date(2026, 8, 10), dt.date(2026, 8, 12)], out6
+
+    # ---- exdates on a non-recurring (unsupported FREQ) fallback too ----
+    assert occ("FREQ=YEARLY", dtstart, dtend, dt.date(2026, 8, 1),
+              dt.date(2026, 8, 31), exdates={dtstart.date()}) == []
+
+
+def suite_exdates():
+    D, ns = fresh()
+    parse_exdates = ns["_parse_exdates"]
+
+    block1 = "DTSTART:20260803T180000\nEXDATE:20260812T180000\n"
+    assert parse_exdates(block1) == {dt.date(2026, 8, 12)}, parse_exdates(block1)
+
+    # ---- multiple comma-separated dates on one EXDATE line ----
+    block2 = "EXDATE:20260812T180000,20260819T180000\n"
+    assert parse_exdates(block2) == {
+        dt.date(2026, 8, 12), dt.date(2026, 8, 19)}, parse_exdates(block2)
+
+    # ---- multiple EXDATE lines ----
+    block3 = "EXDATE:20260812T180000\nEXDATE:20260826T180000\n"
+    assert parse_exdates(block3) == {
+        dt.date(2026, 8, 12), dt.date(2026, 8, 26)}, parse_exdates(block3)
+
+    # ---- no EXDATE at all -> empty set ----
+    assert parse_exdates("DTSTART:20260803T180000\n") == set()
+
+    # ---- malformed token safely skipped ----
+    block4 = "EXDATE:not-a-date,20260812T180000\n"
+    assert parse_exdates(block4) == {dt.date(2026, 8, 12)}, parse_exdates(block4)
+
 
 def suite_ics_rrule():
     D, ns = fresh()
@@ -2744,6 +2781,27 @@ def suite_ics_rrule():
             "END:VCALENDAR\n")
     evs2 = ns["parse_ics_events"](path2, dt.date(2026, 8, 1), dt.date(2026, 8, 31))
     assert evs2 == [(dt.date(2026, 8, 15), time(10, 0), time(11, 0), "One-off")], evs2
+
+    # ---- backlog #179: a cancelled single occurrence (EXDATE) is
+    # excluded end-to-end, from both interval and event parsing ----
+    path3 = os.path.join(tmp, "with_exdate.ics")
+    with open(path3, "w", encoding="utf-8") as f:
+        f.write(
+            "BEGIN:VCALENDAR\n"
+            "BEGIN:VEVENT\n"
+            "SUMMARY:Standup\n"
+            "DTSTART:20260803T180000\n"
+            "DTEND:20260803T190000\n"
+            "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4\n"
+            "EXDATE:20260805T180000\n"
+            "END:VEVENT\n"
+            "END:VCALENDAR\n")
+    ivs3 = ns["parse_ics_intervals"](path3, dt.date(2026, 8, 1), dt.date(2026, 8, 31))
+    assert "2026-08-05" not in ivs3, ivs3
+    assert set(ivs3) == {"2026-08-03", "2026-08-10", "2026-08-12"}, ivs3
+    evs3 = ns["parse_ics_events"](path3, dt.date(2026, 8, 1), dt.date(2026, 8, 31))
+    assert [d for d, _s, _e, _n in evs3] == [
+        dt.date(2026, 8, 3), dt.date(2026, 8, 10), dt.date(2026, 8, 12)], evs3
 
 
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
@@ -2803,6 +2861,7 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("todays-plan", suite_todays_plan),
           ("evening-window", suite_evening_window),
           ("rrule", suite_rrule),
+          ("exdates", suite_exdates),
           ("ics-rrule", suite_ics_rrule)]
 
 
