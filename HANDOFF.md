@@ -4377,6 +4377,69 @@ polish — the three NOT chosen this round) when continuing this work.
     discipline as declining the event-site scraper: don't guess at
     something with real security/privacy weight.
 
+181. **Free-evening/event overlay — the legitimate, subscription-based
+    answer to "I manually check event sites" (PLANNING; new idea
+    2026-08-08).** The scraper idea (#43) was declined on ToS/fragility
+    grounds, but #114's calendar subscription + #165's ICS discovery
+    hints already give the owner a sanctioned way to pull in public
+    event calendars (many venues/city listings/Meetup-style groups
+    publish a real .ics feed) — that channel just isn't CONNECTED to
+    anything yet. A source marked display-only (#155, "counts as busy"
+    off) currently only draws on the calendar canvas; #167's free-
+    evenings finder never looks at it at all. Fix: when a free evening
+    (#167) overlaps an event from a display-only source, surface it —
+    "Thu 19:00-22:00 free — 'Jazz night @ Sula' is on your Events
+    calendar then." Zero new data or network code: `_busy_intervals`
+    already resolves display sources' events (just doesn't feed them
+    into capacity math), `_free_evenings_from_rows` already exists —
+    this is a join between two lists that already exist, not a new
+    fetch.
+
+182. **A plain-text, multi-week "outlook" digest — one Tools-menu
+    action, not a canvas (PLANNING; new idea 2026-08-08, direct
+    response to "would be great if could plan everything like weeks
+    ahead").** #42's week-ahead line covers 7 days as aggregate
+    numbers; the month/multi-week canvas views are visual, not
+    something you can glance at or paste into a message. Nothing
+    currently produces a scannable DAY-BY-DAY text block spanning more
+    than a week — "Mon 10.08: 3.2h free · Tue 11.08: TUTA locked
+    09:00-13:00 · Wed 12.08: Dinner w/ Sam 19:00 · ..." across a
+    configurable 2-4 week horizon. Fix: a new `_outlook_digest_lines`
+    composing primitives that already exist per-day (`_day_capacity`,
+    `_locked_windows_for_range`, `_upcoming_plans`, `_calendar_events`)
+    into one line per day, shown in a plain scrollable/copyable dialog
+    — same "compose, don't recompute" discipline every digest-style
+    feature here has followed.
+
+183. **Recurring admin/chore reminders with a lookahead window
+    (PLANNING; new idea 2026-08-08, direct response to "planning etc
+    ADMIN generally takes a big chunk of my life").** Deadlines (#1)
+    and tasks (#123) both assume real scope/progress tracking — too
+    heavy for "renew the visa every 90 days" or "review subscriptions
+    quarterly," which is exactly the class of admin overhead the owner
+    describes losing time to remembering manually. Fix: a lightweight
+    `recurring_reminders` settings list — name, an interval (days), a
+    last-done date, and a lookahead window (days before due it should
+    start surfacing) — no total_h/progress, nothing #135 could ever
+    lock time against. Surfaces in the morning header once inside its
+    own lookahead window, same "silent until relevant" posture as
+    every other day-header line; marking it done resets last-done and
+    it goes quiet again until the next interval.
+
+184. **Plan confirmation staleness nudge (PLANNING; new idea
+    2026-08-08, direct response to "often end up making plans for next
+    two days").** #163's PLAN: capture and #164's upcoming-plans list
+    both surface a social commitment once it's written down — but
+    nothing distinguishes a firm plan from one that's still tentative
+    and about to sneak up unconfirmed, which is exactly the "everything
+    happens last-minute" pattern the owner describes. Fix: a plan
+    inside 48h of its own date with no corresponding locked window
+    (#136) and no `confirmed` flag gets one quiet nudge — "Dinner w/
+    Sam is in 2 days — still on?" — a plain date/flag check over
+    `_upcoming_plans`'s own list, same observe-don't-block posture as
+    everywhere else; a plan explicitly marked confirmed (or already
+    past) never nags twice.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
