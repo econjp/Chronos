@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.65 — crash recovery no longer inflates hours
+
+Fixed a real bug: if the app crashed mid-session and you didn't
+reopen it until later, "log it until now" used to log the *entire*
+gap as tracked work — hours that were never actually worked. A
+lightweight heartbeat every 5 minutes while active now gives recovery
+a real "last confirmed alive" point to stop at instead, and tells you
+plainly when it's doing that.
+
 ### v9.64 — health data reaches the correlation engine
 
 Real auto-imported health data (sleep, workouts, steps, RHR, HRV,

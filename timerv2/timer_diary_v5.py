@@ -60,6 +60,34 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.65 (#207 — crash recovery no longer inflates hours by the
+gap until you happen to reopen the app, 2026-08-08 — a real incident:
+(a real incident, details genericized
+
+):
+  - real bug found and fixed: the app crashed mid-session at an earlier point
+    with no clean Stop ever recorded. Reopened a day later
+    , the recovery dialog's "No = log it (until now)"
+    path used `datetime.now()` — the moment the dialog finally got
+    ANSWERED — as the session's end time, logging the entire multi-hour gap
+    as tracked work instead of the real, much shorter session.
+  - fixed at the root: a lightweight heartbeat (`_save_state`, already
+    the exact write `_recover_if_needed` reads) now refreshes every 5
+    minutes while actively working/on break — cheap, already-tested
+    code, just called more often. Recovery uses that heartbeat's own
+    timestamp as the true "last confirmed alive" moment instead of
+    "whenever this dialog gets answered," and tells you plainly when
+    it's doing so: "Last confirmed alive ~40 min in — the rest
+    since then look like a crash/sleep gap, not real tracked time."
+    Degrades gracefully to the old behavior when no heartbeat data
+    exists (e.g. a crash inside the first 5 minutes, or old data from
+    before this fix).
+  - the real, already-corrupted affected-day data was corrected directly:
+    the day file now closes that session honestly (the
+    owner's own recollection) instead of an orphaned Start with a
+    fabricated multi-hour recovery the next day; sessions.csv's one affected
+    row corrected to match. Both backed up before editing.
+
 New in v9.64 (#203 + #204 — health finally reaches the correlation
 engine, plus a check that the pipeline feeding it is actually alive,
 2026-08-08, direct owner ask: "WE SHOULD CONSIDER HEALTH MORE!!! like
@@ -7558,6 +7586,17 @@ class App(tk.Tk):
         self._tl_tick = getattr(self, "_tl_tick", 0) + 1
         if self._tl_tick % 60 == 0 and not self.compact:
             self._draw_timeline()      # keep the live segment growing
+        # backlog #207: running.json was only ever written on a state
+        # TRANSITION (Start/Stop/Switch), never during a long unbroken
+        # session — so its mtime stayed pinned to session_started the
+        # whole time, giving crash recovery no honest "last confirmed
+        # alive" signal to fall back on for exactly the sessions most
+        # likely to be logged wrong (a real crash mid-grind, no
+        # transition in hours). A refresh every 5 minutes while
+        # actively working/on break fixes that at near-zero cost — a
+        # write already this cheap and already this well-tested.
+        if self._tl_tick % 300 == 0 and self.state in ("working", "break"):
+            self._save_state()
         self.after(1000, self._tick)
 
     def _check_time_box(self, task_tot):
@@ -7877,13 +7916,45 @@ class App(tk.Tk):
         except (KeyError, ValueError):
             os.remove(RUNNING_JSON)
             return
-        mins = round((dt.datetime.now() - started).total_seconds() / 60)
-        ans = messagebox.askyesnocancel(
-            APP_NAME,
-            f"A session was still open when the app last closed\n"
-            f"({d.get('task') or 'no task'} — started {started:%d.%m %H:%M}, "
-            f"~{mins} min ago).\n\n"
-            f"Yes = keep it running\nNo = log it (until now)\nCancel = discard")
+        now = dt.datetime.now()
+        raw_mins = round((now - started).total_seconds() / 60)
+        # backlog #207: a real incident — a Thesis session that crashed
+        # mid-grind got recovered roughly a day later, and "No = log it
+        # (until now)" logged the ENTIRE gap as tracked work (~24h on a
+        # session that really ran maybe an hour). running.json's own
+        # mtime is now a real "last confirmed alive" signal (#207's
+        # heartbeat, every 5 min while working/on break) — a much more
+        # honest recovery point than "whenever this dialog happens to
+        # get answered," which could be hours or days after the crash.
+        # Only trusted when it's clearly AFTER the start (an old-format
+        # or never-ticked file just reduces to the previous behavior —
+        # no heartbeat data existed to be more honest with).
+        try:
+            heartbeat = dt.datetime.fromtimestamp(os.path.getmtime(RUNNING_JSON))
+        except OSError:
+            heartbeat = started
+        heartbeat_mins = round((heartbeat - started).total_seconds() / 60)
+        gap_mins = raw_mins - heartbeat_mins
+        # heartbeat_mins == 0 means the file's mtime is literally the
+        # write-once moment (no heartbeat ever fired after it — an old
+        # session that predates this fix, or a crash inside the first
+        # 5 minutes) — indistinguishable from "no real data," so that
+        # case correctly falls through to the old now()-based behavior
+        # rather than pretending a zero-minute heartbeat is meaningful.
+        trust_heartbeat = gap_mins > 15 and heartbeat_mins >= 1
+        recovered_until = heartbeat if trust_heartbeat else now
+        log_mins = heartbeat_mins if trust_heartbeat else raw_mins
+        msg = (f"A session was still open when the app last closed\n"
+              f"({d.get('task') or 'no task'} — started {started:%d.%m %H:%M}, "
+              f"~{raw_mins} min ago).\n\n")
+        if trust_heartbeat:
+            msg += (f"Last confirmed alive ~{heartbeat_mins} min in "
+                   f"({heartbeat:%d.%m %H:%M}) — the {gap_mins} min since "
+                   "then look like a crash/sleep gap, not real tracked "
+                   "time, so logging stops there instead.\n\n")
+        msg += (f"Yes = keep it running\n"
+               f"No = log it (~{log_mins} min)\nCancel = discard")
+        ans = messagebox.askyesnocancel(APP_NAME, msg)
         if ans is None:
             os.remove(RUNNING_JSON)
             return
@@ -7903,12 +7974,11 @@ class App(tk.Tk):
             self.switch_btn.config(state="normal" if state == "working" else "disabled")
             self._save_state()
         else:
-            now = dt.datetime.now()
             if state == "working":
-                self._log_work_until(now)
+                self._log_work_until(recovered_until)
             self._append_text("--- Session reset, studying duration: "
                               f"{hms_padded(self.cum_secs)}\n"
-                              + event_line("Reset", now, self.cum_secs) + "\n")
+                              + event_line("Reset", recovered_until, self.cum_secs) + "\n")
             self.state = "idle"
             self.cum_secs = 0
             self.work_start = self.break_start = self.session_started = None

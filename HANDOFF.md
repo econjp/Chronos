@@ -497,6 +497,21 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.65** (#207, 2026-08-08, DONE). Real incident: a crash on
+  an earlier date, mid-afternoon with no clean Stop, recovered a day later, and the
+  old recovery logic ("No = log it until now") logged the entire
+  ~24h gap as tracked Thesis work — inflating the deadline's status
+  bar to "63.0/48h" instead of the real 40.0h. Root cause fixed: a
+  5-minute heartbeat (reusing `_save_state`, already-tested) gives
+  recovery a real "last confirmed alive" timestamp instead of trusting
+  whenever the dialog happens to get answered; degrades gracefully
+  with no heartbeat data. Real affected-day data corrected directly (day
+  file + the one affected sessions.csv row), both backed up first.
+  Separately noticed and NOT auto-fixed: Thesis's `date` field shows
+  an earlier date but its own `history` shows a change to a later date
+  recorded as of an earlier date — a real inconsistency, flagged to the owner
+  rather than guessed at, matching the standing "never touch deadline
+  scope without asking" rule.
 - **v9.64** (#203 + #204, 2026-08-08, DONE). Direct owner ask: "WE
   SHOULD CONSIDER HEALTH MORE!!! worklife balance health metrics."
   #203: `_metric_series` (feeds #189's real Pearson correlation
@@ -4762,6 +4777,38 @@ polish — the three NOT chosen this round) when continuing this work.
     trend? both?) before building — worth a short options discussion,
     not a guess, same judgment call made for #158's "quick viz tools"
     ask earlier this session.
+
+~~207. **Crash recovery inflates hours by the gap until the app
+    happens to get reopened, not the real crash time.**~~ — FIXED
+    v9.65. See the v9.65 version-history entry above. (Real incident,
+    2026-08-08: a Thesis session recovered a day late logged ~24h of
+    fake work.)
+
+208. **Investigate why an already-running process's `read_rows()`
+    cache didn't pick up an external sessions.csv edit (ANALYSIS —
+    spotted live while verifying #207's data fix; new idea
+    2026-08-08).** `read_rows()`'s cache is keyed on `(mtime_ns,
+    size)` and correctly invalidated in a fresh process (verified: a
+    brand-new headless read picked up the corrected file instantly).
+    But the ALREADY-RUNNING real app kept showing the pre-fix total
+    across multiple Start/Stop/Switch events (each of which triggers
+    `_refresh_totals`) after the file was edited externally — settled
+    by a restart, not investigated further under time pressure. Worth
+    a real trace-through: possibly a Windows/OneDrive directory-entry
+    caching quirk (this app's data dir lives in a OneDrive-synced
+    folder) rather than an app-level bug, but unconfirmed — flagged
+    for verification, not assumed either way.
+
+209. **The Thesis deadline's `date` field didn't match
+    its own `history`'s last recorded change (as of
+    ) — owner's call, not a guess (PLANNING — a real data
+    inconsistency spotted while investigating #207's status-bar
+    report; new idea 2026-08-08).** Either the date got reverted after
+    being extended, or a later edit changed it back without going
+    through the path that records history — worth asking the owner
+    directly which date is actually real before touching anything,
+    same "never split/archive a deadline without confirming" standing
+    rule from earlier this session. Not fixed, not guessed at.
 
 ## How to verify changes without Windows
 
