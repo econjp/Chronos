@@ -78,7 +78,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_deadline_editor_feasibility_lines", "_todays_plan_from_segments",
         "_evening_window", "_ics_refresh_min", "_locked_today_line",
         "_estimate_factor", "_deadline_postmortem_lines",
-        "_locked_vs_worked_hours",
+        "_locked_vs_worked_hours", "_locked_after_due_note",
+        "_add_locked_windows",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
         "_planned_hours_from_file", "_planner_realism_factor"}
@@ -1632,6 +1633,45 @@ def suite_locked_vs_worked():
     assert not any("locked" in ln and "worked" in ln for ln in lines3), lines3
 
 
+def suite_locked_after_due():
+    D, ns = fresh()
+    deadlines = [{"name": "TUTA", "date": "2026-07-10", "total_h": 5}]
+    tasks = [{"name": "Report", "due": "2026-07-10"}]
+    settings = {"deadlines": deadlines, "tasks": tasks}
+    d = _mk(D, deadlines=lambda: deadlines, settings=settings)
+
+    late = [{"date": dt.date(2026, 7, 12), "start": dt.time(9, 0),
+             "end": dt.time(10, 0)}]
+    note = D._locked_after_due_note(d, "TUTA", late)
+    assert note == ("note: locked window(s) on 12.07 are after TUTA's "
+                    "due date (10.07)."), note
+
+    # ---- silence: window on/before the due date ----
+    on_time = [{"date": dt.date(2026, 7, 9), "start": dt.time(9, 0),
+                "end": dt.time(10, 0)}]
+    assert D._locked_after_due_note(d, "TUTA", on_time) is None
+
+    # ---- a task resolves via .due, same as a deadline via .date ----
+    note2 = D._locked_after_due_note(d, "Report", late)
+    assert note2 == ("note: locked window(s) on 12.07 are after Report's "
+                     "due date (10.07)."), note2
+
+    # ---- silence: name matches neither a deadline nor a task ----
+    assert D._locked_after_due_note(d, "Ghost", late) is None
+
+    # ---- wired into _add_locked_windows: note comes back, and
+    # persistence for a real deadline still happens exactly as before ----
+    note3 = D._add_locked_windows(d, "TUTA", late)
+    assert note3 and "TUTA" in note3, note3
+    assert deadlines[0]["locked_windows"] == [
+        {"date": "2026-07-12", "start": "09:00", "end": "10:00"}], deadlines
+
+    # ---- a task: note still comes back even though _add_locked_windows
+    # persists nothing for it (tasks carry no locked_windows list) ----
+    note4 = D._add_locked_windows(d, "Report", late)
+    assert note4 and "Report" in note4, note4
+
+
 def suite_deadline_renegotiation():
     D, ns = fresh()
     revise = ns["_deadline_revisions_after_save"]
@@ -2923,6 +2963,7 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("lifetime-ledger", suite_lifetime_ledger),
           ("deadline-postmortem", suite_deadline_postmortem),
           ("locked-vs-worked", suite_locked_vs_worked),
+          ("locked-after-due", suite_locked_after_due),
           ("deadline-renegotiation", suite_deadline_renegotiation),
           ("one-less", suite_one_less),
           ("sensor-health", suite_sensor_health),

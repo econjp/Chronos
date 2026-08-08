@@ -497,6 +497,15 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.55** (#151, 2026-08-08, DONE). A due-date-vs-locked-window
+  contradiction check — nothing previously stopped or noticed locking
+  time for a target AFTER its own due date. New
+  `_locked_after_due_note` resolves the name against a deadline's
+  `date` or a task's `due`; `_add_locked_windows` now returns the note
+  alongside its existing persistence, and all three locking flows
+  (single-slot, picker export, auto-plan) append it to their status
+  text — "observe, don't block" like every other nudge. New "locked-
+  after-due" selftest suite; 66/66 green.
 - **v9.54** (#150, 2026-08-08, DONE). Deadline postmortem names total
   locked-vs-worked hours — closes the loop between #145's per-window
   missed-lock nudge (trailing 14 days only) and the postmortem (#28),
@@ -4102,20 +4111,8 @@ measuring what's already there.
     hours.**~~ — DONE v9.54. See the v9.54 version-history entry
     above.
 
-151. **A due-date-vs-locked-window contradiction check (PLANNING —
-    connects #123's task due-dates with #135's task locking, a real
-    planning mistake nothing currently catches; new idea 2026-08-07).**
-    Nothing stops (or even notices) locking time for a task AFTER its
-    own due date — set a task due 12.08, then use #135 to lock a
-    study window for it on 15.08, and the app says nothing, even
-    though that's a contradiction the owner almost certainly didn't
-    intend. Fix: a plain check in `_add_locked_windows` (or the
-    picker's `export()`) — if the target has a `due` (task) or `date`
-    (deadline) and any locked window falls after it, a plain status-
-    bar line, same "observe, don't block" posture as everywhere else
-    in this app — "note: this window (15.08) is after TUTA's due date
-    (12.08)." No new data, one date comparison against fields that
-    already exist.
+151. ~~**A due-date-vs-locked-window contradiction check.**~~ — DONE
+    v9.55. See the v9.55 version-history entry above.
 
 152. **Guard against a locked window silently double-counting once
     it's re-imported into Outlook and re-subscribed back (PLANNING —

@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.55 — Due-date-vs-locked-window contradiction check
+
+Locking study time for a task or deadline AFTER its own due date used
+to go completely unnoticed. Every locking flow (single-slot pick, the
+window picker's export, auto-plan) now shows a plain status-bar note
+when it happens — locking still goes through either way, this is
+just a heads-up.
+
 ### v9.54 — Deadline postmortem names locked-vs-worked hours
 
 The end-of-deadline retro now also says "locked 12.0h total across

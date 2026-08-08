@@ -60,6 +60,29 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.55 (#151 — a due-date-vs-locked-window contradiction check,
+2026-08-08, connects #123's task due-dates with #135/#136's window
+locking, a real planning mistake nothing previously caught):
+  - nothing stopped (or even noticed) locking time for a target AFTER
+    its own due date — set a task due 12.08, lock a study window for
+    it on 15.08 via #135/#136/#153, and the app said nothing. Now
+    every locking flow (single-slot pick, the multi-window picker's
+    export, and #153's auto-plan) shows a plain status-bar note when
+    it happens — "note: locked window(s) on 15.07 are after TUTA's due
+    date (12.07)." Same "observe, don't block" posture as every other
+    nudge here: locking still happens, the owner just gets told.
+  - new `_locked_after_due_note`: resolves `dl_name` against either a
+    deadline's `date` or a task's `due`, whichever exists — one date
+    comparison against fields both already carry, no new data.
+    `_add_locked_windows` now returns the note (or None) alongside its
+    existing persistence, so all three call sites just append it to
+    the status text they already build.
+  - new "locked-after-due" selftest suite (a late window on a
+    deadline, an on-time window staying silent, a task resolved via
+    `.due` instead of `.date`, an unknown name staying silent, and
+    persistence for a real deadline still working exactly as before);
+    66/66 green.
+
 New in v9.54 (#150 — deadline postmortem names total locked-vs-worked
 hours, 2026-08-08, closes the loop between #145's per-window nudge and
 the existing postmortem feature):
@@ -10589,6 +10612,39 @@ class App(tk.Tk):
             total += _time_span_hours(dt.time(sh, sm), dt.time(eh, em))
         return total
 
+    def _locked_after_due_note(self, dl_name, windows):
+        """Backlog #151: connects #123's task due-dates with #135's task
+        locking — nothing currently stops (or even notices) locking
+        time for a target AFTER its own due date. Set a task due
+        12.08, then lock a study window for it on 15.08, and the app
+        says nothing, even though that's almost certainly a mistake.
+        Same "observe, don't block" posture as everywhere else — a
+        plain status-bar note, locking still happens either way. No
+        new data, one date comparison against a deadline's `date` or
+        a task's `due`, whichever `dl_name` resolves to."""
+        due = None
+        for dl in self.deadlines():
+            if dl["name"] == dl_name and dl.get("date"):
+                due = dl["date"]
+                break
+        if due is None:
+            for t in self.settings.get("tasks", []):
+                if t["name"] == dl_name and t.get("due"):
+                    due = t["due"]
+                    break
+        if due is None:
+            return None
+        try:
+            due_d = dt.date.fromisoformat(due)
+        except ValueError:
+            return None
+        late = sorted(w["date"] for w in windows if w["date"] > due_d)
+        if not late:
+            return None
+        when = ", ".join(f"{d:%d.%m}" for d in late)
+        return (f"note: locked window(s) on {when} are after "
+               f"{dl_name}'s due date ({due_d:%d.%m}).")
+
     def _add_locked_windows(self, dl_name, windows):
         """Backlog #136: persist locked windows against their deadline
         the moment lock_windows_to_ics exports the .ics for it — same
@@ -10597,10 +10653,14 @@ class App(tk.Tk):
         of windows). A name that isn't a real deadline (a task, #135)
         is a no-op here — tasks deliberately carry no total_h/progress
         to credit against. De-duplicated by (date, start, end) so re-
-        locking an already-locked slot doesn't double-count its hours."""
+        locking an already-locked slot doesn't double-count its hours.
+        Backlog #151: also returns a plain status-bar note (or None)
+        when any window just locked falls after the target's own due
+        date — callers append it to their own status text."""
+        note = self._locked_after_due_note(dl_name, windows)
         dl = next((d for d in self.deadlines() if d["name"] == dl_name), None)
         if dl is None:
-            return
+            return note
         existing = dl.setdefault("locked_windows", [])
         seen = {(w["date"], w["start"], w["end"]) for w in existing}
         for w in windows:
@@ -10609,6 +10669,7 @@ class App(tk.Tk):
                 existing.append({"date": key[0], "start": key[1], "end": key[2]})
                 seen.add(key)
         save_settings(self.settings)
+        return note
 
     def _free_slots(self, d):
         """Free time-of-day ranges on date d: the work window minus
@@ -12249,11 +12310,12 @@ class App(tk.Tk):
         def lock_slot(dl_name, d, s, e):
             windows = [{"date": d, "start": s, "end": e}]
             path, n = lock_windows_to_ics(dl_name, windows)
-            self._add_locked_windows(dl_name, windows)
+            note = self._add_locked_windows(dl_name, windows)
             self._append_text(f"--- Locked {s:%H:%M}-{e:%H:%M} {d:%d.%m} for "
                               f"{dl_name} (exported {os.path.basename(path)})")
-            self.status.config(text=f"Locked {s:%H:%M}-{e:%H:%M} on {d:%d.%m} "
-                                    f"for {dl_name} — exported {path}")
+            text = (f"Locked {s:%H:%M}-{e:%H:%M} on {d:%d.%m} "
+                   f"for {dl_name} — exported {path}")
+            self.status.config(text=text + ("  " + note if note else ""))
 
         def set_task_due(name, d):
             est_h = None
@@ -15483,13 +15545,14 @@ class App(tk.Tk):
                             key=lambda w: w["date"])
             name = label_for[dl_var.get()]["name"]
             path, n = lock_windows_to_ics(name, windows)
-            self._add_locked_windows(name, windows)
+            note = self._add_locked_windows(name, windows)
             when = ", ".join(f"{w['date']:%d.%m} {w['start']:%H:%M}-"
                             f"{w['end']:%H:%M}" for w in windows)
             self._append_text(f"--- Locked {n} window(s) for {name}: "
                               f"{when} (exported {os.path.basename(path)})")
-            status.config(text=f"Exported {n} window(s) to {path} — "
-                         "import that file into Outlook/Google Calendar.")
+            text = (f"Exported {n} window(s) to {path} — "
+                   "import that file into Outlook/Google Calendar.")
+            status.config(text=text + ("  " + note if note else ""))
 
         ttk.Button(win, text="Export selected to .ics",
                   command=export).pack(anchor="e", padx=8, pady=(0, 8))
@@ -15640,18 +15703,24 @@ class App(tk.Tk):
                 grouped.setdefault(p["dl_name"], []).append(
                     {"date": p["date"], "start": p["start"], "end": p["end"]})
             paths = []
+            notes = []
             for name, windows in grouped.items():
                 path, n = lock_windows_to_ics(name, windows)
-                self._add_locked_windows(name, windows)
+                note = self._add_locked_windows(name, windows)
+                if note:
+                    notes.append(note)
                 paths.append(os.path.basename(path))
             total = sum(p["hours"] for p in accepted)
             names = ", ".join(f"{n} ({len(w)})" for n, w in grouped.items())
             self._append_text(f"--- Auto-planned {weeks_var.get()} week(s) "
                               f"locked: {total:.1f}h across {names} "
                               f"(exported {', '.join(paths)})")
-            status.config(text=f"Locked {len(accepted)} window(s), "
-                         f"{total:.1f}h total — import the exported .ics "
-                         "file(s) into Outlook/Google Calendar.")
+            text = (f"Locked {len(accepted)} window(s), "
+                   f"{total:.1f}h total — import the exported .ics "
+                   "file(s) into Outlook/Google Calendar.")
+            if notes:
+                text += "  " + "  ".join(notes)
+            status.config(text=text)
 
         ttk.Button(win, text="Lock accepted plan",
                   command=lock_plan).pack(anchor="e", padx=8, pady=(0, 8))
