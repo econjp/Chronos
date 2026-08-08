@@ -60,6 +60,38 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.64 (#203 + #204 — health finally reaches the correlation
+engine, plus a check that the pipeline feeding it is actually alive,
+2026-08-08, direct owner ask: "WE SHOULD CONSIDER HEALTH MORE!!! like
+worklife balance health metrics etc... health is in the end one of
+the most important things here"):
+  - #203: `_metric_series` (the raw material #189's real Pearson
+    correlation engine runs over) now merges in real AUTO-IMPORTED
+    health data (sleep_h, workout_min, steps, RHR, HRV, weight —
+    whatever `health_dir`'s export actually contains), not just hand-
+    typed `METRICS:` lines. This is the connection that makes "does
+    working more actually cost me sleep" answerable from real data,
+    with zero new manual entry — same "automate, never ask for manual
+    input" standing rule the health-import pipeline itself was built
+    under. A hand-typed METRICS: value for the same key always wins
+    over the auto-imported one (a manual correction is never silently
+    overridden).
+  - #203 also fixed a real, separate limitation while in there: METRICS:
+    values logged on a REST day (zero tracked work) used to be silently
+    excluded from the whole correlation pool — the entire per-day
+    metrics/health merge was gated on a tracked-work day existing,
+    which made sense for work_h/task_count specifically but silently
+    threw away perfectly good health/mood data on days off. Fixed:
+    work_h/task_count stay gated on real tracked work; everything
+    else applies to every day.
+  - #204: real gap found while checking this — the owner's actual
+    `health_dir` export folder hadn't produced a new file in 18 days,
+    meaning every health-aware feature had been silently going quiet
+    with no way to tell "nothing to report" from "the pipeline
+    stopped." A new grouped insight (ENERGY & BODY) names it directly
+    once it crosses 14 days — "health data hasn't updated in 18 days
+    (last: 21.07) — worth checking the export/sync?"
+
 New in v9.63 (#202 — real bugs fixed, dark mode softened, File/Tools
 menu bloat cut, 2026-08-08 — direct owner feedback after a mobile/
 cloud session added ~40 commits worth of features: "some features
@@ -9900,6 +9932,30 @@ class App(tk.Tk):
         self._health_cache = ((hdir, key), data)
         return data
 
+    def _health_staleness_lines(self, stale_days=14):
+        """Backlog #204: #203 wires real health-import data into the
+        correlation engine and every other health-aware feature — but
+        all of that only works if the pipeline is actually flowing.
+        A `health_dir` that's configured but hasn't produced a NEW
+        dated entry in a while degrades silently: every health feature
+        just goes quiet, indistinguishable from "nothing to report."
+        Named directly, once, past a real threshold — same honesty-
+        gate posture as everywhere else here, and the direct answer to
+        "we should consider health more" when the actual blocker turns
+        out to be a stopped pipeline, not a missing feature."""
+        hdir = self.settings.get("health_dir")
+        if not hdir:
+            return []
+        data = self._health_data()
+        if not data:
+            return []
+        latest = max(dt.date.fromisoformat(iso) for iso in data)
+        gap = (self.today - latest).days
+        if gap < stale_days:
+            return []
+        return [f"health data hasn't updated in {gap} days (last: "
+               f"{latest:%d.%m}) — worth checking the export/sync?"]
+
     def _maybe_insert_health(self):
         """Add '(sleep 6h12m, ...)' under today's header once data appears.
         Sleep syncs from the watch after wake-up, so this may run hours
@@ -15336,22 +15392,32 @@ class App(tk.Tk):
         return []
 
     def _metric_series(self, days=90):
-        """Backlog #189: per-day numeric series for every tracked daily
-        metric — the raw material `_metric_correlations` below runs
-        real Pearson correlation over. Two always-available built-ins
+        """Backlog #189 + #203: per-day numeric series for every tracked
+        daily metric — the raw material `_metric_correlations` below
+        runs real Pearson correlation over. Two work-shape built-ins
         (work_h, task_count — how many distinct tasks got touched that
         day, a plain fragmentation proxy already available in
-        day_index()'s own `tasks` dict, no new computation) plus
-        whatever `METRICS:` keys have actually been typed (#health-hub
-        pivot's generic key=value parser) — same "one parser, no new
-        code per metric" idea extended one step further: now they can
-        be correlated against each other too, not just logged. Only
-        numeric METRICS values count (a value like "mood=anxious" that
-        never parsed as a float is a category, not a number to
-        correlate). {key: {date_iso: value}}, only days with real
-        tracked work."""
+        day_index()'s own `tasks` dict, no new computation), gated on a
+        real tracked-work day since they're meaningless otherwise, plus
+        two OTHER sources that apply to every day regardless of whether
+        work happened: whatever `METRICS:` keys got typed (#health-hub
+        pivot's generic key=value parser) and — backlog #203 — the auto-
+        IMPORTED health data (`health_dir`'s sleep_h/workout_min/steps/
+        rhr/hrv/weight_kg) that already flows into `_maybe_insert_health`'s
+        morning line and `_health_view` but was never actually wired
+        into the correlation engine itself. Direct owner ask: "we
+        should consider health more... worklife balance health metrics
+        etc" — this is the connection that makes THAT possible with
+        zero new manual entry, same "automate, never ask for manual
+        input" standing rule the health-import pipeline was built under
+        in the first place. Auto-imported values only fill a key a hand-
+        typed METRICS: line didn't already set that day, so a manual
+        correction always wins. Only numeric values count (a value like
+        "mood=anxious" that never parsed as a float is a category, not
+        a number to correlate). {key: {date_iso: value}}."""
         idx = day_index()
         cutoff = self.today - dt.timedelta(days=days)
+        health = self._health_data()
         series = {}
         d = cutoff
         while d <= self.today:
@@ -15360,9 +15426,15 @@ class App(tk.Tk):
             if rec and rec["work"] > 0:
                 series.setdefault("work_h", {})[iso] = rec["work"] / 60
                 series.setdefault("task_count", {})[iso] = float(len(rec["tasks"]))
-                for k, v in self._day_metrics(d).items():
-                    if isinstance(v, (int, float)):
-                        series.setdefault(k, {})[iso] = v
+            day_vals = {}
+            for k, v in self._day_metrics(d).items():
+                if isinstance(v, (int, float)):
+                    day_vals[k] = v
+            for k, v in health.get(iso, {}).items():
+                if isinstance(v, (int, float)) and k not in day_vals:
+                    day_vals[k] = v
+            for k, v in day_vals.items():
+                series.setdefault(k, {})[iso] = v
             d += dt.timedelta(days=1)
         return series
 
@@ -15784,6 +15856,7 @@ class App(tk.Tk):
         out += [("TIME & FOCUS", l) for l in self._thrash_insight()]
         out += [("TIME & FOCUS", l) for l in self._shallow_work_lines()]
         out += [("ENERGY & BODY", l) for l in self._mood_insight()]
+        out += [("ENERGY & BODY", l) for l in self._health_staleness_lines()]
         out += [("MOMENTUM & TRENDS", l) for l in self._metrics_insight()]
         out += [("ENERGY & BODY", l) for l in self._daylight_insight()]
         out += [("MOMENTUM & TRENDS", l) for l in self._word_drift_insight()]

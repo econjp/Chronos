@@ -85,6 +85,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_multiweek_digest_lines", "_recurring_reminders_due",
         "_recurring_reminders_line", "_stale_plan_line",
         "_metric_series", "_metric_correlations", "_correlation_lines",
+        "_health_data",
         "_day_feature_vectors", "_day_archetypes", "_day_archetypes_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
@@ -3044,7 +3045,8 @@ def suite_metric_correlations():
         with open(os.path.join(tmp, f"{iso}.txt"), "w", encoding="utf-8") as f:
             f.write(f"METRICS: water={2 * work_h}\n")
     seed(ns, rows)
-    d = _mk(D, today=TODAY,
+    d = _mk(D, today=TODAY, settings={},
+           diary=type("FakeDiary", (), {"get": lambda self, a, b: ""})(),
            diary_path=lambda dd: os.path.join(tmp, dd.isoformat() + ".txt"))
 
     series = D._metric_series(d, days=90)
@@ -3077,7 +3079,8 @@ def suite_metric_correlations():
         with open(os.path.join(tmp2, f"{iso}.txt"), "w", encoding="utf-8") as f:
             f.write("METRICS: water=5\n")
     seed(ns2, rows2)
-    d2 = _mk(D2, today=dt.date(2026, 7, 4),
+    d2 = _mk(D2, today=dt.date(2026, 7, 4), settings={},
+            diary=type("FakeDiary", (), {"get": lambda self, a, b: ""})(),
             diary_path=lambda dd: os.path.join(tmp2, dd.isoformat() + ".txt"))
     assert D2._metric_correlations(d2, days=90) == []
     lines2 = D2._correlation_lines(d2, days=90)

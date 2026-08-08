@@ -497,6 +497,20 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.64** (#203 + #204, 2026-08-08, DONE). Direct owner ask: "WE
+  SHOULD CONSIDER HEALTH MORE!!! worklife balance health metrics."
+  #203: `_metric_series` (feeds #189's real Pearson correlation
+  engine) now merges in real auto-imported health data (sleep_h,
+  workout_min, steps, RHR, HRV, weight), not just hand-typed
+  METRICS: lines — makes "does working more cost me sleep"
+  answerable from real data, zero manual entry. Also fixed: METRICS:
+  values on rest days (no tracked work) used to be silently excluded
+  from the whole correlation pool; now they count too, work_h/
+  task_count stay correctly gated to real work days. #204: found the
+  owner's real `health_dir` export hadn't updated in 18 days —
+  every health-aware feature had been silently going quiet with no
+  way to tell "nothing to report" from "pipeline stopped." New
+  grouped insight names it directly past a 14-day threshold.
 - **v9.63** (#202, 2026-08-08, DONE). Direct owner feedback pass after
   the mobile/cloud session's ~40-commit merge: two real bugs fixed
   (week-view right-click menu could grow to 53+ rows and cover the
@@ -4707,6 +4721,47 @@ polish — the three NOT chosen this round) when continuing this work.
     2026-08-08, immediately after reviewing the merged mobile work —
     real bugs, not just preferences: verified via real widget-tree
     inspection and real luminance math, not eyeballed.)
+
+~~203. **Wire real auto-imported health data into #189's correlation
+    engine, not just hand-typed METRICS:.**~~ — FIXED v9.64. See the
+    v9.64 version-history entry above. (Direct owner ask, 2026-08-08:
+    "WE SHOULD CONSIDER HEALTH MORE!!! worklife balance health
+    metrics.")
+
+~~204. **A health-data-pipeline staleness check — the real `health_dir`
+    export hadn't updated in 18 days.**~~ — FIXED v9.64. See the
+    v9.64 version-history entry above. (Found while verifying #203,
+    same round.)
+
+205. **Extend #190's day-archetype clustering to include real health
+    features, not just work-shape (PLANNING — natural next step now
+    that #203 put health data in the same pipeline; new idea
+    2026-08-08).** `_day_feature_vectors` currently clusters on
+    (work_h, break_ratio, task_count) only — #203 already proved
+    `sleep_h`/other health keys are available for the exact same date
+    range via `_health_data()`. Fix: when real health data exists for
+    a clustered day, add sleep_h (and maybe workout_min) as additional
+    feature dimensions (standardized the same way the existing three
+    already are) — archetypes could then reveal "your Deep-focus days
+    tend to follow ≥7h sleep nights" instead of only describing work
+    shape in isolation from the body producing it. Gracefully degrades
+    to the current 3-feature version on days without health data (as
+    it already stands today, whichever machine this ships to first —
+    real, current health data or not).
+
+206. **A plain "work-life balance" glance line — tracked work hours vs
+    real rest/sleep, trending over weeks (PLANNING — the most literal
+    reading of "worklife balance health metrics," not yet a named
+    feature on its own; new idea 2026-08-08).** #203/#189 can now
+    correlate work against health, and #133/#42's week-ahead already
+    tracks work-hour totals — but nothing states the balance itself
+    as a number: something like "this week: 32h tracked work, avg
+    6.8h sleep/night (14d trend: -0.4h) — a real declining-sleep read,
+    not a guess." Needs real design thought on what "balance" should
+    actually mean numerically for this owner specifically (a ratio? a
+    trend? both?) before building — worth a short options discussion,
+    not a guess, same judgment call made for #158's "quick viz tools"
+    ask earlier this session.
 
 ## How to verify changes without Windows
 

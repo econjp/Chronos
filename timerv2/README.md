@@ -4,6 +4,16 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.64 — health data reaches the correlation engine
+
+Real auto-imported health data (sleep, workouts, steps, RHR, HRV,
+weight — whatever your export contains) now feeds Metric Correlations
+directly, not just hand-typed METRICS: lines — "does working more
+actually cost me sleep" becomes answerable from real data, no extra
+typing needed. Also: if your health export folder stops updating, a
+new insight names it directly (past 14 days stale) instead of every
+health feature just quietly going dark with no explanation.
+
 ### v9.63 — bug fixes, softer dark mode, less menu bloat
 
 Two real bugs fixed: right-clicking to lock an hour in the week view
