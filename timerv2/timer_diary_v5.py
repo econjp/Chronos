@@ -60,6 +60,39 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.52 (#177 — opt-in Windows Task Scheduler backup, 2026-08-08,
+a research-pass finding):
+  - `backup_if_due()` only ever ran when the app itself got launched —
+    a stretch of weeks without opening it meant backups quietly fell
+    behind with it, the app's own file-based safety net dependent on
+    the app being open to trigger it. Tools > "Automated backup (Task
+    Scheduler)…" now offers to register a real Windows Task Scheduler
+    entry (daily at 03:00, running the app's existing weekly-gated
+    backup step, no GUI launched) so it happens regardless. The same
+    menu item removes it again — the dialog states exactly what
+    command gets registered before asking for confirmation, and
+    nothing is ever registered automatically or silently.
+  - a genuine OS-level escalation (not just app-internal state, unlike
+    every other setting shipped tonight), so this is the one feature
+    this round that deliberately asks TWICE before doing anything: the
+    Tools-menu action itself is opt-in, and the dialog is a real
+    yes/no confirmation naming the exact command, not just an
+    acknowledgement.
+  - new `--backup` command-line flag (`__main__` checks it before any
+    DPI/already-running/GUI code runs at all) — the actual entry point
+    the scheduled task invokes, reusing `backup_if_due()` unchanged.
+  - `subprocess` (stdlib, no new pip dependency) driving `schtasks.exe`
+    — `backup_task_registered`/`register_backup_task`/`unregister_
+    backup_task` mirror the existing `get_autostart`/`set_autostart`
+    winreg pattern closely, including reusing `app_command()` unchanged
+    for the exact same "how do I re-invoke myself" logic autostart
+    already solved.
+  - **UNTESTED by the selftest harness** — real Windows Task Scheduler
+    calls and GUI dialogs, same category as autostart itself; this
+    Linux dev environment cannot invoke `schtasks.exe` at all. Needs
+    real confirmation on the owner's machine that registration/removal
+    both work and that the scheduled run actually performs a backup.
+
 New in v9.51 (#178 — configurable calendar refresh interval, 2026-08-08,
 the same customization ask as #175/#176):
   - Tools > "Calendar refresh interval…" — `ICS_REFRESH_MIN` (how
@@ -2667,6 +2700,7 @@ import os
 import queue
 import re
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -3773,6 +3807,69 @@ def set_autostart(enable):
         return False
 
 
+# ---------------- automated backup (Windows Task Scheduler) ----------------
+# Backlog #177: backup_if_due() only ever runs when the app itself gets
+# launched — a stretch of weeks without opening it means backups quietly
+# fall behind with it. subprocess is stdlib (no new pip dependency) and
+# Windows ships schtasks.exe; registering a real scheduled task closes that
+# gap. A genuine OS-level escalation (not just app-internal state), so this
+# stays strictly opt-in — one Tools-menu action, one confirmation naming
+# exactly what gets registered, a matching Remove action, never automatic.
+
+BACKUP_TASK_NAME = f"{APP_NAME} Backup"
+
+
+def backup_task_registered():
+    """True if BACKUP_TASK_NAME already exists in the Windows Task
+    Scheduler. `schtasks /query` exits 0 if found, non-zero (and writes
+    to stderr) if not — swallowed here the same way get_autostart
+    swallows a missing registry key."""
+    try:
+        r = subprocess.run(["schtasks", "/query", "/tn", BACKUP_TASK_NAME],
+                           capture_output=True, timeout=10)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def register_backup_task():
+    """Registers a daily 03:00 task running `<app_command()> --backup`
+    — the same --backup flag `__main__` checks for, which runs
+    backup_if_due() (already weekly-gated internally, so a DAILY
+    trigger just means "check daily, only actually copy when it's
+    been 7+ days") and exits immediately, no GUI launched. /f
+    overwrites cleanly if a stale registration from an older version
+    already exists."""
+    try:
+        cmd = f"{app_command()} --backup"
+        r = subprocess.run(
+            ["schtasks", "/create", "/tn", BACKUP_TASK_NAME, "/tr", cmd,
+             "/sc", "DAILY", "/st", "03:00", "/f"],
+            capture_output=True, text=True, timeout=10)
+        if r.returncode != 0:
+            messagebox.showerror(
+                APP_NAME, f"Couldn't register the backup task:\n{r.stderr.strip()}")
+            return False
+        return True
+    except Exception as e:
+        messagebox.showerror(APP_NAME, f"Couldn't register the backup task:\n{e}")
+        return False
+
+
+def unregister_backup_task():
+    try:
+        r = subprocess.run(["schtasks", "/delete", "/tn", BACKUP_TASK_NAME, "/f"],
+                           capture_output=True, text=True, timeout=10)
+        if r.returncode != 0 and "cannot find" not in r.stderr.lower():
+            messagebox.showerror(
+                APP_NAME, f"Couldn't remove the backup task:\n{r.stderr.strip()}")
+            return False
+        return True
+    except Exception as e:
+        messagebox.showerror(APP_NAME, f"Couldn't remove the backup task:\n{e}")
+        return False
+
+
 # ---------------- calendar (.ics) export ----------------
 
 def week_to_ics(monday):
@@ -4587,6 +4684,8 @@ class App(tk.Tk):
                            command=self._set_social_density_threshold)
         toolsm.add_command(label="Calendar refresh interval…",
                            command=self._set_ics_refresh_interval)
+        toolsm.add_command(label="Automated backup (Task Scheduler)…",
+                           command=self._set_backup_task)
         toolsm.add_command(label="Recurring commitments (lunch, day job, sleep, admin)…",
                            command=self._set_protected_windows)
         m.add_cascade(label="Tools", menu=toolsm)
@@ -5323,6 +5422,35 @@ class App(tk.Tk):
             self.settings["ics_refresh_min"] = v
             save_settings(self.settings)
             self.status.config(text=f"Calendar refresh interval set to {v}min.")
+
+    def _set_backup_task(self):
+        """Backlog #177: `backup_if_due()` only ever runs when the app
+        itself gets launched — a stretch of weeks without opening it
+        means backups quietly fall behind with it. A genuine OS-level
+        escalation (registering something in Windows' own Task
+        Scheduler, not just app-internal state), so this stays
+        strictly opt-in: one dialog naming exactly what's about to
+        happen and how to undo it, never silent, never automatic."""
+        if backup_task_registered():
+            if messagebox.askyesno(
+                    APP_NAME, f"A '{BACKUP_TASK_NAME}' scheduled task is "
+                              "already registered (runs daily at 03:00, "
+                              "backs up when 7+ days overdue). Remove it?"):
+                if unregister_backup_task():
+                    self.status.config(text="Backup task removed.")
+            return
+        if messagebox.askyesno(
+                APP_NAME, f"Register a Windows Task Scheduler entry named "
+                          f"'{BACKUP_TASK_NAME}'? It will run "
+                          f"{app_command()} --backup daily at 03:00 — the "
+                          "app's own existing weekly-gated backup step, "
+                          "just no longer dependent on the app happening "
+                          "to be open when a backup comes due. Undo any "
+                          "time from this same menu."):
+            if register_backup_task():
+                self.status.config(
+                    text=f"'{BACKUP_TASK_NAME}' registered — runs daily "
+                        "at 03:00.")
 
     def _quick_add_plan(self, prefill_date=None, prefill_start=None, on_save=None):
         """Backlog #161: a fast, purpose-built way to jot down a one-
@@ -15570,6 +15698,13 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
+    if "--backup" in sys.argv:
+        # backlog #177: the Task Scheduler entry point — no GUI, no
+        # already-running check (a plain file copy is safe to run
+        # alongside the app), just the existing weekly-gated backup
+        # step, then exit immediately
+        backup_if_due()
+        sys.exit(0)
     # per-monitor DPI awareness — without this, Tk mis-scales/overlaps
     # widgets on a laptop+external-monitor setup with different scaling
     # (must run before any Tk() is created)

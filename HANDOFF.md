@@ -497,6 +497,19 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.52** (#177, 2026-08-08, DONE). Tools > "Automated backup (Task
+  Scheduler)…" — opt-in registration of a real Windows Task Scheduler
+  entry (daily 03:00, reuses `backup_if_due()` via a new `--backup`
+  CLI flag checked first in `__main__`) so backups don't depend on the
+  app being open. Deliberately asks twice (opt-in menu action + a
+  real yes/no confirmation naming the exact command) since this is a
+  genuine OS-level escalation, not just app-internal state. New
+  `backup_task_registered`/`register_backup_task`/`unregister_backup_
+  task` mirror the existing `get_autostart`/`set_autostart` winreg
+  pattern via `subprocess` + `schtasks.exe` (stdlib, no new
+  dependency). **UNTESTED by the selftest harness** — real Windows
+  Task Scheduler calls, same category as autostart; needs real
+  confirmation on the owner's machine.
 - **v9.51** (#178, 2026-08-08, DONE). Tools > "Calendar refresh
   interval…" — `ICS_REFRESH_MIN` (fixed 60min module constant)
   becomes a real setting, same pattern as #175. `resolve_ics_source`
@@ -4336,25 +4349,13 @@ polish — the three NOT chosen this round) when continuing this work.
     "toggle or filter" request as #175, continued into the one view
     most likely to grow past a screenful.)
 
-177. **Windows Task Scheduler-registered backup, not just app-launch-
-    triggered (PLANNING/AUTOMATION — a genuine research finding, direct
-    owner request to "research if still some possible integrations or
-    automations"; new idea 2026-08-08).** `backup_if_due()` only ever
-    runs when the app is actually launched and a backup is already
-    >7 days stale — if the app doesn't get opened for a couple of
-    weeks (a busy stretch, a different machine), backups quietly fall
-    behind with it. `subprocess` IS stdlib (no new pip dependency) and
-    Windows ships `schtasks.exe`; a Tools menu action could generate
-    and register a real scheduled task ("run TimerDiary's backup step
-    daily at 03:00, whether or not the app is open") via
-    `subprocess.run(["schtasks", "/create", ...])`. Real, but a
-    genuine escalation — registering something in the user's OS
-    scheduler, not just app-internal state — so this should be
-    opt-in, one clear confirmation dialog naming exactly what gets
-    registered and how to remove it, never silent/automatic on
-    startup. Needs real Windows testing this Linux dev environment
-    can't do; scope the exact `schtasks` argument set carefully before
-    building blind.
+~~177. **Windows Task Scheduler-registered backup, not just app-
+    launch-triggered.**~~ — DONE v9.52. See the v9.52 version-history
+    entry above. **UNTESTED by the selftest harness / real Windows** —
+    needs confirmation on the owner's machine. (PLANNING/AUTOMATION —
+    a genuine research finding, direct owner request to "research if
+    still some possible integrations or automations"; new idea
+    2026-08-08.)
 
 ~~178. **Configurable calendar refresh interval, not just the evening
     window/density threshold.**~~ — DONE v9.51. See the v9.51 version-

@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.52 — Opt-in automated backup (Task Scheduler)
+
+Tools > "Automated backup (Task Scheduler)…" — backups used to only
+run when the app itself got opened. This registers a real Windows
+Task Scheduler entry (daily 03:00) so backups happen even during a
+stretch when the app isn't launched. Strictly opt-in: one clear
+confirmation naming the exact command before anything is registered;
+the same menu item removes it again. Not yet verified on a real
+Windows machine — confirm registration/removal and an actual
+scheduled backup run next time you're at the PC.
+
 ### v9.51 — Configurable calendar refresh interval
 
 Tools > "Calendar refresh interval…" — the fixed 60-minute cache
