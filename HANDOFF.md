@@ -4323,6 +4323,70 @@ polish — the three NOT chosen this round) when continuing this work.
     "toggle or filter" request as #175, continued into the one view
     most likely to grow past a screenful.)
 
+177. **Windows Task Scheduler-registered backup, not just app-launch-
+    triggered (PLANNING/AUTOMATION — a genuine research finding, direct
+    owner request to "research if still some possible integrations or
+    automations"; new idea 2026-08-08).** `backup_if_due()` only ever
+    runs when the app is actually launched and a backup is already
+    >7 days stale — if the app doesn't get opened for a couple of
+    weeks (a busy stretch, a different machine), backups quietly fall
+    behind with it. `subprocess` IS stdlib (no new pip dependency) and
+    Windows ships `schtasks.exe`; a Tools menu action could generate
+    and register a real scheduled task ("run TimerDiary's backup step
+    daily at 03:00, whether or not the app is open") via
+    `subprocess.run(["schtasks", "/create", ...])`. Real, but a
+    genuine escalation — registering something in the user's OS
+    scheduler, not just app-internal state — so this should be
+    opt-in, one clear confirmation dialog naming exactly what gets
+    registered and how to remove it, never silent/automatic on
+    startup. Needs real Windows testing this Linux dev environment
+    can't do; scope the exact `schtasks` argument set carefully before
+    building blind.
+
+178. **Configurable calendar refresh interval, not just the evening
+    window/density threshold (PLANNING — the same customization ask
+    as #175/#176, one more hardcoded number found during the
+    integrations research pass; new idea 2026-08-08).** `ICS_REFRESH_
+    MIN` (how stale a cached calendar fetch has to be before
+    `resolve_ics_source` re-fetches) is a fixed module constant.
+    Someone checking a fast-changing calendar (a shared team calendar
+    getting same-day updates) might want a shorter interval than
+    someone on a mostly-static personal one who'd rather not hit the
+    source as often. Same `_evening_window`-style settings-with-
+    fallback pattern #175 already established — small, mechanical.
+
+179. **RRULE EXDATE support — a cancelled single occurrence in an
+    otherwise-recurring series (PLANNING — the honest, immediate
+    follow-up gap in what v9.49 just shipped; new idea 2026-08-08).**
+    v9.49's `_rrule_occurrences` expands DAILY/WEEKLY/MONTHLY
+    recurrence correctly, but a real .ics feed often also carries
+    `EXDATE:` lines next to the `RRULE:` — "this weekly class happens
+    every Wednesday EXCEPT the 20th, which got cancelled." Right now
+    that cancelled date still shows up as a phantom occurrence, since
+    EXDATE is never read. Fix: parse `EXDATE:` values from the same
+    VEVENT block (same field-extraction pattern already used for
+    DTSTART/DTEND/RRULE) into a set of excluded dates, and skip any
+    `_rrule_occurrences` result whose date matches — a filter step
+    added to the existing expansion, not a new capability.
+
+180. **AI-written weekly report / email digest — DELIBERATELY NOT
+    BUILT, needs an explicit owner decision first (PLANNING — a
+    research-pass finding, not a recommendation to build blind; new
+    idea 2026-08-08).** Already logged once (backlog #10's own "Weekly
+    report generator, AI-written" sub-item) and re-surfaced by
+    tonight's integrations research: technically reachable in a
+    stdlib-only app (`urllib.request` can call an LLM API directly,
+    `smtplib` — also stdlib — can send the result as email), but both
+    halves need something this session has no standing to decide on
+    its own: which API/credentials to call and where to store them
+    (an API key living in `settings.json` unencrypted is a real
+    security question, not a detail), and an SMTP account/app-password
+    to send FROM. Explicitly not scoped further or built until the
+    owner says which service(s) and confirms they're fine with
+    credentials living in the app's plain-JSON settings file — same
+    discipline as declining the event-site scraper: don't guess at
+    something with real security/privacy weight.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
