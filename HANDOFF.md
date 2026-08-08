@@ -4426,6 +4426,64 @@ polish — the three NOT chosen this round) when continuing this work.
 184. ~~**Plan confirmation staleness nudge.**~~ — DONE v9.60. See the
     v9.60 version-history entry above.
 
+185. **Calendar change/delta digest — "what's new since I last
+    checked" (PLANNING; new idea 2026-08-08).** #178's ICS cache
+    already re-fetches a subscribed calendar on an interval and keeps
+    the previous fetch on disk until the new one lands — but nothing
+    ever DIFFS the two. The owner still has to re-scan the whole
+    calendar by eye to notice a meeting got added, moved, or cancelled
+    since they last looked, which is exactly the manual-checking
+    overhead this whole session's push has been chipping away at. Fix:
+    before `resolve_ics_source` overwrites the cached file with a
+    fresh fetch, parse both old and new with `parse_ics_events` over
+    the same window and diff by (uid or date+summary) — "2 new: Team
+    sync 11.08 14:00; Dentist moved 12.08 09:00→11:00" — surfaced once
+    in the morning header, same silent-unless-something-changed
+    posture as everything else here.
+
+186. **Multi-week digest gains recurring reminders + the stale-plan
+    nudge inline (PLANNING; new idea 2026-08-08).** #182/#183/#184 all
+    shipped this session but don't talk to each other yet — the
+    digest's day-by-day lines show free hours, locked windows, and
+    plans, but a recurring admin reminder due that day or an
+    unconfirmed plan inside 48h only ever show in the daily header,
+    not in the multi-week glance that's supposed to be the one place
+    "everything weeks ahead" lives. Fix: `_multiweek_digest_lines`
+    folds in `_recurring_reminders_due` and the same confirmed-check
+    `_stale_plan_line` uses, per day — no new data, the exact primitives
+    both already-shipped features already compute.
+
+187. **Detect a repeating event on a subscribed display-only calendar,
+    same idea as #169 but for events instead of one-off plans
+    (PLANNING; new idea 2026-08-08).** #169 already notices when a
+    hand-typed one-off PLAN repeats weekly and offers to convert it to
+    a real recurring commitment. #181's event overlay pulls in a
+    display-only calendar's events but treats every occurrence as a
+    fresh surprise — if "Trivia night @ The Pub" shows up via
+    `_calendar_events` on three Tuesdays running, that's the owner
+    re-noticing the same recurring thing by hand each week, exactly
+    the "still manually checking" pattern the whole #181 line of work
+    exists to remove. Fix: reuse #169's own grouping logic
+    (`_repeating_plan_suggestion`'s (label, weekday) + tolerance
+    approach) over `_calendar_events` output instead of
+    `protected_windows`, surfaced as a plain FYI note, not an
+    auto-added commitment.
+
+188. **Recurring admin reminders can carry an optional time cost that
+    feeds the week's capacity math (PLANNING; new idea 2026-08-08).**
+    #183 shipped reminders as pure date nudges — zero duration, by
+    design, since most admin chores are quick. But some aren't ("file
+    taxes" can eat a real afternoon), and right now #182's digest and
+    #42's week-ahead line have no way to know that — the hour gets
+    "remembered" but never actually PLANNED for, silently eating into
+    whatever else that day's free hours were counted toward. Fix: an
+    optional `est_h` field on a `recurring_reminders` entry; when set
+    and the reminder is due inside the current week, subtract it from
+    that day's counted free hours in the digest/week-ahead lines, same
+    "compose, don't recompute" pattern as every other capacity
+    adjustment here. Omit the field entirely and behavior is unchanged
+    — a quiet chore stays a quiet nudge.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
