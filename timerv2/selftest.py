@@ -79,7 +79,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_evening_window", "_ics_refresh_min", "_locked_today_line",
         "_estimate_factor", "_deadline_postmortem_lines",
         "_locked_vs_worked_hours", "_locked_after_due_note",
-        "_add_locked_windows",
+        "_add_locked_windows", "_evening_event_matches", "_evening_event_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
         "_planned_hours_from_file", "_planner_realism_factor"}
@@ -2439,6 +2439,39 @@ def suite_free_evenings():
         min_h=2.0) == []
 
 
+def suite_evening_event_overlay():
+    D, ns = fresh()
+    forecast = [
+        (dt.date(2026, 8, 10), [(dt.time(18, 0), dt.time(23, 0))], 5.0),
+        (dt.date(2026, 8, 11), [(dt.time(9, 0), dt.time(17, 0))], 8.0),
+    ]
+    events = [
+        (dt.date(2026, 8, 10), dt.time(19, 0), dt.time(21, 0), "Jazz night"),
+        (dt.date(2026, 8, 10), dt.time(8, 0), dt.time(9, 0), "Morning yoga"),
+        (dt.date(2026, 8, 11), dt.time(19, 0), dt.time(21, 0), "Concert"),
+    ]
+    d = _mk(D, settings={}, _day_forecast=lambda days: forecast,
+           _calendar_events=lambda start, end: events)
+    out = D._evening_event_matches(d, weeks=2)
+    assert out == [(dt.date(2026, 8, 10), dt.time(19, 0), dt.time(21, 0),
+                    "Jazz night")], out
+
+    # ---- silence: no free evenings at all ----
+    d2 = _mk(D, settings={}, _day_forecast=lambda days: [
+        (dt.date(2026, 8, 10), [], 0.0)], _calendar_events=lambda s, e: events)
+    assert D._evening_event_matches(d2, weeks=2) == []
+
+    # ---- silence: free evenings exist but nothing overlaps ----
+    d3 = _mk(D, settings={}, _day_forecast=lambda days: forecast,
+            _calendar_events=lambda s, e: [])
+    assert D._evening_event_matches(d3, weeks=2) == []
+
+    lines = D._evening_event_lines(d, weeks=2)
+    assert lines == ["EVENTS DURING FREE EVENINGS (next 2 week(s)):",
+                     "  Mon 10.08 19:00-21:00: Jazz night"], lines
+    assert D._evening_event_lines(d3, weeks=2) == []
+
+
 def suite_social_density():
     D, ns = fresh()
     d = _mk(D, settings={})
@@ -2997,6 +3030,7 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("locked-vs-worked", suite_locked_vs_worked),
           ("locked-after-due", suite_locked_after_due),
           ("locked-double-count", suite_locked_double_count),
+          ("evening-event-overlay", suite_evening_event_overlay),
           ("deadline-renegotiation", suite_deadline_renegotiation),
           ("one-less", suite_one_less),
           ("sensor-health", suite_sensor_health),

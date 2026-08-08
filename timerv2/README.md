@@ -4,6 +4,16 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.57 — Free-evening/event overlay
+
+Free evenings > now also names anything already on a subscribed
+display-only calendar (a public venue/events feed, added the same way
+as any other calendar source) that lands inside one of those free
+evenings — "Mon 10.08 19:00-21:00: Jazz night". The legitimate,
+subscription-based answer to manually checking event sites — add a
+public .ics feed as a display-only source and this does the
+cross-referencing for you.
+
 ### v9.56 — Locked-window double-count risk, investigated and closed
 
 A long-flagged question — could a locked window get counted busy

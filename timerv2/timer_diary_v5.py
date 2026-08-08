@@ -60,6 +60,31 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.57 (#181 — free-evening/event overlay, 2026-08-08, the
+legitimate, subscription-based answer to "I manually check event sites
+for something to do" — the scraper idea itself stays declined on
+ToS/fragility grounds, this connects a channel that already exists):
+  - #114's calendar subscription + #165's ICS discovery hints already
+    let a public venue/events feed be added as a display-only source
+    (#155, "counts as busy" off) — nothing was ever CONNECTED to it,
+    though. #167's free-evenings finder now names anything already on
+    a display-only calendar that lands inside one of those free
+    evenings — "EVENTS DURING FREE EVENINGS: Mon 10.08 19:00-21:00:
+    Jazz night" — right in the same dialog the owner already opens to
+    check "what evenings are actually open."
+  - new `_evening_event_matches`: a plain overlap join between two
+    lists that already exist — `_day_forecast`'s free slots (clipped
+    to the evening window, same as #167 already does) and
+    `_calendar_events` (every calendar source, busy or display). No
+    new fetch, no new data. A busy-source event structurally can never
+    appear here — its hours are already subtracted before a slot ever
+    counts as "free" — so this only ever surfaces a display-only
+    source's events, without needing to filter by source at all.
+  - new "evening-event-overlay" selftest suite (an event that overlaps
+    a free evening, one that doesn't touch the evening window at all,
+    one on a day with no free evening, and silence when either list is
+    empty); 68/68 green.
+
 New in v9.56 (#152 — locked-window double-count risk investigated and
 verified safe, 2026-08-08, this one was flagged as PLANNING
 specifically because it needed a real trace-through before deciding
@@ -11918,11 +11943,57 @@ class App(tk.Tk):
             lines.append(f"  {d:%a %d.%m}: {label}")
         return lines
 
+    def _evening_event_matches(self, weeks=2):
+        """Backlog #181: the legitimate, subscription-based answer to
+        "I manually check event sites for something to do" — the
+        scraper idea itself was declined (ToS/fragility), but #114's
+        calendar subscription + #165's ICS discovery hints already
+        give a sanctioned way to pull in a public venue/events feed as
+        a display-only source (#155, "counts as busy" off). That
+        channel just wasn't connected to anything: #167's free-evenings
+        finder already knows WHEN you're open, `_calendar_events`
+        already carries WHAT's on (every source, busy or not) — this is
+        a plain overlap join between two lists that already exist, no
+        new data or network code. A busy-source event can never appear
+        here since its own hours are already subtracted before the
+        free slots below are computed — only a display-only source's
+        events can ever land inside a slot this function calls free."""
+        ev_start, ev_end = self._evening_window()
+        free_by_day = {}
+        for d, slots, _free_h in self._day_forecast(weeks * 7):
+            for s, e in slots:
+                cs, ce = max(s, ev_start), min(e, ev_end)
+                if cs < ce:
+                    free_by_day.setdefault(d, []).append((cs, ce))
+        if not free_by_day:
+            return []
+        out = []
+        for d, st, en, name in self._calendar_events(min(free_by_day),
+                                                      max(free_by_day)):
+            for cs, ce in free_by_day.get(d, []):
+                if st < ce and cs < en:
+                    out.append((d, st, en, name))
+                    break
+        out.sort()
+        return out
+
+    def _evening_event_lines(self, weeks=2):
+        matches = self._evening_event_matches(weeks)
+        if not matches:
+            return []
+        lines = [f"EVENTS DURING FREE EVENINGS (next {weeks} week(s)):"]
+        for d, st, en, name in matches:
+            lines.append(f"  {d:%a %d.%m} {st:%H:%M}-{en:%H:%M}: {name}")
+        return lines
+
     def _free_evenings_win(self):
         """Backlog #167: the direct answer to "which evenings are
         actually open" before checking any event listing for something
         to do there — a filtered multi-week glance, not a new capacity
-        model."""
+        model. Backlog #181: now also names anything already on a
+        subscribed display-only calendar source that lands inside one
+        of those free evenings, closing the loop the owner described
+        manually doing by hand."""
         win = tk.Toplevel(self)
         win.title("Free evenings")
         txt = tk.Text(win, wrap="word", font=("Consolas", 10),
@@ -11933,6 +12004,9 @@ class App(tk.Tk):
             lines = ["No evening block (18:00-23:00) clears 2h of "
                     "contiguous free time in the next 3 weeks — or "
                     "every evening in that window is already spoken for."]
+        event_lines = self._evening_event_lines(weeks=3)
+        if event_lines:
+            lines = lines + [""] + event_lines
         txt.insert("1.0", "\n".join(lines))
         txt.config(state="disabled")
 

@@ -497,6 +497,16 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.57** (#181, 2026-08-08, DONE). Free-evening/event overlay — the
+  legitimate, subscription-based answer to manually checking event
+  sites (the scraper idea itself stays declined). #167's free-evenings
+  finder now names anything already on a display-only calendar source
+  (#155) that lands inside a free evening. New `_evening_event_matches`
+  is a plain overlap join between `_day_forecast`'s free slots and
+  `_calendar_events` — no new fetch, no new data; a busy-source event
+  structurally can never appear since its hours are already subtracted
+  before a slot counts as free. New "evening-event-overlay" selftest
+  suite; 68/68 green.
 - **v9.56** (#152, 2026-08-08, VERIFIED SAFE — no fix needed). The
   long-flagged locked-window double-count risk (lock → export .ics →
   import to Outlook → re-subscribed back in as an ordinary calendar
@@ -4377,23 +4387,9 @@ polish — the three NOT chosen this round) when continuing this work.
     discipline as declining the event-site scraper: don't guess at
     something with real security/privacy weight.
 
-181. **Free-evening/event overlay — the legitimate, subscription-based
-    answer to "I manually check event sites" (PLANNING; new idea
-    2026-08-08).** The scraper idea (#43) was declined on ToS/fragility
-    grounds, but #114's calendar subscription + #165's ICS discovery
-    hints already give the owner a sanctioned way to pull in public
-    event calendars (many venues/city listings/Meetup-style groups
-    publish a real .ics feed) — that channel just isn't CONNECTED to
-    anything yet. A source marked display-only (#155, "counts as busy"
-    off) currently only draws on the calendar canvas; #167's free-
-    evenings finder never looks at it at all. Fix: when a free evening
-    (#167) overlaps an event from a display-only source, surface it —
-    "Thu 19:00-22:00 free — 'Jazz night @ Sula' is on your Events
-    calendar then." Zero new data or network code: `_busy_intervals`
-    already resolves display sources' events (just doesn't feed them
-    into capacity math), `_free_evenings_from_rows` already exists —
-    this is a join between two lists that already exist, not a new
-    fetch.
+181. ~~**Free-evening/event overlay — the legitimate, subscription-
+    based answer to "I manually check event sites".**~~ — DONE v9.57.
+    See the v9.57 version-history entry above.
 
 182. **A plain-text, multi-week "outlook" digest — one Tools-menu
     action, not a canvas (PLANNING; new idea 2026-08-08, direct
