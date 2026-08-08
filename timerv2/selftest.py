@@ -3123,7 +3123,7 @@ def suite_day_archetypes():
     rows = [row((start + dt.timedelta(days=i)).isoformat(), h * 60, "solo")
            for i, h in enumerate(hours)]
     seed(ns, rows)
-    d = _mk(D, today=TODAY)
+    d = _mk(D, today=TODAY, settings={})
 
     vecs = D._day_feature_vectors(d, days=90)
     assert len(vecs) == 21, vecs
@@ -3145,11 +3145,38 @@ def suite_day_archetypes():
 
     # ---- honesty gate: fewer than 5*k real days -> None / message ----
     seed(ns, rows[:10])
-    d2 = _mk(D, today=TODAY)
+    d2 = _mk(D, today=TODAY, settings={})
     assert D._day_archetypes(d2, days=90, k=3) is None
     lines2 = D._day_archetypes_lines(d2, days=90, k=3)
     assert lines2 == ["Not enough tracked days yet to find real patterns "
                       "(need 15+ days with real work in the last 90)."]
+
+    # ---- #205: real sleep_h for every day -> 4-feature clustering,
+    # separates the flat 9h/day block into two sleep-distinct groups ----
+    seed(ns, rows)
+    isos = [(start + dt.timedelta(days=i)).isoformat() for i in range(21)]
+    hd = {iso: {"sleep_h": 8.0 if i < 10 else 5.0}
+          for i, iso in enumerate(isos)}
+    d3 = _mk(D, today=TODAY, settings={}, _health_data=lambda: hd)
+    vecs4 = D._day_feature_vectors(d3, days=90, with_sleep=True)
+    assert len(vecs4) == 21, vecs4
+    assert vecs4[isos[0]] == (1.0, 0.0, 1.0, 8.0), vecs4[isos[0]]
+    arch3 = D._day_archetypes(d3, days=90, k=3)
+    assert arch3 is not None
+    assert all("avg_sleep_h" in info for info in arch3.values()), arch3
+    lines3 = D._day_archetypes_lines(d3, days=90, k=3)
+    assert "incl. sleep" in lines3[0], lines3
+    assert any("h sleep" in ln for ln in lines3[1:]), lines3
+
+    # ---- #205 fallback: sleep only on a handful of days (<5*k) ->
+    # silently degrades to the plain 3-feature version, no crash ----
+    hd_sparse = {isos[0]: {"sleep_h": 8.0}}
+    d4 = _mk(D, today=TODAY, settings={}, _health_data=lambda: hd_sparse)
+    arch4 = D._day_archetypes(d4, days=90, k=3)
+    assert arch4 is not None
+    assert not any("avg_sleep_h" in info for info in arch4.values()), arch4
+    lines4 = D._day_archetypes_lines(d4, days=90, k=3)
+    assert "incl. sleep" not in lines4[0], lines4
 
 
 def suite_recurring_reminders():

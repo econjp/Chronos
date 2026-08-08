@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.66 (#205 — day archetypes now cluster on real sleep too,
+not just work shape, 2026-08-08, direct owner ask: "WE SHOULD CONSIDER
+HEALTH MORE!!! like worklife balance health metrics etc"):
+  - #190's k-means day-archetype clustering (`_day_feature_vectors` /
+    `_day_archetypes`) previously only saw (work_h, break_ratio,
+    task_count) — a "Deep-focus day" running on 4h of sleep looked
+    identical to one running on 8h. Now tries a 4th dimension, real
+    sleep_h from #203's health import, first — so archetypes can
+    actually separate "deep-focus, well rested" from "deep-focus,
+    running on empty" — and only falls back to the plain 3-feature
+    version when there isn't yet enough real sleep-covered history
+    for the same 5*k honesty gate every clustering feature here uses.
+    Clustering availability never regresses just because health data
+    is sparse or absent; it only gets sharper once there's enough of
+    it. The archetypes window's scatter plot (work hours vs task
+    switches) is unaffected — it always uses the plain 3-feature
+    vectors for its axes regardless of which version fed the
+    clustering.
+
 New in v9.65 (#207 — crash recovery no longer inflates hours by the
 gap until you happen to reopen the app, 2026-08-08 — a real incident:
 (a real incident, details genericized
@@ -15552,14 +15571,28 @@ class App(tk.Tk):
             lines.append(f"  {k1} ↔ {k2}: r={r:+.2f} ({strength}, n={n})")
         return lines
 
-    def _day_feature_vectors(self, days=90):
-        """Backlog #190: per-day (work_h, break_ratio, task_count)
-        feature vectors — the raw shape `_day_archetypes` below
-        clusters on. Only days with real tracked work qualify (an
-        empty day has no shape to cluster). {date_iso: (work_h,
-        break_ratio, task_count)}."""
+    def _day_feature_vectors(self, days=90, with_sleep=False):
+        """Backlog #190 + #205: per-day (work_h, break_ratio,
+        task_count) feature vectors — the raw shape `_day_archetypes`
+        below clusters on. Only days with real tracked work qualify
+        (an empty day has no shape to cluster). {date_iso: (work_h,
+        break_ratio, task_count)}. `with_sleep=False` by default —
+        every EXISTING caller (the archetypes scatter plot included)
+        keeps getting exactly the same 3-tuple shape it always has,
+        unchanged. Backlog #205, direct owner ask ("WE SHOULD
+        CONSIDER HEALTH MORE... worklife balance"): with
+        `with_sleep=True`, a 4th dimension (real sleep_h from
+        #203/`_health_data`) is appended — but ONLY for days that
+        actually have it, every other day is skipped entirely rather
+        than imputing a guess, since k-means needs every point to have
+        the same real dimensionality. `_day_archetypes` tries this
+        first and falls back to the plain 3-feature version when
+        there isn't enough real sleep-covered overlap yet — clustering
+        availability never regresses just because health data is
+        sparse or absent."""
         idx = day_index()
         cutoff = self.today - dt.timedelta(days=days)
+        health = self._health_data() if with_sleep else {}
         out = {}
         d = cutoff
         while d <= self.today:
@@ -15567,9 +15600,14 @@ class App(tk.Tk):
             rec = idx.get(iso)
             if rec and rec["work"] > 0:
                 total = rec["work"] + rec["brk"]
-                out[iso] = (rec["work"] / 60,
-                           rec["brk"] / total if total else 0.0,
-                           float(len(rec["tasks"])))
+                base = (rec["work"] / 60, rec["brk"] / total if total else 0.0,
+                       float(len(rec["tasks"])))
+                if with_sleep:
+                    sleep = health.get(iso, {}).get("sleep_h")
+                    if isinstance(sleep, (int, float)):
+                        out[iso] = base + (float(sleep),)
+                else:
+                    out[iso] = base
             d += dt.timedelta(days=1)
         return out
 
@@ -15592,10 +15630,25 @@ class App(tk.Tk):
         labels are a convenience for the common case, not a claim
         about what k clusters always look like. Returns {name: {"n",
         "avg_work_h", "avg_break_ratio", "avg_switches", "days":
-        [iso, ...]}} ordered by avg_work_h ascending, or None."""
-        vecs = self._day_feature_vectors(days)
-        if len(vecs) < 5 * k:
-            return None
+        [iso, ...]}} (plus "avg_sleep_h" when the sleep-aware version
+        was used, see below) ordered by avg_work_h ascending, or None.
+
+        Backlog #205: tries a 4-feature version first — work_h,
+        break_ratio, task_count, AND real sleep_h (from #203's
+        `_health_data`, same standardization treatment as the other
+        three) — so archetypes can separate e.g. "deep-focus, well
+        rested" from "deep-focus, running on no sleep", which the
+        3-feature version can't tell apart. Only falls back to the
+        plain 3-feature version if there isn't yet enough real
+        sleep-covered overlap for 5*k — clustering never regresses
+        just because health data is sparse, it only gets sharper once
+        there's enough of it."""
+        vecs = self._day_feature_vectors(days, with_sleep=True)
+        with_sleep = len(vecs) >= 5 * k
+        if not with_sleep:
+            vecs = self._day_feature_vectors(days)
+            if len(vecs) < 5 * k:
+                return None
         isos = sorted(vecs)
         raw = [vecs[iso] for iso in isos]
         std = _standardize(raw)
@@ -15613,13 +15666,16 @@ class App(tk.Tk):
         out = {}
         for name, (_a, members) in zip(names, ordered):
             n = len(members)
-            out[name] = {
+            info = {
                 "n": n,
                 "avg_work_h": sum(v[0] for _i, v in members) / n,
                 "avg_break_ratio": sum(v[1] for _i, v in members) / n,
                 "avg_switches": sum(v[2] for _i, v in members) / n,
                 "days": [i for i, _v in members],
             }
+            if with_sleep:
+                info["avg_sleep_h"] = sum(v[3] for _i, v in members) / n
+            out[name] = info
         return out
 
     def _day_archetypes_lines(self, days=90, k=3):
@@ -15628,12 +15684,15 @@ class App(tk.Tk):
             return [f"Not enough tracked days yet to find real patterns "
                     f"(need {5 * k}+ days with real work in the last "
                     f"{days})."]
+        has_sleep = any("avg_sleep_h" in info for info in archetypes.values())
         lines = [f"DAY ARCHETYPES (last {days} days, k-means over your "
-                "own data):"]
+                f"own data{', incl. sleep' if has_sleep else ''}):"]
         for name, info in archetypes.items():
+            sleep_part = (f", {info['avg_sleep_h']:.1f}h sleep"
+                         if "avg_sleep_h" in info else "")
             lines.append(f"  {name} ({info['n']}): avg {info['avg_work_h']:.1f}h "
                         f"work, {info['avg_break_ratio'] * 100:.0f}% breaks, "
-                        f"{info['avg_switches']:.1f} task switches/day")
+                        f"{info['avg_switches']:.1f} task switches/day{sleep_part}")
         return lines
 
     @staticmethod

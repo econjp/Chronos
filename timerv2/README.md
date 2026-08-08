@@ -4,6 +4,17 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.66 — day archetypes now factor in real sleep
+
+Day-archetype pattern discovery (Tools → Day archetypes) previously
+grouped days by work hours, break ratio, and task switches alone — a
+deep-focus day on 8h of sleep looked the same as one on 4h. When you
+have enough real sleep data, archetypes now use it as a 4th dimension
+too, so patterns like "your deep-focus days tend to follow well-rested
+nights" can actually surface. Falls back to the old 3-feature grouping
+automatically when there isn't enough sleep history yet — nothing gets
+worse, it only gets sharper once there's more real data to work with.
+
 ### v9.65 — crash recovery no longer inflates hours
 
 Fixed a real bug: if the app crashed mid-session and you didn't

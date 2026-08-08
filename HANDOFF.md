@@ -497,6 +497,23 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.66** (#205, 2026-08-08, DONE). Direct owner ask: "WE SHOULD
+  CONSIDER HEALTH MORE!!! worklife balance health metrics." #190's
+  day-archetype k-means clustering (`_day_feature_vectors` /
+  `_day_archetypes`) previously clustered only on (work_h,
+  break_ratio, task_count) — a well-rested deep-focus day looked
+  identical to a running-on-empty one. `_day_feature_vectors` gained
+  `with_sleep=False` (default, unchanged for every existing caller,
+  including the archetypes scatter plot) which, when true, appends
+  real sleep_h (from #203's health import) as a 4th feature — only for
+  days that actually have it, no imputing. `_day_archetypes` now tries
+  the 4-feature version first and falls back to the plain 3-feature
+  version when there isn't yet enough real sleep-covered history for
+  the same 5*k honesty gate — clustering availability never regresses
+  just because health data is sparse, it only sharpens once there's
+  enough of it. `_day_archetypes_lines` labels sleep-aware output
+  ("incl. sleep") and shows each archetype's avg sleep_h. New selftest
+  coverage for both the sleep-aware path and the sparse-data fallback.
 - **v9.65** (#207, 2026-08-08, DONE). Real incident: a crash on
   an earlier date, mid-afternoon with no clean Stop, recovered a day later, and the
   old recovery logic ("No = log it until now") logged the entire
@@ -4748,21 +4765,15 @@ polish — the three NOT chosen this round) when continuing this work.
     v9.64 version-history entry above. (Found while verifying #203,
     same round.)
 
-205. **Extend #190's day-archetype clustering to include real health
-    features, not just work-shape (PLANNING — natural next step now
-    that #203 put health data in the same pipeline; new idea
-    2026-08-08).** `_day_feature_vectors` currently clusters on
-    (work_h, break_ratio, task_count) only — #203 already proved
-    `sleep_h`/other health keys are available for the exact same date
-    range via `_health_data()`. Fix: when real health data exists for
-    a clustered day, add sleep_h (and maybe workout_min) as additional
-    feature dimensions (standardized the same way the existing three
-    already are) — archetypes could then reveal "your Deep-focus days
-    tend to follow ≥7h sleep nights" instead of only describing work
-    shape in isolation from the body producing it. Gracefully degrades
-    to the current 3-feature version on days without health data (as
-    it already stands today, whichever machine this ships to first —
-    real, current health data or not).
+~~205. **Extend #190's day-archetype clustering to include real health
+    features, not just work-shape.**~~ — FIXED v9.66. See the v9.66
+    version-history entry above. `_day_feature_vectors` gained an
+    opt-in `with_sleep` param appending real sleep_h as a 4th feature;
+    `_day_archetypes` tries it first, falls back to the plain
+    3-feature version below the 5*k honesty gate. (workout_min was
+    considered but left out for now — sleep alone was enough signal
+    to separate the archetypes cleanly in testing; can revisit if it
+    turns out to matter once there's more real multi-metric history.)
 
 206. **A plain "work-life balance" glance line — tracked work hours vs
     real rest/sleep, trending over weeks (PLANNING — the most literal
