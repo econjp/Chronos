@@ -4821,6 +4821,64 @@ polish — the three NOT chosen this round) when continuing this work.
     same "never split/archive a deadline without confirming" standing
     rule from earlier this session. Not fixed, not guessed at.
 
+210. **The running-hot detector should suggest a real day, not just say
+    one (PLANNING — connects the existing `_running_hot_line` copilot
+    note to #162's multi-week auto-planner; new idea 2026-08-08).**
+    Today, when 14 days of tracked data show the pattern ("workouts
+    stopped, N late nights"), the copilot note just says "schedule one
+    flat day before your body schedules it" — prose, no action. #162
+    can already plan multiple weeks ahead; #205 can now tell a Light/
+    recovery day apart from a Deep-focus one using real sleep data.
+    Fix: when the running-hot signal fires while the owner is building
+    a multi-week plan, offer to actually drop one real recovery day
+    into the upcoming week instead of only describing the problem —
+    closing the loop from "detect" to "concretely act," same standard
+    every other insight-with-a-button feature here already meets
+    (e.g. the idle-detection break offer). Needs care around not being
+    pushy about it — a dismissible suggestion, never auto-inserted.
+
+211. **Deadline feasibility should flag real sleep debt as a caveat on
+    "available" hours, not just calendar gaps (PLANNING — connects
+    #203's health import to the existing deadline-feasibility engine;
+    new idea 2026-08-08).** "TUTA 1.5h needed · 4.0h available ✓"
+    currently reasons purely from the calendar — it doesn't know 4
+    raw hours on 3 nights of bad sleep rarely convert to 4 real hours
+    of output. Fix: when recent sleep_h is meaningfully below the
+    owner's own trailing baseline, append a plain caveat to the
+    feasibility line ("4.0h available, but recent sleep's been short —
+    real output may run under the raw hours") instead of a bare
+    checkmark that overstates confidence. Never blocks or changes the
+    ✓/⚠ verdict itself — an honesty caveat, not a new gate, matching
+    how #204's staleness insight only ever adds a line, never hides
+    one.
+
+212. **A quiet, once-a-day archetype nudge at session start (PLANNING —
+    connects #205's now-sleep-aware archetypes to #201's already-
+    planned day-outcome predictor; new idea 2026-08-08).** #201 already
+    proposes reusing day-archetype matching to predict what kind of day
+    is shaping up from what's locked/logged so far; #205 just gave that
+    prediction a real sleep dimension to work from. Fix: once per day,
+    on the FIRST Start of a work session, if recent sleep clearly
+    matches the "Light/recovery days" archetype's profile rather than
+    "Deep-focus," show one quiet, dismissible line — "today's shaping
+    up like a Light day (recent sleep) — plan accordingly" — reusing
+    the same low-key nudge pattern the idle-detection popup and
+    deadline dot already use, not a new modal or attention-grab.
+
+213. **Health/balance context riding along on "Copy for AI review"
+    (PLANNING — connects the health pipeline to the v5.1 clipboard-
+    export feature the owner already uses every Friday; new idea
+    2026-08-08).** "Copy for AI review" already puts the week's totals,
+    per-task hours, and full diary text on the clipboard for exactly
+    the workflow this session exists to serve ("paste into Claude on
+    Friday and ask what slipped"). It doesn't currently include any
+    health/sleep context, so that framing has to be retyped by hand
+    every time it's relevant. Fix: append a short real-data health/
+    balance summary (avg sleep, workout minutes, any running-hot or
+    staleness flags active that week) to the same clipboard export —
+    zero new manual entry, same "automate, never ask for manual input"
+    rule the whole health pipeline was already built under.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
