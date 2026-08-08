@@ -70,7 +70,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_social_density_line", "_repeating_plan_suggestion",
         "_locked_this_week_line", "_weekly_target_lines",
         "_looks_like_pto", "_pto_skip_suggestion", "_lock_picker_progress_line",
-        "_locked_windows_for_week", "_due_date_feasibility_line",
+        "_locked_windows_for_week", "_locked_windows_for_range",
+        "_due_date_feasibility_line",
         "_deadline_editor_feasibility_lines", "_todays_plan_from_segments",
         "_evening_window",
         "_estimate_factor", "_deadline_postmortem_lines",
@@ -2537,6 +2538,14 @@ def suite_locked_windows_for_week():
     d2 = _mk(D, deadlines=lambda: [{"name": "TUTA", "locked_windows": [
         {"date": "2026-08-01", "start": "09:00", "end": "10:00"}]}])
     assert D._locked_windows_for_week(d2, monday) == []
+
+    # ---- backlog #170: _locked_windows_for_range spans a whole month,
+    # not just 7 days -- the entry the week-scoped call excluded now
+    # shows up when given the wider range ----
+    out2 = D._locked_windows_for_range(
+        d, dt.date(2026, 7, 1), dt.date(2026, 7, 31))
+    assert (dt.date(2026, 7, 20), dt.time(9, 0), dt.time(10, 0), "TUTA") in out2, out2
+    assert len(out2) == 3, out2   # both TUTA windows + Thesis, malformed skipped
 
 
 def suite_deadline_feasibility():

@@ -497,6 +497,14 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.47** (#170, 2026-08-08, DONE). Locked windows now show in the
+  month calendar view too — "locked: TUTA" inside each day cell,
+  alongside events/work sessions, same truncation. Split
+  `_locked_windows_for_week` into span-agnostic
+  `_locked_windows_for_range(start, end)` (the real logic) + a thin
+  wrapper — one shared primitive for both week and month views.
+  "locked-windows-for-week" suite extended with a month-span case;
+  59/59 green.
 - **v9.46** (#176, 2026-08-08, DONE). The Tasks/Library window gains
   a live text filter (name/goal/deadline/source) plus "someday"/
   "blocked" toggle checkboxes — direct continuation of #175's
@@ -4251,17 +4259,11 @@ polish — the three NOT chosen this round) when continuing this work.
     history entry above. (Connects #126's "learn from real data"
     pattern with #159/#161's one-off entries; new idea 2026-08-07.)
 
-170. **Month view gets the same locked-windows layer #138 added to
-    the week view (PLANNING — the explicit gap #138 itself leaves
-    open, same "don't silently half-finish it" discipline as #157;
-    new idea 2026-08-07).** v9.41's locked-windows layer was built
-    only into `_draw_calendar_week` — `_draw_calendar_month` still has
-    no idea a window is locked, so switching to month view loses that
-    visibility again. Fix: reuse `_locked_windows_for_week` (rename to
-    something span-agnostic, or add a sibling `_locked_windows_for_
-    range(start, end)`) and draw the same dashed-outline treatment
-    inside each day cell — small relative to a fresh feature, this is
-    "finish what #138 started," not new capability.
+~~170. **Month view gets the same locked-windows layer #138 added to
+    the week view.**~~ — DONE v9.47. See the v9.47 version-history
+    entry above. (The explicit gap #138 itself leaves open, same
+    "don't silently half-finish it" discipline as #157; new idea
+    2026-08-07.)
 
 171. **`_pto_skip_suggestion` only ever surfaces ONE match per open
     (ANALYSIS/USABILITY — a real limitation in what shipped this

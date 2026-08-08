@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.47 (#170 — locked windows visible in the month calendar
+view too, 2026-08-08, the explicit gap #138 itself left open):
+  - v9.41's locked-windows layer only reached the WEEK calendar view;
+    switching to month view lost that visibility again. The month
+    grid now shows locked windows too, prefixed "locked: TUTA" inside
+    each day cell alongside events and tracked work sessions,
+    participating in the same "+N more" truncation those already do.
+  - split `_locked_windows_for_week` into a span-agnostic
+    `_locked_windows_for_range(start, end)` (the real logic) with
+    `_locked_windows_for_week` now a thin one-line wrapper over it —
+    one shared primitive instead of a second near-identical copy for
+    the month view, a small down payment on backlog #173's own
+    "consolidate the locked-windows loops" note.
+  - "locked-windows-for-week" selftest suite extended with a direct
+    `_locked_windows_for_range` case spanning a full month (proving
+    an entry the week-scoped call excludes shows up correctly at
+    month scope); 59/59 green. The month-view drawing layer itself
+    stays untested by the harness, same category as #157/#138.
+
 New in v9.46 (#176 — Tasks/Library filter row, 2026-08-08, the same
 "toggle or filter" customization ask #175 already started):
   - the Tasks window gains a live text filter (name/goal/deadline/
@@ -11344,15 +11363,16 @@ class App(tk.Tk):
     _CAL_MONTH_CELL_W, _CAL_MONTH_CELL_H = 104, 78   # backlog #123: shared
     _CAL_MONTH_HDR_H, _CAL_MONTH_PAD = 20, 4         # with _month_click_to_day
 
-    def _locked_windows_for_week(self, monday):
-        """Backlog #138: every locked window (#113/#122/#135/#136)
-        falling within [monday, monday+6] — pure filter over every
-        deadline's own `locked_windows`, no calendar fetch. Split out
-        from `_draw_calendar_week` so this selection logic is
-        unit-testable without a live Canvas. Returns
-        [(date, start_time, end_time, deadline_name), ...]; malformed
-        entries are skipped, not fatal."""
-        sunday = monday + dt.timedelta(days=6)
+    def _locked_windows_for_range(self, start, end):
+        """Backlog #138/#170: every locked window (#113/#122/#135/#136)
+        falling within [start, end] — pure filter over every
+        deadline's own `locked_windows`, no calendar fetch. Span-
+        agnostic version of what #138 first built just for the week
+        view (`_locked_windows_for_week` below now delegates here) so
+        #170's month view can reuse the exact same selection logic
+        instead of a second copy. Returns [(date, start_time,
+        end_time, deadline_name), ...]; malformed entries are skipped,
+        not fatal."""
         out = []
         for dl in self.deadlines():
             for w in dl.get("locked_windows", []):
@@ -11362,10 +11382,18 @@ class App(tk.Tk):
                     eh, em = map(int, w["end"].split(":"))
                 except (KeyError, ValueError, TypeError):
                     continue
-                if monday <= d <= sunday:
+                if start <= d <= end:
                     out.append((d, dt.time(sh, sm), dt.time(eh, em),
                                dl.get("name", "")))
         return out
+
+    def _locked_windows_for_week(self, monday):
+        """Backlog #138: every locked window falling within
+        [monday, monday+6] — thin wrapper over
+        `_locked_windows_for_range`, kept as its own name since the
+        week-view caller and its selftest suite already know it by
+        this signature."""
+        return self._locked_windows_for_range(monday, monday + dt.timedelta(days=6))
 
     def _draw_calendar_week(self, cv, monday):
         """Backlog #120 (owner's own ask, 2026-08-07: "proper monthly
@@ -11556,6 +11584,12 @@ class App(tk.Tk):
                 continue
             if first <= dd <= range_end:
                 due_by_day.setdefault(dd, []).append(t["name"])
+        # backlog #170: the same locked-windows visibility #138 gave
+        # the week view, extended to month — reuses the exact same
+        # _locked_windows_for_range primitive, no second copy
+        locked_by_day = {}
+        for d, s, _e, name in self._locked_windows_for_range(first, range_end):
+            locked_by_day.setdefault(d, []).append((s, f"locked: {name}"))
 
         for day_num in range(1, days_in_month + 1):
             d = dt.date(year, month, day_num)
@@ -11586,7 +11620,8 @@ class App(tk.Tk):
                                font=("Segoe UI", 6, "bold"), fill=due_color)
                 line_y += 10
             items = sorted(ev_by_day.get(d, []) +
-                          [(s, n) for s, e, n in work_by_day.get(d, [])])
+                          [(s, n) for s, e, n in work_by_day.get(d, [])] +
+                          locked_by_day.get(d, []))
             shown = 0
             for s, name in items:
                 if line_y > y0 + cell_h - 9:

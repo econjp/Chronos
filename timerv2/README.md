@@ -4,6 +4,12 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.47 — Locked windows in month view too
+
+v9.41's locked-windows layer only reached the week calendar view;
+switching to month view lost that visibility again. Month cells now
+show "locked: TUTA" too, alongside events and tracked work.
+
 ### v9.46 — Tasks window filter row
 
 The Tasks/Library window now has a live text filter plus "someday"/
