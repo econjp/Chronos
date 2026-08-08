@@ -60,6 +60,51 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.63 (#202 — real bugs fixed, dark mode softened, File/Tools
+menu bloat cut, 2026-08-08 — direct owner feedback after a mobile/
+cloud session added ~40 commits worth of features: "some features
+are just visually messy... theres like way too much text etc...
+darkmode was bit brutal... think everything overall again"):
+  - real bug fixed: right-clicking an hour in the calendar's week
+    view to lock a slot listed EVERY deadline AND every actionable
+    task as a full-width menu row — with a real task library (50+
+    entries after real use), that's a menu tall enough to cover the
+    whole screen. Deadlines stay direct rows; tasks move into a
+    "Lock for a task ▸" submenu, so the top-level menu stays ~4 rows
+    regardless of library size. Verified against the real 50-task
+    library (53 targets → 4 top-level rows).
+  - real bug fixed: toggling out of compact mode left the status
+    header text wrapped at compact-mode's ~290px width instead of
+    the restored window's real width, and stayed that way until some
+    unrelated event happened to trigger a refresh — "stuck." Caused
+    by `winfo_width()` still reporting the OLD size immediately after
+    `geometry()`, since Tk hadn't processed the resize yet.
+    `update_idletasks()` before the wraplength recalculation fixes it.
+  - dark mode softened: the original palette was, literally, VSCode's
+    dark+ theme (#1e1e1e/#d4d4d4) — real high-contrast "as bright as
+    possible" colors, reasonable for code, "brutal" for an app meant
+    for long reading/writing sessions. Warmer, lower-contrast dark
+    grays throughout (no near-black, no near-white) — verified via
+    real luminance math, not just eyeballed.
+  - real gap found and fixed: the diary's own syntax-highlight colors
+    (day headers, warnings, meta headers) were never adapted for dark
+    mode at all — #157 covered canvas views, but the diary TEXT
+    widget's tags stayed tuned for white paper, going muddy/low-
+    contrast on any dark background. Brighter dark-mode variants of
+    the same semantic hues now apply, and refresh immediately on
+    toggle (a related gap: `_apply_theme` recolored every widget
+    EXCEPT the diary's own tagged text until this fix).
+  - File menu: 18 flat top-level items → 7, grouped into "Calendar &
+    planning exports," "Folders & calendar sources," and "Life record
+    backup" cascades. Tools menu: 26 flat top-level items → 9,
+    grouped into "App behavior," "Appearance & usage," "Data &
+    backup," "Deadlines & goals," "Daily rhythm & capacity," and
+    "Calendar & planning config." Same reorganization instinct View
+    already got once before for the identical complaint — nothing
+    removed, every single command still reachable, verified by
+    walking the real menu tree (all 18 File and all 26 Tools commands
+    confirmed present after the regroup).
+
 New in v9.62 (#190 — day-archetype clustering, real k-means from
 scratch, plus a scatter-plot visualization, 2026-08-08, the second
 genuine ML addition this session — unsupervised clustering this time,
@@ -4861,35 +4906,56 @@ class App(tk.Tk):
 
     def _build_menu(self):
         m = tk.Menu(self)
+        # backlog #202: File/Tools had grown into flat lists (18 and 26
+        # top-level items) with almost no sub-grouping — exactly the
+        # "too much stuff... hard to manage" the owner named directly,
+        # and the same shape View itself outgrew once before (see its
+        # own Planning/Memory/Values/Writing/Reports cascades, added
+        # for the identical complaint). Same fix applied here: the
+        # highest-frequency, plain-daily-use items stay as direct top-
+        # level rows; everything else groups into a labeled cascade by
+        # what it's actually FOR, nothing removed or hidden, just
+        # organized the way the app's own architecture already is.
         filem = tk.Menu(m, tearoff=0)
         filem.add_command(label="Add past session…", command=self._add_past_session)
         filem.add_command(label="Open a day file…", command=self._quick_day_nav)
         filem.add_command(label="Browse for a day file (file picker)…",
                           command=self._open_day_file)
-        filem.add_command(label="Export week to calendar (.ics)", command=self._export_ics)
-        filem.add_command(label="Add a plan…",
-                          command=self._quick_add_plan)
-        filem.add_command(label="Auto-plan my week (.ics)…",
-                          command=self._auto_plan_win)
-        filem.add_command(label="Lock study windows (.ics)…",
-                          command=self._lock_windows_win)
-        filem.add_command(label="Lock an admin/task batch (.ics)…",
-                          command=self._admin_batch_win)
-        filem.add_command(label="Export life record (JSON)…",
-                          command=self._export_life_json)
-        filem.add_command(label="Import life record (JSON)…",
-                          command=self._import_life_json)
         filem.add_separator()
-        filem.add_command(label="Open data folder", command=self._open_folder)
-        filem.add_command(label="Change diary folder…", command=self._change_diary_dir)
-        filem.add_command(label="Health import folder…", command=self._set_health_dir)
-        filem.add_command(label="Calendar busy-time (.ics)…", command=self._set_ics)
-        filem.add_command(label="Subscribe to a calendar link (.ics URL)…",
-                          command=self._set_ics_url)
-        filem.add_command(label="Import calendar CSV (Power Automate export)…",
-                          command=self._set_csv_busy)
-        filem.add_command(label="Calendar sources (manage/toggle busy)…",
-                          command=self._calendar_sources_win)
+
+        planexp = tk.Menu(filem, tearoff=0)
+        planexp.add_command(label="Export week to calendar (.ics)",
+                            command=self._export_ics)
+        planexp.add_command(label="Add a plan…", command=self._quick_add_plan)
+        planexp.add_command(label="Auto-plan my week (.ics)…",
+                            command=self._auto_plan_win)
+        planexp.add_command(label="Lock study windows (.ics)…",
+                            command=self._lock_windows_win)
+        planexp.add_command(label="Lock an admin/task batch (.ics)…",
+                            command=self._admin_batch_win)
+        filem.add_cascade(label="Calendar & planning exports", menu=planexp)
+
+        srcm = tk.Menu(filem, tearoff=0)
+        srcm.add_command(label="Calendar busy-time (.ics)…", command=self._set_ics)
+        srcm.add_command(label="Subscribe to a calendar link (.ics URL)…",
+                         command=self._set_ics_url)
+        srcm.add_command(label="Import calendar CSV (Power Automate export)…",
+                         command=self._set_csv_busy)
+        srcm.add_command(label="Calendar sources (manage/toggle busy)…",
+                         command=self._calendar_sources_win)
+        srcm.add_separator()
+        srcm.add_command(label="Open data folder", command=self._open_folder)
+        srcm.add_command(label="Change diary folder…", command=self._change_diary_dir)
+        srcm.add_command(label="Health import folder…", command=self._set_health_dir)
+        filem.add_cascade(label="Folders & calendar sources", menu=srcm)
+
+        lifem = tk.Menu(filem, tearoff=0)
+        lifem.add_command(label="Export life record (JSON)…",
+                          command=self._export_life_json)
+        lifem.add_command(label="Import life record (JSON)…",
+                          command=self._import_life_json)
+        filem.add_cascade(label="Life record backup", menu=lifem)
+
         filem.add_separator()
         filem.add_command(label="Exit", command=self._on_close)
         m.add_cascade(label="File", menu=filem)
@@ -4989,60 +5055,77 @@ class App(tk.Tk):
         m.add_cascade(label="View", menu=viewm)
 
         toolsm = tk.Menu(m, tearoff=0)
-        self.autostart_var = tk.BooleanVar(value=get_autostart())
-        toolsm.add_checkbutton(label="Launch at Windows startup",
-                               variable=self.autostart_var,
-                               command=lambda: set_autostart(self.autostart_var.get()))
-        self.nudge_var = tk.BooleanVar(value=self.settings.get("nudge", True))
-        toolsm.add_checkbutton(label="Nudge in title when not tracking",
-                               variable=self.nudge_var, command=self._save_prefs)
-        self.float_var = tk.BooleanVar(value=self.settings.get("float_break", True))
-        toolsm.add_checkbutton(label="Floating break timer",
-                               variable=self.float_var, command=self._save_prefs)
         self.hide_raw_var = tk.BooleanVar(
             value=self.settings.get("hide_raw_lines", False))
         toolsm.add_checkbutton(label="Hide raw timer lines in the diary",
                                variable=self.hide_raw_var,
                                command=self._toggle_raw_lines)
-        toolsm.add_command(label="Diary text size…",
-                           command=self._set_diary_font_size)
         toolsm.add_command(label="Meeting mode (idle off 90 min)",
                            command=self._meeting_mode)
-        toolsm.add_command(label="Feature usage…", command=self._usage_win)
         toolsm.add_command(label="Quick reference — what does this app do?…",
                            command=self._help_win)
         toolsm.add_separator()
-        toolsm.add_command(label="Data doctor — check & clean history…",
-                           command=self._data_doctor)
-        toolsm.add_command(label="Rebuild sessions.csv from day files…",
-                           command=self._rebuild_csv_from_diary)
-        toolsm.add_separator()
-        toolsm.add_command(label="Global hotkey…", command=self._set_hotkey)
-        toolsm.add_command(label="Deadline countdown…", command=self._set_deadline)
-        toolsm.add_command(label="Goals — the why layer…", command=self._set_goals)
-        toolsm.add_command(label="Life domains — the values layer…",
-                           command=self._set_domains)
-        toolsm.add_command(label="Daylight location (latitude)…",
-                           command=self._set_daylight_lat)
-        toolsm.add_command(label="Idle detection…", command=self._set_idle)
-        toolsm.add_command(label="Break pull-back (signal tasks)…",
-                           command=self._set_pull)
-        toolsm.add_command(label="Day rollover hour…", command=self._set_rollover)
-        toolsm.add_command(label="Daily target…", command=self._set_target)
-        toolsm.add_command(label="Work-day window (free-slot finder)…",
-                           command=self._set_work_window)
-        toolsm.add_command(label="Evening window (free evenings finder)…",
-                           command=self._set_evening_window)
-        toolsm.add_command(label="Social-plan density threshold…",
-                           command=self._set_social_density_threshold)
-        toolsm.add_command(label="Calendar refresh interval…",
-                           command=self._set_ics_refresh_interval)
-        toolsm.add_command(label="Automated backup (Task Scheduler)…",
-                           command=self._set_backup_task)
-        toolsm.add_command(label="Recurring commitments (lunch, day job, sleep, admin)…",
-                           command=self._set_protected_windows)
-        toolsm.add_command(label="Recurring admin reminders (visa, renewals…)…",
-                           command=self._set_recurring_reminders)
+
+        behm = tk.Menu(toolsm, tearoff=0)
+        self.autostart_var = tk.BooleanVar(value=get_autostart())
+        behm.add_checkbutton(label="Launch at Windows startup",
+                             variable=self.autostart_var,
+                             command=lambda: set_autostart(self.autostart_var.get()))
+        self.nudge_var = tk.BooleanVar(value=self.settings.get("nudge", True))
+        behm.add_checkbutton(label="Nudge in title when not tracking",
+                             variable=self.nudge_var, command=self._save_prefs)
+        self.float_var = tk.BooleanVar(value=self.settings.get("float_break", True))
+        behm.add_checkbutton(label="Floating break timer",
+                             variable=self.float_var, command=self._save_prefs)
+        behm.add_command(label="Global hotkey…", command=self._set_hotkey)
+        toolsm.add_cascade(label="App behavior", menu=behm)
+
+        appm = tk.Menu(toolsm, tearoff=0)
+        appm.add_command(label="Diary text size…",
+                         command=self._set_diary_font_size)
+        appm.add_command(label="Feature usage…", command=self._usage_win)
+        toolsm.add_cascade(label="Appearance & usage", menu=appm)
+
+        datam = tk.Menu(toolsm, tearoff=0)
+        datam.add_command(label="Data doctor — check & clean history…",
+                          command=self._data_doctor)
+        datam.add_command(label="Rebuild sessions.csv from day files…",
+                          command=self._rebuild_csv_from_diary)
+        datam.add_command(label="Automated backup (Task Scheduler)…",
+                          command=self._set_backup_task)
+        toolsm.add_cascade(label="Data & backup", menu=datam)
+
+        goalm = tk.Menu(toolsm, tearoff=0)
+        goalm.add_command(label="Deadline countdown…", command=self._set_deadline)
+        goalm.add_command(label="Goals — the why layer…", command=self._set_goals)
+        goalm.add_command(label="Life domains — the values layer…",
+                          command=self._set_domains)
+        toolsm.add_cascade(label="Deadlines & goals", menu=goalm)
+
+        rhythmm = tk.Menu(toolsm, tearoff=0)
+        rhythmm.add_command(label="Idle detection…", command=self._set_idle)
+        rhythmm.add_command(label="Break pull-back (signal tasks)…",
+                            command=self._set_pull)
+        rhythmm.add_command(label="Day rollover hour…", command=self._set_rollover)
+        rhythmm.add_command(label="Daily target…", command=self._set_target)
+        rhythmm.add_command(label="Work-day window (free-slot finder)…",
+                            command=self._set_work_window)
+        rhythmm.add_command(label="Daylight location (latitude)…",
+                            command=self._set_daylight_lat)
+        toolsm.add_cascade(label="Daily rhythm & capacity", menu=rhythmm)
+
+        calcfgm = tk.Menu(toolsm, tearoff=0)
+        calcfgm.add_command(label="Recurring commitments (lunch, day job, sleep, admin)…",
+                            command=self._set_protected_windows)
+        calcfgm.add_command(label="Recurring admin reminders (visa, renewals…)…",
+                            command=self._set_recurring_reminders)
+        calcfgm.add_command(label="Evening window (free evenings finder)…",
+                            command=self._set_evening_window)
+        calcfgm.add_command(label="Social-plan density threshold…",
+                            command=self._set_social_density_threshold)
+        calcfgm.add_command(label="Calendar refresh interval…",
+                            command=self._set_ics_refresh_interval)
+        toolsm.add_cascade(label="Calendar & planning config", menu=calcfgm)
         m.add_cascade(label="Tools", menu=toolsm)
 
         self.menu = m
@@ -6507,18 +6590,29 @@ class App(tk.Tk):
         either way."""
         base = self.settings.get("diary_font_size", 10)
         self.diary.config(font=("Consolas", base))
+        # backlog #202: these tag colors were tuned for a WHITE
+        # background only — dark, saturated hues (a #1a4a7a navy day-
+        # header, a #c0392b warn-line) read fine on white but go
+        # muddy/low-contrast on dark mode's own background, a real gap
+        # #157 (which only covered CANVAS views) never touched. Same
+        # light/dark pair shape as _CANVAS_LIGHT/_CANVAS_DARK, brighter
+        # versions of the same semantic hues so a warning still reads
+        # as red, a day header still reads as blue, just legible
+        # against dark instead of clashing with it.
+        dark = self.settings.get("dark_mode", False)
+        tag_colors = self._DIARY_TAGS_DARK if dark else self._DIARY_TAGS_LIGHT
         # raw_event is also elide-able (Tools > Hide raw timer lines): a
         # real fold, not a color trick, since those lines are pure
         # machine bookkeeping no human needs to read.
-        self.diary.tag_configure("raw_event", foreground="#b5b5b5",
+        self.diary.tag_configure("raw_event", foreground=tag_colors["raw_event"],
                                  font=("Consolas", max(6, base - 2)))
-        self.diary.tag_configure("struct", foreground="#7a7a8c")
-        self.diary.tag_configure("day_header", foreground="#1a4a7a",
+        self.diary.tag_configure("struct", foreground=tag_colors["struct"])
+        self.diary.tag_configure("day_header", foreground=tag_colors["day_header"],
                                  font=("Consolas", base + 1, "bold"))
-        self.diary.tag_configure("meta_header", foreground="#2e6b2e",
+        self.diary.tag_configure("meta_header", foreground=tag_colors["meta_header"],
                                  font=("Consolas", base, "bold"))
-        self.diary.tag_configure("theme_block", foreground="#8a5ba3")
-        self.diary.tag_configure("warn_line", foreground="#c0392b",
+        self.diary.tag_configure("theme_block", foreground=tag_colors["theme_block"])
+        self.diary.tag_configure("warn_line", foreground=tag_colors["warn_line"],
                                  font=("Consolas", base, "bold"))
         self.diary.tag_configure("raw_event", elide=self.settings.get(
             "hide_raw_lines", False))
@@ -6536,18 +6630,39 @@ class App(tk.Tk):
         self._apply_diary_fonts()
         self._load_diary()
 
-    DARK_PALETTE = {"bg": "#1e1e1e", "fg": "#d4d4d4", "field_bg": "#2d2d30",
-                    "select_bg": "#264f78", "text_bg": "#1e1e1e",
-                    "text_fg": "#d4d4d4"}
+    # backlog #202: softened from the original dark-mode palette, which
+    # was literally VSCode's dark+ theme (#1e1e1e / #d4d4d4) — a real,
+    # high-contrast, "as bright as possible" palette that's fine for
+    # code but read as "brutal" for an app you sit and READ in for long
+    # stretches. Warmer, lower-contrast dark grays throughout (no near-
+    # black, no near-white) — the explicit ask was "neater... while
+    # still protecting eyes," i.e. comfortable for extended reading,
+    # not maximum contrast.
+    DARK_PALETTE = {"bg": "#24262b", "fg": "#c7cad1", "field_bg": "#2c2f37",
+                    "select_bg": "#3d5570", "text_bg": "#24262b",
+                    "text_fg": "#c7cad1"}
 
     _CANVAS_LIGHT = {"cv_bg": "white", "grid": "#e5e5e5", "grid2": "#eeeeee",
                      "label": "#444444", "label_bold": "#000000",
                      "cell_bg": "#e4e7ec", "cell_bg2": "#eef1f5",
                      "muted": "#999999", "line": "#cccccc"}
-    _CANVAS_DARK = {"cv_bg": "#1e1e1e", "grid": "#3a3a3a", "grid2": "#333333",
-                    "label": "#c8c8c8", "label_bold": "#f0f0f0",
-                    "cell_bg": "#2a2d33", "cell_bg2": "#26282d",
-                    "muted": "#8a8a8a", "line": "#4a4a4a"}
+    _CANVAS_DARK = {"cv_bg": "#24262b", "grid": "#393c44", "grid2": "#2f323a",
+                    "label": "#a9acb4", "label_bold": "#dfe2e7",
+                    "cell_bg": "#2e313a", "cell_bg2": "#2a2d35",
+                    "muted": "#7c808a", "line": "#454952"}
+
+    # backlog #202: dark-mode-aware diary syntax-highlight colors — #157
+    # covered canvas views but never the diary Text widget's own tags,
+    # which stayed tuned for white paper (a navy day-header, a brick-red
+    # warning) and went muddy on any dark background. Brighter versions
+    # of the same semantic hues, not new colors — a warning still reads
+    # as red, a day header still reads as blue, just legible on dark.
+    _DIARY_TAGS_LIGHT = {"raw_event": "#b5b5b5", "struct": "#7a7a8c",
+                         "day_header": "#1a4a7a", "meta_header": "#2e6b2e",
+                         "theme_block": "#8a5ba3", "warn_line": "#c0392b"}
+    _DIARY_TAGS_DARK = {"raw_event": "#83868f", "struct": "#9b9eac",
+                        "day_header": "#7aa8d8", "meta_header": "#82c08a",
+                        "theme_block": "#bb98d4", "warn_line": "#e0796e"}
 
     def _theme_color(self, key):
         """Backlog #157: #156's dark mode deliberately stopped at the
@@ -6616,6 +6731,14 @@ class App(tk.Tk):
                               selectbackground="SystemHighlight")
             self.timeline.config(bg="SystemButtonFace")
             self.dl_dot.config(bg="SystemButtonFace")
+        # backlog #202: the diary's own syntax-highlight tag colors
+        # (day headers, warnings...) are dark-mode-aware too now, but
+        # only take effect once _apply_diary_fonts actually re-runs —
+        # without this call, toggling dark mode recolored every widget
+        # EXCEPT the diary's own tagged text until something else
+        # happened to trigger a font refresh.
+        if hasattr(self, "diary"):
+            self._apply_diary_fonts()
 
     def _toggle_dark_mode(self):
         """Backlog #174: two entry points now share this — the View
@@ -6714,6 +6837,14 @@ class App(tk.Tk):
             self.body.pack(fill="both", expand=True)
             self.status.pack(fill="x", side="bottom", padx=8, pady=(0, 4))
             self.compact_btn.config(text="—")
+            # backlog #202: winfo_width() still reports the OLD compact
+            # (330px) size immediately after geometry() -- Tk hasn't
+            # processed the resize yet -- so _refresh_totals' wraplength
+            # calc (#156) would compute a tiny value and the header text
+            # stayed wrapped at ~290px, visibly "stuck," until some
+            # unrelated event happened to call _refresh_totals again.
+            # update_idletasks() forces the resize through first.
+            self.update_idletasks()
             self._refresh_totals()
 
     # ----- text log helpers -----
@@ -13035,17 +13166,33 @@ class App(tk.Tk):
                     return
                 d, s, e = slot
                 targets = self._lock_targets()
+                deadlines = [t for t in targets if t["kind"] == "deadline"]
+                tasks = [t for t in targets if t["kind"] != "deadline"]
                 menu = tk.Menu(win, tearoff=0)
+                # backlog #202: this menu used to list EVERY target (every
+                # deadline AND every actionable task) as its own top-level
+                # row — with a real task library (50+ entries after real
+                # use), that's a menu tall enough to cover the whole
+                # screen. Deadlines (always few) stay direct rows; tasks
+                # move into a submenu, so the top-level menu stays a
+                # handful of rows regardless of library size.
                 if not targets:
                     menu.add_command(
                         label="No deadlines or tasks set yet",
                         state="disabled")
-                else:
-                    for tgt in targets:
-                        menu.add_command(
-                            label=f"Lock {s:%H:%M}–{e:%H:%M} {d:%a %d.%m} "
-                                 f"for '{tgt['name']}'",
+                for dl in deadlines:
+                    menu.add_command(
+                        label=f"Lock {s:%H:%M}–{e:%H:%M} for '{dl['name']}'",
+                        command=lambda dl=dl: lock_slot(dl["name"], d, s, e))
+                if tasks:
+                    task_menu = tk.Menu(menu, tearoff=0)
+                    for tgt in tasks:
+                        task_menu.add_command(
+                            label=tgt["name"],
                             command=lambda tgt=tgt: lock_slot(tgt["name"], d, s, e))
+                    menu.add_cascade(
+                        label=f"Lock {s:%H:%M}–{e:%H:%M} for a task ▸",
+                        menu=task_menu)
                 menu.add_separator()
                 menu.add_command(
                     label=f"Add a plan at {s:%H:%M} {d:%a %d.%m}…",

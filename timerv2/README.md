@@ -4,6 +4,19 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.63 — bug fixes, softer dark mode, less menu bloat
+
+Two real bugs fixed: right-clicking to lock an hour in the week view
+could grow into a menu tall enough to cover the whole screen once
+your task library got big — tasks now live in a submenu, capped at
+~4 top-level rows. Toggling out of compact mode could leave the
+status header text stuck wrapped at the wrong width. Dark mode is
+softer now — no near-black, no near-white — and the diary's own
+colored text (day headers, warnings) is finally dark-mode-aware too,
+not just the calendar views. File and Tools menus are reorganized
+into cascades (File: 18 → 7 top-level items, Tools: 26 → 9) — nothing
+removed, just grouped by what it's actually for.
+
 ### v9.62 — Day archetypes (k-means clustering)
 
 View > Memory > "Day archetypes (pattern discovery)…" — real

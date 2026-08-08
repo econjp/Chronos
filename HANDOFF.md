@@ -497,6 +497,21 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.63** (#202, 2026-08-08, DONE). Direct owner feedback pass after
+  the mobile/cloud session's ~40-commit merge: two real bugs fixed
+  (week-view right-click menu could grow to 53+ rows and cover the
+  whole screen with a real task library — now capped at ~4 top-level
+  rows via a task submenu; compact-mode toggle left the status header
+  text wrapped at the wrong width, "stuck," fixed with
+  `update_idletasks()` before the wraplength recalc). Dark mode
+  softened away from literal VSCode dark+ colors, verified via real
+  luminance math; a real gap found where the diary's own syntax-
+  highlight colors were never dark-mode-aware at all (only canvas
+  views were, per #157) — fixed, and now refresh immediately on
+  toggle. File menu cut from 18 flat items to 7 (3 new cascades);
+  Tools from 26 flat items to 9 (6 new cascades) — same reorganization
+  View already got once before for the identical complaint, nothing
+  removed, all commands verified still reachable.
 - **v9.62** (#190, 2026-08-08, DONE). Day-archetype clustering — real
   k-means from scratch (k-means++ seeding, multiple restarts, lowest-
   inertia wins, seeded/deterministic) over each day's own shape (work
@@ -4684,6 +4699,14 @@ polish — the three NOT chosen this round) when continuing this work.
     discipline #194 already leans on, applied to feature engineering
     instead of metric parsing. A note for whoever builds #192, not a
     standalone feature on its own.
+
+~~202. **Audit and fix visual/UX regressions after the mobile session's
+    big merge — menu-covers-screen bug, stuck compact-mode text, dark
+    mode too harsh, File/Tools menu bloat.**~~ — FIXED v9.63. See the
+    v9.63 version-history entry above. (Direct owner feedback,
+    2026-08-08, immediately after reviewing the merged mobile work —
+    real bugs, not just preferences: verified via real widget-tree
+    inspection and real luminance math, not eyeballed.)
 
 ## How to verify changes without Windows
 
