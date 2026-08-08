@@ -60,6 +60,38 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.62 (#190 — day-archetype clustering, real k-means from
+scratch, plus a scatter-plot visualization, 2026-08-08, the second
+genuine ML addition this session — unsupervised clustering this time,
+not just a correlation statistic):
+  - View > Memory > "Day archetypes (pattern discovery)…" clusters
+    every tracked day's own shape (work hours, break ratio, distinct
+    tasks touched) into archetypes discovered from the owner's OWN
+    history — "Light/recovery days", "Steady days", "Deep-focus days"
+    — instead of a fixed hand-written taxonomy. A scatter plot (work
+    hours vs task switches, each day a dot colored by its archetype)
+    sits right below the text summary — the actual visualization half
+    of "data analysis or recommendations visualisation," not just
+    another paragraph of prose.
+  - new `_kmeans` (module-level, pure): plain Lloyd's-algorithm
+    k-means with k-means++ seeding and multiple restarts (lowest-
+    inertia restart wins), written by hand — this app is stdlib-only
+    end to end, no numpy/scikit-learn. Seeded (default 42) so it's
+    fully deterministic and testable, not flaky between runs. New
+    `_sqdist`/`_standardize` are its small pure building blocks.
+  - new `_day_feature_vectors`/`_day_archetypes`/
+    `_day_archetypes_lines`: gate on 5*k real days minimum (standard
+    k-means has no principled way to validate k=3 on a handful of
+    points, so this doesn't claim more precision than it has);
+    archetypes named by ascending avg work hours, the single most
+    legible axis.
+  - new "kmeans" selftest suite (three well-separated synthetic blobs
+    correctly recovered as three distinct clusters, a constant column
+    correctly contributing nothing after standardization, too-few-
+    points-for-k returning None) and "day-archetypes" suite (21 real
+    days split cleanly into the three named tiers by work hours, the
+    5*k honesty gate); 74/74 green.
+
 New in v9.61 (#189 — a real metric correlation engine, 2026-08-08, the
 first genuine statistics/ML addition in this app: every existing
 "insight" here is a hand-picked heuristic — a rolling average, a
@@ -2901,6 +2933,7 @@ import json
 import math
 import os
 import queue
+import random
 import re
 import shutil
 import subprocess
@@ -3405,6 +3438,96 @@ def _pearson_r(xs, ys):
     if var_x == 0 or var_y == 0:
         return None
     return cov / math.sqrt(var_x * var_y)
+
+
+def _sqdist(a, b):
+    """Backlog #190: squared Euclidean distance between two equal-
+    length numeric tuples — the distance metric `_kmeans` clusters
+    on. Squared (not the real distance) since k-means only ever
+    compares distances, never adds them across different scales; the
+    sqrt would be pure wasted work."""
+    return sum((x - y) ** 2 for x, y in zip(a, b))
+
+
+def _standardize(vectors):
+    """Backlog #190: z-score standardize a list of equal-length
+    numeric tuples, column by column — without this, a feature
+    measured in hours (work_h, range ~0-12) would swamp one measured
+    as a ratio (break_ratio, range 0-1) in the distance metric below,
+    for no reason but the arbitrary choice of units. A column with
+    zero variance (every day identical on that axis) stays zero for
+    every row rather than dividing by zero — it simply contributes
+    nothing to the clustering, which is the correct behavior for a
+    feature that never varies."""
+    n = len(vectors)
+    dim = len(vectors[0])
+    means = [sum(v[j] for v in vectors) / n for j in range(dim)]
+    stdevs = []
+    for j in range(dim):
+        var = sum((v[j] - means[j]) ** 2 for v in vectors) / n
+        stdevs.append(math.sqrt(var))
+    return [tuple((v[j] - means[j]) / stdevs[j] if stdevs[j] > 1e-9 else 0.0
+                  for j in range(dim))
+           for v in vectors]
+
+
+def _kmeans(points, k, iters=50, restarts=5, seed=42):
+    """Backlog #190: plain Lloyd's-algorithm k-means, pure Python —
+    this app is stdlib-only end to end, no numpy/scikit-learn, so
+    real unsupervised clustering means writing the textbook algorithm
+    by hand instead of importing it. k-means++ seeding (each new
+    centroid chosen with probability proportional to its squared
+    distance from the nearest already-chosen one, not uniformly
+    random) plus multiple restarts keep it from settling on an
+    obviously bad local optimum — the restart with the lowest total
+    inertia (sum of squared distances to each point's own centroid)
+    wins. Seeded (default 42) so it's fully deterministic and
+    testable, not flaky between runs. Returns (centroids,
+    assignments) where assignments[i] is which centroid points[i]
+    belongs to, or None if there are fewer points than clusters."""
+    if len(points) < k:
+        return None
+    rng = random.Random(seed)
+    dim = len(points[0])
+    best = None
+    for _ in range(restarts):
+        centroids = [rng.choice(points)]
+        while len(centroids) < k:
+            dists = [min(_sqdist(p, c) for c in centroids) for p in points]
+            total = sum(dists)
+            if total == 0:
+                centroids.append(rng.choice(points))
+                continue
+            pick = rng.uniform(0, total)
+            acc = 0.0
+            for p, dd in zip(points, dists):
+                acc += dd
+                if acc >= pick:
+                    centroids.append(p)
+                    break
+        assignments = [0] * len(points)
+        for _ in range(iters):
+            assignments = [min(range(k), key=lambda c: _sqdist(p, centroids[c]))
+                          for p in points]
+            new_centroids = []
+            changed = False
+            for c in range(k):
+                members = [p for p, a in zip(points, assignments) if a == c]
+                if not members:
+                    new_centroids.append(centroids[c])
+                    continue
+                new_c = tuple(sum(m[j] for m in members) / len(members)
+                             for j in range(dim))
+                if new_c != centroids[c]:
+                    changed = True
+                new_centroids.append(new_c)
+            centroids = new_centroids
+            if not changed:
+                break
+        inertia = sum(_sqdist(p, centroids[a]) for p, a in zip(points, assignments))
+        if best is None or inertia < best[0]:
+            best = (inertia, centroids, assignments)
+    return best[1], best[2]
 
 
 def _free_from_busy(win_start, win_end, busy):
@@ -4821,6 +4944,8 @@ class App(tk.Tk):
                          command=self._tracked("Decision log", self._decision_log_view))
         memm.add_command(label="Metric correlations…",
                          command=self._tracked("Correlations", self._correlations_win))
+        memm.add_command(label="Day archetypes (pattern discovery)…",
+                         command=self._tracked("Day archetypes", self._archetypes_win))
         viewm.add_cascade(label="Memory  (the archive)", menu=memm)
 
         valm = tk.Menu(viewm, tearoff=0)
@@ -9438,6 +9563,60 @@ class App(tk.Tk):
         txt.pack(fill="both", expand=True, padx=8, pady=8)
         txt.insert("1.0", "\n".join(self._correlation_lines()))
         txt.config(state="disabled")
+
+    def _archetypes_win(self):
+        """Backlog #190: opens `_day_archetypes_lines` as text, plus a
+        scatter-plot visualization (work hours vs task switches, each
+        tracked day a dot colored by its k-means archetype) — the
+        actual visualization half of "data analysis or recommendations
+        visualisation," not just another paragraph of prose."""
+        win = tk.Toplevel(self)
+        win.title("Day archetypes (pattern discovery)")
+        win.geometry("620x540")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10), height=7)
+        txt.pack(fill="x", padx=8, pady=(8, 4))
+        archetypes = self._day_archetypes()
+        txt.insert("1.0", "\n".join(self._day_archetypes_lines()))
+        txt.config(state="disabled")
+
+        cv = tk.Canvas(win, bg=self._theme_color("cv_bg"), highlightthickness=0)
+        cv.pack(fill="both", expand=True, padx=8, pady=(4, 8))
+
+        if archetypes:
+            palette = ["#8a8a8a", "#4a90d9", "#5fa85f"]
+            pad_l, top, w, h = 50, 14, 520, 360
+            vecs = self._day_feature_vectors()
+            max_work = max((v[0] for v in vecs.values()), default=1) or 1
+            max_sw = max((v[2] for v in vecs.values()), default=1) or 1
+
+            def px(work_h):
+                return pad_l + (work_h / max_work) * w
+
+            def py(switches):
+                return top + h - (switches / max_sw) * h
+
+            cv.create_line(pad_l, top, pad_l, top + h, fill=self._theme_color("line"))
+            cv.create_line(pad_l, top + h, pad_l + w, top + h,
+                           fill=self._theme_color("line"))
+            cv.create_text(pad_l + w / 2, top + h + 16, text="work hours →",
+                           fill=self._theme_color("label"), font=("Segoe UI", 8))
+            cv.create_text(14, top + h / 2, text="task\nswitches",
+                           fill=self._theme_color("label"), font=("Segoe UI", 8),
+                           justify="center")
+
+            for i, (name, info) in enumerate(archetypes.items()):
+                color = palette[i % len(palette)]
+                for iso in info["days"]:
+                    work_h, _br, switches = vecs[iso]
+                    x, y = px(work_h), py(switches)
+                    cv.create_oval(x - 3, y - 3, x + 3, y + 3,
+                                  fill=color, outline="")
+                cv.create_text(pad_l + w - 6, top + 8 + i * 14, anchor="e",
+                               text=name, fill=color, font=("Segoe UI", 8, "bold"))
+            cv.config(width=pad_l + w + 20, height=top + h + 30)
+        else:
+            cv.create_text(280, 40, text="Not enough tracked history yet.",
+                           fill=self._theme_color("muted"), font=("Segoe UI", 9))
 
     def _themed_writing(self, event=None):
         """Ctrl+T: pick or type a topic (existing ones autocomplete), then
@@ -15082,6 +15261,90 @@ class App(tk.Tk):
         for k1, k2, r, n in pairs[:max_n]:
             strength = "strong" if abs(r) >= 0.6 else "moderate"
             lines.append(f"  {k1} ↔ {k2}: r={r:+.2f} ({strength}, n={n})")
+        return lines
+
+    def _day_feature_vectors(self, days=90):
+        """Backlog #190: per-day (work_h, break_ratio, task_count)
+        feature vectors — the raw shape `_day_archetypes` below
+        clusters on. Only days with real tracked work qualify (an
+        empty day has no shape to cluster). {date_iso: (work_h,
+        break_ratio, task_count)}."""
+        idx = day_index()
+        cutoff = self.today - dt.timedelta(days=days)
+        out = {}
+        d = cutoff
+        while d <= self.today:
+            iso = d.isoformat()
+            rec = idx.get(iso)
+            if rec and rec["work"] > 0:
+                total = rec["work"] + rec["brk"]
+                out[iso] = (rec["work"] / 60,
+                           rec["brk"] / total if total else 0.0,
+                           float(len(rec["tasks"])))
+            d += dt.timedelta(days=1)
+        return out
+
+    def _day_archetypes(self, days=90, k=3):
+        """Backlog #190: real unsupervised clustering (k-means, from
+        scratch — see `_kmeans` above) over each day's own shape (work
+        hours, break ratio, distinct tasks touched), discovering "day
+        archetypes" from the owner's OWN tracked history instead of a
+        fixed hand-written taxonomy — the clustering counterpart to
+        #189's correlation engine: patterns the data itself surfaces,
+        not ones a developer thought to name in advance. Needs 5*k
+        real days minimum to attempt at all — same honesty-gate
+        discipline as every other statistical feature here; standard
+        k-means has no principled way to validate k=3 specifically on
+        a handful of points, so this doesn't pretend to more precision
+        than it has. Archetypes are named by ascending average work_h
+        (the single most legible axis) — for the default k=3:
+        "Light/recovery days", "Steady days", "Deep-focus days"; any
+        other k gets plain numbered names, since the 3 hand-picked
+        labels are a convenience for the common case, not a claim
+        about what k clusters always look like. Returns {name: {"n",
+        "avg_work_h", "avg_break_ratio", "avg_switches", "days":
+        [iso, ...]}} ordered by avg_work_h ascending, or None."""
+        vecs = self._day_feature_vectors(days)
+        if len(vecs) < 5 * k:
+            return None
+        isos = sorted(vecs)
+        raw = [vecs[iso] for iso in isos]
+        std = _standardize(raw)
+        result = _kmeans(std, k)
+        if result is None:
+            return None
+        _centroids, assignments = result
+        groups = {}
+        for iso, raw_v, a in zip(isos, raw, assignments):
+            groups.setdefault(a, []).append((iso, raw_v))
+        ordered = sorted(groups.items(),
+                         key=lambda kv: sum(v[0] for _i, v in kv[1]) / len(kv[1]))
+        names = (["Light/recovery days", "Steady days", "Deep-focus days"]
+                 if k == 3 else [f"Archetype {i + 1}" for i in range(k)])
+        out = {}
+        for name, (_a, members) in zip(names, ordered):
+            n = len(members)
+            out[name] = {
+                "n": n,
+                "avg_work_h": sum(v[0] for _i, v in members) / n,
+                "avg_break_ratio": sum(v[1] for _i, v in members) / n,
+                "avg_switches": sum(v[2] for _i, v in members) / n,
+                "days": [i for i, _v in members],
+            }
+        return out
+
+    def _day_archetypes_lines(self, days=90, k=3):
+        archetypes = self._day_archetypes(days, k)
+        if not archetypes:
+            return [f"Not enough tracked days yet to find real patterns "
+                    f"(need {5 * k}+ days with real work in the last "
+                    f"{days})."]
+        lines = [f"DAY ARCHETYPES (last {days} days, k-means over your "
+                "own data):"]
+        for name, info in archetypes.items():
+            lines.append(f"  {name} ({info['n']}): avg {info['avg_work_h']:.1f}h "
+                        f"work, {info['avg_break_ratio'] * 100:.0f}% breaks, "
+                        f"{info['avg_switches']:.1f} task switches/day")
         return lines
 
     @staticmethod

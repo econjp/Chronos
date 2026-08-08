@@ -497,6 +497,16 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.62** (#190, 2026-08-08, DONE). Day-archetype clustering — real
+  k-means from scratch (k-means++ seeding, multiple restarts, lowest-
+  inertia wins, seeded/deterministic) over each day's own shape (work
+  hours, break ratio, distinct tasks). View > Memory > "Day archetypes
+  (pattern discovery)…" names archetypes by ascending work hours
+  (Light/recovery, Steady, Deep-focus) and includes a scatter-plot
+  visualization. Gated on 5*k real days. New `_kmeans`/`_sqdist`/
+  `_standardize` (pure, stdlib-only) plus `_day_feature_vectors`/
+  `_day_archetypes`/`_day_archetypes_lines`. New "kmeans" and "day-
+  archetypes" selftest suites. 74/74 green.
 - **v9.61** (#189, 2026-08-08, DONE). A real metric correlation
   engine — the first genuine statistics/ML addition; every existing
   insight before this was a hand-picked heuristic. View > Memory >
@@ -4500,6 +4510,10 @@ polish — the three NOT chosen this round) when continuing this work.
     machine learning or AI or anything to incorporate... data
     analysis or recommendations visualisation"). See the v9.61
     version-history entry above.
+
+190. ~~**Day-archetype clustering — real k-means from scratch over
+    each day's own shape, plus a scatter-plot visualization.**~~ —
+    DONE v9.62. See the v9.62 version-history entry above.
 
 ## How to verify changes without Windows
 

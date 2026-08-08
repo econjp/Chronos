@@ -18,6 +18,7 @@ import csv
 import json
 import math
 import os
+import random
 import re
 import sys
 import tempfile
@@ -37,7 +38,8 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "load_settings", "save_settings", "_deadline_revisions_after_save",
        "_pick_one_less", "_parse_milestones",
        "_parse_rrule", "_rrule_occurrences", "parse_ics_intervals",
-       "parse_ics_events", "_parse_exdates", "_pearson_r"}
+       "parse_ics_events", "_parse_exdates", "_pearson_r",
+       "_sqdist", "_standardize", "_kmeans"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -83,6 +85,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_multiweek_digest_lines", "_recurring_reminders_due",
         "_recurring_reminders_line", "_stale_plan_line",
         "_metric_series", "_metric_correlations", "_correlation_lines",
+        "_day_feature_vectors", "_day_archetypes", "_day_archetypes_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
         "_planned_hours_from_file", "_planner_realism_factor"}
@@ -132,7 +135,7 @@ def fresh():
     with its own temp csv and cache — full isolation per suite."""
     tmp = tempfile.mkdtemp()
     ns = {"csv": csv, "os": os, "dt": dt, "re": re, "math": math,
-          "json": json,
+          "json": json, "random": random,
           "SESSIONS_CSV": os.path.join(tmp, "sessions.csv"),
           "SETTINGS_JSON": os.path.join(tmp, "settings.json"),
           "CSV_HEADER": ["date", "type", "start", "end", "minutes",
@@ -3083,6 +3086,69 @@ def suite_metric_correlations():
                       "metrics were both logged."]
 
 
+def suite_kmeans():
+    _, ns = fresh()
+    assert ns["_sqdist"]((0, 0), (3, 4)) == 25
+
+    vecs = [(1.0, 5.0), (2.0, 5.0), (3.0, 5.0)]
+    std = ns["_standardize"](vecs)
+    assert std[1] == (0.0, 0.0), std               # mean point -> 0
+    assert std[0][0] != std[2][0]                  # varies on the real axis
+    assert all(v[1] == 0.0 for v in std), std       # constant column -> all 0
+
+    blob_a = [(0.0, 0.0), (0.1, -0.1), (-0.1, 0.1), (0.05, 0.05)]
+    blob_b = [(10.0, 10.0), (10.1, 9.9), (9.9, 10.1), (10.05, 9.95)]
+    blob_c = [(0.0, 10.0), (0.1, 9.9), (-0.1, 10.1), (0.05, 10.05)]
+    points = blob_a + blob_b + blob_c
+    result = ns["_kmeans"](points, 3)
+    assert result is not None
+    centroids, assignments = result
+    assert len(centroids) == 3
+    assert len(set(assignments[0:4])) == 1, assignments     # blob_a uniform
+    assert len(set(assignments[4:8])) == 1, assignments     # blob_b uniform
+    assert len(set(assignments[8:12])) == 1, assignments    # blob_c uniform
+    assert len({assignments[0], assignments[4], assignments[8]}) == 3, assignments
+
+    assert ns["_kmeans"]([(0, 0), (1, 1)], 3) is None
+
+
+def suite_day_archetypes():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 30)
+    start = dt.date(2026, 8, 1)
+    hours = [1] * 7 + [5] * 7 + [9] * 7      # 7 light + 7 steady + 7 deep-focus
+    rows = [row((start + dt.timedelta(days=i)).isoformat(), h * 60, "solo")
+           for i, h in enumerate(hours)]
+    seed(ns, rows)
+    d = _mk(D, today=TODAY)
+
+    vecs = D._day_feature_vectors(d, days=90)
+    assert len(vecs) == 21, vecs
+
+    archetypes = D._day_archetypes(d, days=90, k=3)
+    assert archetypes is not None
+    assert list(archetypes) == [
+        "Light/recovery days", "Steady days", "Deep-focus days"], archetypes
+    assert archetypes["Light/recovery days"]["n"] == 7
+    assert abs(archetypes["Light/recovery days"]["avg_work_h"] - 1.0) < 1e-6
+    assert archetypes["Steady days"]["n"] == 7
+    assert abs(archetypes["Steady days"]["avg_work_h"] - 5.0) < 1e-6
+    assert archetypes["Deep-focus days"]["n"] == 7
+    assert abs(archetypes["Deep-focus days"]["avg_work_h"] - 9.0) < 1e-6
+
+    lines = D._day_archetypes_lines(d, days=90, k=3)
+    assert lines[0].startswith("DAY ARCHETYPES"), lines
+    assert any("Deep-focus days (7)" in ln for ln in lines), lines
+
+    # ---- honesty gate: fewer than 5*k real days -> None / message ----
+    seed(ns, rows[:10])
+    d2 = _mk(D, today=TODAY)
+    assert D._day_archetypes(d2, days=90, k=3) is None
+    lines2 = D._day_archetypes_lines(d2, days=90, k=3)
+    assert lines2 == ["Not enough tracked days yet to find real patterns "
+                      "(need 15+ days with real work in the last 90)."]
+
+
 def suite_recurring_reminders():
     D, ns = fresh()
     TODAY = dt.date(2026, 8, 10)
@@ -3229,7 +3295,9 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("locked-today", suite_locked_today),
           ("recurring-reminders", suite_recurring_reminders),
           ("stale-plan", suite_stale_plan),
-          ("metric-correlations", suite_metric_correlations)]
+          ("metric-correlations", suite_metric_correlations),
+          ("kmeans", suite_kmeans),
+          ("day-archetypes", suite_day_archetypes)]
 
 
 def main():

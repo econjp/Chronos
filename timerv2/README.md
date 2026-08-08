@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.62 — Day archetypes (k-means clustering)
+
+View > Memory > "Day archetypes (pattern discovery)…" — real
+unsupervised clustering (k-means, written from scratch, no numpy)
+groups your tracked days into archetypes discovered from your own
+history: Light/recovery, Steady, Deep-focus. Includes a scatter-plot
+visualization, each day a dot colored by its archetype.
+
 ### v9.61 — Metric correlation engine
 
 View > Memory > "Metric correlations…" — real Pearson correlation
