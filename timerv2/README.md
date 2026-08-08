@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.49 — Recurring calendar events now actually count
+
+A subscribed calendar's recurring events (a weekly class, a daily
+standup) used to silently vanish from both capacity math and the
+calendar view. Common recurrence shapes (daily/weekly/monthly,
+optionally with specific weekdays, a count, or an end date) now
+expand correctly — a real gap closed, not a new integration.
+
 ### v9.48 — PTO-skip suggests up to 3 at once
 
 The Recurring Commitments editor's PTO-skip suggestion (v9.39) used

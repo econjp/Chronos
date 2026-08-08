@@ -35,7 +35,9 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "_free_from_busy", "_deep_capacity_minutes", "_merge_time_intervals",
        "_pinned_after_add", "_pinned_after_remove", "day_totals",
        "load_settings", "save_settings", "_deadline_revisions_after_save",
-       "_pick_one_less", "_parse_milestones"}
+       "_pick_one_less", "_parse_milestones",
+       "_parse_rrule", "_rrule_occurrences", "parse_ics_intervals",
+       "parse_ics_events"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -2642,6 +2644,108 @@ def suite_evening_window():
     assert out_custom == [(dt.date(2026, 8, 10), "20-22")], out_custom
 
 
+def suite_rrule():
+    D, ns = fresh()
+    parse_rrule = ns["_parse_rrule"]
+    occ = ns["_rrule_occurrences"]
+
+    r = parse_rrule("FREQ=WEEKLY;BYDAY=MO,WE,FR;COUNT=5")
+    assert r["freq"] == "WEEKLY" and r["interval"] == 1, r
+    assert r["count"] == 5, r
+    assert r["byday"] == {0, 2, 4}, r          # Mon, Wed, Fri
+
+    r2 = parse_rrule("FREQ=DAILY;INTERVAL=2;UNTIL=20260901T000000Z")
+    assert r2["freq"] == "DAILY" and r2["interval"] == 2, r2
+    assert r2["until"] == dt.date(2026, 9, 1), r2
+
+    # ---- unsupported FREQ -> None (caller falls back to single event) ----
+    assert parse_rrule("FREQ=YEARLY") is None
+    assert parse_rrule("FREQ=SECONDLY") is None
+
+    dtstart = dt.datetime(2026, 8, 3, 18, 0)     # a Monday
+    dtend = dt.datetime(2026, 8, 3, 19, 0)
+
+    # ---- weekly BYDAY, count-bounded ----
+    out = occ("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4", dtstart, dtend,
+              dt.date(2026, 8, 1), dt.date(2026, 8, 31))
+    assert out == [
+        (dt.datetime(2026, 8, 3, 18, 0), dt.datetime(2026, 8, 3, 19, 0)),
+        (dt.datetime(2026, 8, 5, 18, 0), dt.datetime(2026, 8, 5, 19, 0)),
+        (dt.datetime(2026, 8, 10, 18, 0), dt.datetime(2026, 8, 10, 19, 0)),
+        (dt.datetime(2026, 8, 12, 18, 0), dt.datetime(2026, 8, 12, 19, 0)),
+    ], out
+
+    # ---- the window filters which occurrences come back ----
+    out2 = occ("FREQ=DAILY;COUNT=10", dtstart, dtend,
+              dt.date(2026, 8, 4), dt.date(2026, 8, 6))
+    assert [o.date() for o, _e in out2] == [
+        dt.date(2026, 8, 4), dt.date(2026, 8, 5), dt.date(2026, 8, 6)], out2
+
+    # ---- unbounded DAILY (no COUNT/UNTIL) still stops at the window ----
+    out3 = occ("FREQ=DAILY", dtstart, dtend,
+              dt.date(2026, 8, 1), dt.date(2026, 8, 31))
+    assert out3[-1][0].date() == dt.date(2026, 8, 31), out3[-1]
+
+    # ---- unsupported FREQ falls back to a single occurrence ----
+    out4 = occ("FREQ=YEARLY", dtstart, dtend,
+              dt.date(2026, 8, 1), dt.date(2026, 8, 31))
+    assert out4 == [(dtstart, dtend)], out4
+
+    # ---- MONTHLY clamps from the ORIGINAL day every time (Jan 31 ->
+    # Feb 28 -> Mar 31), not the previous month's already-clamped day
+    # (which would give Jan 31 -> Feb 28 -> Mar 28, wrong) ----
+    dtstart5 = dt.datetime(2026, 1, 31, 10, 0)
+    dtend5 = dt.datetime(2026, 1, 31, 11, 0)
+    out5 = occ("FREQ=MONTHLY;COUNT=3", dtstart5, dtend5,
+              dt.date(2026, 1, 1), dt.date(2026, 12, 31))
+    assert [o.date() for o, _e in out5] == [
+        dt.date(2026, 1, 31), dt.date(2026, 2, 28), dt.date(2026, 3, 31)], out5
+
+
+def suite_ics_rrule():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    path = os.path.join(tmp, "recurring.ics")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(
+            "BEGIN:VCALENDAR\n"
+            "BEGIN:VEVENT\n"
+            "SUMMARY:Standup\n"
+            "DTSTART:20260803T180000\n"
+            "DTEND:20260803T190000\n"
+            "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4\n"
+            "END:VEVENT\n"
+            "END:VCALENDAR\n")
+    ivs = ns["parse_ics_intervals"](path, dt.date(2026, 8, 1), dt.date(2026, 8, 31))
+    assert ivs == {
+        "2026-08-03": [(time(18, 0), time(19, 0))],
+        "2026-08-05": [(time(18, 0), time(19, 0))],
+        "2026-08-10": [(time(18, 0), time(19, 0))],
+        "2026-08-12": [(time(18, 0), time(19, 0))],
+    }, ivs
+    evs = ns["parse_ics_events"](path, dt.date(2026, 8, 1), dt.date(2026, 8, 31))
+    assert evs == [
+        (dt.date(2026, 8, 3), time(18, 0), time(19, 0), "Standup"),
+        (dt.date(2026, 8, 5), time(18, 0), time(19, 0), "Standup"),
+        (dt.date(2026, 8, 10), time(18, 0), time(19, 0), "Standup"),
+        (dt.date(2026, 8, 12), time(18, 0), time(19, 0), "Standup"),
+    ], evs
+
+    # ---- a non-recurring event alongside it still works normally ----
+    path2 = os.path.join(tmp, "single.ics")
+    with open(path2, "w", encoding="utf-8") as f:
+        f.write(
+            "BEGIN:VCALENDAR\n"
+            "BEGIN:VEVENT\n"
+            "SUMMARY:One-off\n"
+            "DTSTART:20260815T100000\n"
+            "DTEND:20260815T110000\n"
+            "END:VEVENT\n"
+            "END:VCALENDAR\n")
+    evs2 = ns["parse_ics_events"](path2, dt.date(2026, 8, 1), dt.date(2026, 8, 31))
+    assert evs2 == [(dt.date(2026, 8, 15), time(10, 0), time(11, 0), "One-off")], evs2
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -2697,7 +2801,9 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("locked-windows-for-week", suite_locked_windows_for_week),
           ("deadline-feasibility", suite_deadline_feasibility),
           ("todays-plan", suite_todays_plan),
-          ("evening-window", suite_evening_window)]
+          ("evening-window", suite_evening_window),
+          ("rrule", suite_rrule),
+          ("ics-rrule", suite_ics_rrule)]
 
 
 def main():

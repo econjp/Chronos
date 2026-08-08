@@ -60,6 +60,39 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.49 (#117 — recurring (RRULE) calendar events, previously
+silently skipped entirely, 2026-08-08, found during a research pass
+on realistic remaining integrations/automations):
+  - a subscribed calendar's recurring events (a weekly class, a daily
+    standup, a monthly meeting) used to vanish from BOTH capacity math
+    (`parse_ics_intervals`) and the calendar view (`parse_ics_events`)
+    the moment they were declared as RRULE instead of a one-off
+    VEVENT — a real, previously-known risk (HANDOFF's own #117 note),
+    not a hypothetical.
+  - new `_parse_rrule`/`_rrule_occurrences`: a deliberately bounded
+    RRULE parser — real .ics feeds are dominated by a handful of
+    shapes (weekly/daily/monthly, optionally with BYDAY/COUNT/UNTIL),
+    not the full RFC 5545 grammar, and this is a stdlib-only app with
+    no `dateutil` to lean on. Expansion is capped hard (occurrences
+    AND total steps) against a malformed or effectively-unbounded
+    rule, and only computes occurrences actually landing inside the
+    caller's own query window — same "only compute what's asked for"
+    discipline as every other calendar primitive here. Anything
+    outside DAILY/WEEKLY/MONTHLY falls back to the exact pre-#117
+    single-occurrence behavior, never errors.
+  - caught and fixed a real bug while building this: a naive MONTHLY
+    stepping implementation clamping from the PREVIOUS month's already-
+    clamped day would silently drift (Jan 31 -> Feb 28 -> Mar 28
+    instead of Mar 31) — fixed by always clamping from the original
+    anchor day.
+  - new "rrule" selftest suite (parser field extraction, unsupported
+    FREQ, weekly BYDAY+COUNT expansion, window filtering, unbounded-
+    DAILY still window-capped, the MONTHLY day-clamping fix verified
+    explicitly) and "ics-rrule" (end-to-end through real temp .ics
+    files, both `parse_ics_intervals` and `parse_ics_events`, plus a
+    non-recurring event alongside proving nothing regressed); 61/61
+    green.
+
 New in v9.48 (#171 — the PTO-skip suggestion (#137) surfaces up to 3
 matches, not just 1, 2026-08-08):
   - v9.39 returned only the single soonest PTO-looking event matched
@@ -3174,14 +3207,118 @@ def resolve_ics_source(raw, force=False, cache_key=None):
     return cache_path if os.path.exists(cache_path) else raw
 
 
+def _parse_rrule(rrule_str):
+    """Backlog #117: a deliberately bounded RRULE parser — real .ics
+    feeds are dominated by a handful of shapes (a weekly class, a
+    daily standup, a monthly meeting), not the full RFC 5545 grammar,
+    and this is a stdlib-only app with no `dateutil` available to lean
+    on. Supports FREQ (DAILY/WEEKLY/MONTHLY), INTERVAL, COUNT, UNTIL,
+    and BYDAY (weekly only). Anything else in the string is ignored,
+    not fatal. Returns a dict of the recognized parts, or None if
+    FREQ isn't one of the three supported values — the caller then
+    falls back to treating the event as a single non-recurring
+    occurrence, the exact same behavior this file had before RRULE
+    expansion existed at all, so an unsupported rule degrades to the
+    old (safe, if incomplete) handling rather than erroring."""
+    parts = {}
+    for kv in rrule_str.split(";"):
+        if "=" not in kv:
+            continue
+        k, v = kv.split("=", 1)
+        parts[k.strip().upper()] = v.strip()
+    freq = parts.get("FREQ", "").upper()
+    if freq not in ("DAILY", "WEEKLY", "MONTHLY"):
+        return None
+    out = {"freq": freq, "interval": 1}
+    try:
+        out["interval"] = max(1, int(parts.get("INTERVAL", 1)))
+    except ValueError:
+        pass
+    if "COUNT" in parts:
+        try:
+            out["count"] = max(1, int(parts["COUNT"]))
+        except ValueError:
+            pass
+    if "UNTIL" in parts:
+        try:
+            out["until"] = dt.datetime.strptime(parts["UNTIL"][:8], "%Y%m%d").date()
+        except ValueError:
+            pass
+    if "BYDAY" in parts and freq == "WEEKLY":
+        day_map = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
+        days = {tok.strip().upper()[-2:] for tok in parts["BYDAY"].split(",")}
+        days = {day_map[t] for t in days if t in day_map}
+        if days:
+            out["byday"] = days
+    return out
+
+
+def _rrule_occurrences(rrule_str, dtstart, dtend, window_start, window_end,
+                       max_occurrences=500):
+    """Backlog #117: expands one recurring event into its concrete
+    (occurrence_start, occurrence_end) datetime pairs — but ONLY the
+    ones landing inside [window_start, window_end] (plain dates), same
+    "only compute what a caller actually asked to see" discipline as
+    every other calendar primitive here. `max_occurrences` is a hard
+    safety cap (both on real occurrences counted AND on total steps
+    walked) against a malformed or effectively-unbounded rule turning
+    into a runaway loop — real recurring events in practice are
+    nowhere near this bound. Falls back to a single (dtstart, dtend)
+    pair when `_parse_rrule` doesn't recognize the FREQ, matching the
+    pre-RRULE-support behavior exactly for anything genuinely
+    unsupported."""
+    rule = _parse_rrule(rrule_str)
+    if rule is None:
+        return [(dtstart, dtend)]
+    duration = dtend - dtstart
+    freq, interval = rule["freq"], rule["interval"]
+    count, until, byday = rule.get("count"), rule.get("until"), rule.get("byday")
+    hard_stop = dt.datetime.combine(window_end + dt.timedelta(days=1), dt.time())
+    if until is not None:
+        hard_stop = min(hard_stop,
+                        dt.datetime.combine(until + dt.timedelta(days=1), dt.time()))
+    anchor_day = dtstart.day       # backlog #117: MONTHLY must clamp from
+                                    # the ORIGINAL day every time (Jan 31 ->
+                                    # Feb 28 -> Mar 31), not the previous
+                                    # month's clamped day (Jan 31 -> Feb 28
+                                    # -> Mar 28) — a real RFC 5545 subtlety
+    out, cur, seen, steps, month_n = [], dtstart, 0, 0, 0
+    while cur < hard_stop and seen < max_occurrences and steps < max_occurrences * 8:
+        steps += 1
+        if byday is None or cur.weekday() in byday:
+            seen += 1
+            if count is not None and seen > count:
+                break
+            if window_start <= cur.date() <= window_end:
+                out.append((cur, cur + duration))
+        if freq == "DAILY":
+            cur += dt.timedelta(days=interval)
+        elif freq == "WEEKLY":
+            cur += dt.timedelta(days=1) if byday else dt.timedelta(weeks=interval)
+        else:                                             # MONTHLY
+            month_n += 1
+            y, m = dtstart.year, dtstart.month - 1 + interval * month_n
+            y += m // 12
+            m = m % 12 + 1
+            leap = y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
+            last_day = [31, 29 if leap else 28, 31, 30, 31, 30,
+                       31, 31, 30, 31, 30, 31][m - 1]
+            cur = cur.replace(year=y, month=m, day=min(anchor_day, last_day))
+    return out
+
+
 def parse_ics_intervals(path, start, end):
     """{date_iso: [(start_time, end_time), ...]} from an exported .ics,
     window [start, end] — merged, sorted time-of-day ranges per day.
     This is the v8 scheduler's foundation piece: parse_ics_busy (below)
     used to be the only view of this data, a per-day SCALAR that can't
-    say WHERE in the day you're free. Skips all-day events and
-    recurring (RRULE) events — same known limitation as before, see
-    HANDOFF's RRULE backlog item."""
+    say WHERE in the day you're free. Skips all-day events. Backlog
+    #117: recurring (RRULE) events used to be silently skipped
+    entirely — a real risk (a weekly class or standup just vanishing
+    from capacity math) — now expanded via `_rrule_occurrences` for
+    the common DAILY/WEEKLY/MONTHLY shapes; anything genuinely
+    unsupported falls back to the original single-occurrence
+    behavior, same as before this existed."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             text = f.read()
@@ -3192,8 +3329,6 @@ def parse_ics_intervals(path, start, end):
     raw = {}
     for block in text.split("BEGIN:VEVENT")[1:]:
         block = block.split("END:VEVENT")[0]
-        if "RRULE:" in block:
-            continue
 
         def field(name):
             m = re.search(rf"^{name}[^:\n]*:([^\s]+)", block, re.M)
@@ -3211,15 +3346,19 @@ def parse_ics_intervals(path, start, end):
             continue
         if not sdt or not edt or edt <= sdt:
             continue
-        cur = sdt
-        while cur < edt:                       # split multi-day per day
-            nxt = dt.datetime.combine(cur.date() + dt.timedelta(days=1),
-                                      dt.time())
-            seg_end = min(edt, nxt)
-            if start <= cur.date() <= end:
-                iso = cur.date().isoformat()
-                raw.setdefault(iso, []).append((cur.time(), seg_end.time()))
-            cur = seg_end
+        rr = re.search(r"^RRULE:([^\r\n]+)", block, re.M)
+        occurrences = (_rrule_occurrences(rr.group(1), sdt, edt, start, end)
+                      if rr else [(sdt, edt)])
+        for occ_start, occ_end in occurrences:
+            cur = occ_start
+            while cur < occ_end:                # split multi-day per day
+                nxt = dt.datetime.combine(cur.date() + dt.timedelta(days=1),
+                                          dt.time())
+                seg_end = min(occ_end, nxt)
+                if start <= cur.date() <= end:
+                    iso = cur.date().isoformat()
+                    raw.setdefault(iso, []).append((cur.time(), seg_end.time()))
+                cur = seg_end
     return {iso: _merge_time_intervals(ivs) for iso, ivs in raw.items()}
 
 
@@ -3239,11 +3378,11 @@ def parse_ics_events(path, start, end):
     calendar-VIEW sibling of parse_ics_intervals. Capacity math
     (_busy_intervals) only needs merged, unlabeled time ranges; the
     week/month calendar views need to show WHAT'S on, so this keeps
-    each event as its own labeled, unmerged entry instead. Same all-
-    day/RRULE limitations as parse_ics_intervals (see #117) — a
-    rendering source, not a second capacity model, so it deliberately
-    shares those gaps rather than fixing them differently in two
-    places."""
+    each event as its own labeled, unmerged entry instead. Backlog
+    #117: RRULE events now expand via `_rrule_occurrences` the same
+    way `parse_ics_intervals` does — a rendering source, not a second
+    capacity model, so it deliberately shares that fix rather than
+    diverging."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             text = f.read()
@@ -3254,8 +3393,6 @@ def parse_ics_events(path, start, end):
     out = []
     for block in text.split("BEGIN:VEVENT")[1:]:
         block = block.split("END:VEVENT")[0]
-        if "RRULE:" in block:
-            continue
 
         def field(name):
             m = re.search(rf"^{name}[^:\n]*:([^\s]+)", block, re.M)
@@ -3275,14 +3412,18 @@ def parse_ics_events(path, start, end):
             continue
         if not sdt or not edt or edt <= sdt:
             continue
-        cur = sdt
-        while cur < edt:
-            nxt = dt.datetime.combine(cur.date() + dt.timedelta(days=1),
-                                      dt.time())
-            seg_end = min(edt, nxt)
-            if start <= cur.date() <= end:
-                out.append((cur.date(), cur.time(), seg_end.time(), summary))
-            cur = seg_end
+        rr = re.search(r"^RRULE:([^\r\n]+)", block, re.M)
+        occurrences = (_rrule_occurrences(rr.group(1), sdt, edt, start, end)
+                      if rr else [(sdt, edt)])
+        for occ_start, occ_end in occurrences:
+            cur = occ_start
+            while cur < occ_end:
+                nxt = dt.datetime.combine(cur.date() + dt.timedelta(days=1),
+                                          dt.time())
+                seg_end = min(occ_end, nxt)
+                if start <= cur.date() <= end:
+                    out.append((cur.date(), cur.time(), seg_end.time(), summary))
+                cur = seg_end
     return out
 
 

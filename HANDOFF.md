@@ -497,6 +497,15 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.49** (#117, 2026-08-08, DONE). Recurring (RRULE) calendar
+  events used to be silently skipped entirely — a real, previously-
+  known risk. New `_parse_rrule`/`_rrule_occurrences`: a deliberately
+  bounded parser (DAILY/WEEKLY/MONTHLY, BYDAY/COUNT/UNTIL), hard-
+  capped against runaway expansion, falls back to the old single-
+  occurrence behavior for anything unsupported. Caught and fixed a
+  real MONTHLY day-drift bug (Jan 31 -> Feb 28 -> Mar 28 instead of
+  Mar 31) while building it. New "rrule" and "ics-rrule" selftest
+  suites; 61/61 green.
 - **v9.48** (#171, 2026-08-08, DONE). PTO-skip suggestions (#137) now
   surface up to 3 matches per pass instead of just 1 — one "Add skip"
   button per matching commitment row. New `_pto_skip_suggestions`
@@ -3813,24 +3822,16 @@ measuring what's already there.
     for the full design (`parse_csv_busy_export`, extension-based
     dispatch, why Power Automate over a custom Graph API app).
 
-117. **RRULE (true recurring events) silently skipped by
-    `parse_ics_intervals` (TRUST, found 2026-08-07 verifying #114
-    against the owner's real published calendar).** Documented as a
-    known limitation since the original .ics import (v8), but never
-    actually checked against real data until now: fetched the
-    owner's real Aalto Outlook publish link (103 events, live HTTP
-    request, not a mock) and confirmed 0 of them were RRULE-based —
-    Outlook's own "Publish calendar" export happens to expand
-    recurring series into individual one-off VEVENT entries, so this
-    limitation didn't bite in practice for this specific export
-    method. Stays real risk for any OTHER calendar source that keeps
-    events in true recurring form (a raw Exchange/CalDAV sync,
-    potentially a different tool than what's configured now) — those
-    would silently under-count busy time with no error, no warning.
-    Not fixed — low priority since it's currently a non-issue for the
-    live source, but the exact trigger condition to watch for if
-    capacity numbers ever look implausibly free during a semester
-    with recurring lectures/meetings.
+~~117. **RRULE (true recurring events) silently skipped by
+    `parse_ics_intervals`.**~~ — DONE v9.49. See the v9.49 version-
+    history entry above. (TRUST, found 2026-08-07 verifying #114
+    against the owner's real published calendar — a non-issue for
+    that specific source at the time since Outlook's own "Publish
+    calendar" export expands recurring series into one-off VEVENTs,
+    but a real risk for any other calendar source that keeps true
+    recurring form, e.g. a raw Exchange/CalDAV sync. Found and fixed
+    during a 2026-08-08 research pass on realistic remaining
+    integrations/automations, direct owner request.)
 
 118. ~~**Free-time forecast — a simple visual calendar view (owner's
     own ask, 2026-08-07: "calendar view... very simple... easier to
