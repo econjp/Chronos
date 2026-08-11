@@ -497,6 +497,50 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.67** (#191 + #193 + #194, 2026-08-08, DONE). Ported from the
+  Claude Code cloud mobile session's continued branch work (audited:
+  correct author, no AI trailers/mentions, no personal-data leaks,
+  only safe list-form subprocess calls, 85/85 own selftest green — see
+  the "mobile branch continuation" note below). Three ML-push
+  follow-ons landed together: #191 real least-squares regression
+  (`_linreg`) gives deadline projections an R² confidence alongside
+  the landing date; #193 `_hour_signal_scores` ranks same-length
+  lock-window candidates by historical signal% instead of leaving
+  ties to earliest-first; #194 `_metric_anomalies` generalizes
+  `_anomaly_lines`' hand-picked checks to a z-score outlier check over
+  EVERY tracked METRICS key. Also fixed while merging: a real latent
+  bug in `_dl_projection` (used `dt.date.today()` instead of
+  `self.today`, the same bug class #154/v9.36 already fixed at one
+  call site and explicitly deferred fixing everywhere — this was the
+  next site to actually bite, surfaced by a previously date-dependent
+  test flake) — same narrow "fix the one site that bit" scope as
+  v9.36, the other ~13 real `dt.date.today()` sites remain deliberately
+  out of scope. selftest.py also got a crash-safe fallback print for
+  test failure messages containing non-cp1252 characters (⚠ etc.) so
+  Windows console failures stay readable instead of masking the real
+  assertion behind a UnicodeEncodeError. 74/74 green.
+
+  **Mobile branch continuation, 2026-08-08.** The `claude/life-
+  management-platform-arch-6s4hrv` branch kept moving after the
+  earlier merge (see the 2026-07-12 incident log entry) — 62 commits
+  (v9.29-v9.82) accumulated, most already equivalent to work master
+  had independently built in the meantime (confirmed via a function-
+  name diff: only ~43 functions were genuinely new to master).
+  Individual commit-by-commit cherry-pick was attempted first per the
+  standing policy but proved infeasible — the two files have diverged
+  enough (2463+ line delta) that nearly every commit conflicts on
+  context even when the underlying feature is identical. Adapted the
+  audit discipline instead of abandoning it: each genuinely-new
+  FEATURE (not raw commit) is being read from the branch's final
+  implementation, ported into master's current file by hand, verified
+  (compile + selftest), and committed individually and fresh — same
+  audit-before-landing spirit, feature-sized units instead of commit-
+  sized ones since mechanical cherry-pick isn't viable here. Landing
+  in batches across v9.67+; backlog numbers that collide with content
+  master independently proposed under the same number (divergence
+  starts around #201-202, everything before that was shared) get
+  renumbered on landing, noted per entry.
+
 - **v9.66** (#205, 2026-08-08, DONE). Direct owner ask: "WE SHOULD
   CONSIDER HEALTH MORE!!! worklife balance health metrics." #190's
   day-archetype k-means clustering (`_day_feature_vectors` /
@@ -4576,20 +4620,11 @@ polish — the three NOT chosen this round) when continuing this work.
     each day's own shape, plus a scatter-plot visualization.**~~ —
     DONE v9.62. See the v9.62 version-history entry above.
 
-191. **Regression-based confidence for deadline projections (PLANNING;
-    new idea 2026-08-08, the ML push's natural next step for
-    forecasting specifically).** `_dl_projection` already extrapolates
-    a landing date from recent pace, but the number comes bare — no
-    sense of how NOISY that pace actually is, so a wildly erratic
-    week and a rock-steady one produce equally confident-sounding
-    dates. Fix: a real least-squares linear regression (cumulative
-    hours vs day, pure Python — sums of x, y, xy, x² are all this
-    needs, no numpy) over the same trailing window `_dl_velocity`
-    already uses, reporting R² alongside the projected date — "lands
-    ~24.08 (R²=0.31 — noisy pace, treat this loosely)" vs "R²=0.89 —
-    a reliable trend." Same honesty-gate posture as everywhere else:
-    a low R² doesn't hide the projection, it just names how much to
-    trust it.
+~~191. **Regression-based confidence for deadline projections.**~~ —
+    DONE v9.67. See the v9.67 version-history entry above. A real
+    least-squares `_linreg` over cumulative hours vs day names R²
+    alongside the projected landing date, e.g. "(R²=0.89 — a reliable
+    trend)" vs "noisy pace, treat this loosely."
 
 192. **A day-outcome predictor — logistic regression, pure Python
     (PLANNING; new idea 2026-08-08).** #189/#190 both look BACKWARD
@@ -4606,33 +4641,18 @@ polish — the three NOT chosen this round) when continuing this work.
     every statistical feature here, and should stay silent rather than
     output a number built on thin data.
 
-193. **Rank free-time slots by what historically produced good signal,
-    not just chronologically (PLANNING; new idea 2026-08-08, connects
-    #189's correlation engine to actual scheduling).** #167/#182's
-    free-evening and multi-week digest list open slots in date order —
-    but if #189 ever finds "work_h correlates with a morning start"
-    or a similar time-of-day pattern, nothing acts on it. Fix: when
-    picking a slot to suggest (auto-plan #153, the lock-window picker
-    #113), weight candidates by a plain historical score — average
-    signal% logged in sessions that started around that same time of
-    day — so two otherwise-equal free slots aren't presented as
-    equivalent when the owner's own data says one of them usually
-    goes better. A ranking tweak over data already computed, not a
-    new capacity model; ties broken by earliest-first exactly as now.
+~~193. **Rank free-time slots by what historically produced good
+    signal, not just chronologically.**~~ — DONE v9.67. See the v9.67
+    version-history entry above. `_hour_signal_scores` learns average
+    signal% by start hour from history; `_lock_window_candidates`
+    (#113) now breaks same-length-slot ties by it, earliest-first only
+    as the final tiebreak.
 
-194. **Generalized anomaly detection over every METRICS key, not just
-    the hand-picked ones (PLANNING; new idea 2026-08-08, the anomaly-
-    watch counterpart to #189's correlation engine).** `_anomaly_lines`
-    checks a fixed list of signals (sleep-week extremity, etc.) named
-    in advance; #189's correlation engine proved the METRICS system
-    can support fully generic statistics. Fix: for every tracked
-    METRICS key, a plain z-score check — today's (or this week's)
-    value vs that key's own historical mean/stdev — flags anything
-    beyond ±2 standard deviations as a real statistical outlier, using
-    `statistics.mean`/`statistics.stdev` (stdlib) same as everywhere
-    else. Same n>=15 honesty gate as #189; extends the "one parser, no
-    new code per metric" idea one step further — anomaly detection
-    that costs nothing to add per new metric either.
+~~194. **Generalized anomaly detection over every METRICS key, not
+    just the hand-picked ones.**~~ — DONE v9.67. See the v9.67
+    version-history entry above. `_metric_anomalies` z-scores every
+    tracked METRICS key against its own n>=15 history, feeding
+    `_anomaly_lines` alongside the hand-picked checks.
 
 195. **A "quiet week" detector — flag when an upcoming week has
     NOTHING locked or planned at all (PLANNING; new idea 2026-08-08,

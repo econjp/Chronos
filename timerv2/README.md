@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.67 — projection confidence, historical slot ranking, generalized anomalies
+
+Three ML follow-ons: deadline landing dates now come with an R²
+confidence note (a reliable trend vs a noisy one); the lock-window
+picker breaks equal-length tie-slots by which hour of day has
+historically produced more signal work, not just earliest-first; and
+the anomaly watch now checks every tracked METRICS key for real
+statistical outliers, not just the hand-picked ones.
+
 ### v9.66 — day archetypes now factor in real sleep
 
 Day-archetype pattern discovery (Tools → Day archetypes) previously

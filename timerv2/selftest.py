@@ -39,7 +39,7 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "_pick_one_less", "_parse_milestones",
        "_parse_rrule", "_rrule_occurrences", "parse_ics_intervals",
        "parse_ics_events", "_parse_exdates", "_pearson_r",
-       "_sqdist", "_standardize", "_kmeans"}
+       "_sqdist", "_standardize", "_kmeans", "_linreg", "_zscore"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -89,7 +89,9 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_day_feature_vectors", "_day_archetypes", "_day_archetypes_lines",
         "_run_deadline_postmortems", "_deadline_renegotiation_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
-        "_planned_hours_from_file", "_planner_realism_factor"}
+        "_planned_hours_from_file", "_planner_realism_factor",
+        "_dl_projection_confidence", "_metric_anomalies",
+        "_hour_signal_scores", "_lock_window_candidates"}
 STATIC = {"_match_kws", "_pull_level", "_parse_time_loose"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -218,7 +220,7 @@ def suite_projection():
     rate = 2.0 * 4 / 21
     d1 = math.ceil(12.0 / rate)
     assert abs(pr["rate"] - rate) < 1e-9, pr
-    assert pr["land"] == dt.date.today() + dt.timedelta(days=d1), pr
+    assert pr["land"] == d.today + dt.timedelta(days=d1), pr
     assert pr["sooner"] == d1 - math.ceil(12.0 / (rate + 1)) > 0, pr
     assert "you land" in D._projection_line(d, dl)
     d.today = dt.date(2026, 7, 6)          # only 2 intervals in window
@@ -333,11 +335,17 @@ def suite_anomaly():
                              {"name": "Work", "match": "thesis"}],
             _sleep_h=lambda iso: 5.5 if iso >= "2026-07-13" else 7.5,
             _day_signal=lambda day, *a, **k: (5, 60),
-            _health_data=lambda: {})   # _copilot_note now also checks
+            _health_data=lambda: {},  # _copilot_note now also checks
                                        # _running_hot_line; keep it silent
                                        # here so this suite's assertions
                                        # about the OTHER co-pilot sources
                                        # stay unaffected
+            settings={},               # backlog #194: _anomaly_lines now
+                                        # also calls _metric_anomalies ->
+                                        # _metric_series -> _health_data,
+                                        # which needs a real settings dict
+            diary=type("FakeDiary", (), {"get": lambda self, a, b: ""})(),
+            diary_path=lambda dd: "/nonexistent-selftest-path/" + str(dd))
     an = D._anomaly_lines(d)
     assert "worst sleep week" in an[0], an          # severity ranks first
     assert any("20 days since any Finnish" in x for x in an), an
@@ -3340,7 +3348,12 @@ def main():
             print(f"  {name:<14} OK")
         except Exception as e:                        # noqa: BLE001
             failed += 1
-            print(f"  {name:<14} FAIL — {e.__class__.__name__}: {e}")
+            msg = f"  {name:<14} FAIL — {e.__class__.__name__}: {e}"
+            try:
+                print(msg)
+            except UnicodeEncodeError:
+                print(msg.encode(sys.stdout.encoding or "utf-8",
+                                 "replace").decode(sys.stdout.encoding or "utf-8"))
     print(f"{len(SUITES) - failed}/{len(SUITES)} suites green")
     sys.exit(1 if failed else 0)
 

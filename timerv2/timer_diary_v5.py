@@ -60,6 +60,28 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.67 (#191 + #193 + #194 — regression confidence, historical
+lock-window ranking, generalized anomaly detection, 2026-08-08, ported
+from the mobile session's continued branch work):
+  - #191: deadline projections now name how RELIABLE their pace trend
+    is, not just the bare landing date — a real least-squares fit
+    (`_linreg`) of cumulative hours vs day, R² appended: "(R²=0.89 —
+    a reliable trend)" vs "noisy pace, treat this loosely."
+  - #193: `_lock_window_candidates` (the lock-window picker's ranked
+    list) breaks same-length-slot ties by `_hour_signal_scores` —
+    the historical signal% of work that started around that hour —
+    instead of leaving ties to earliest-first only.
+  - #194: `_anomaly_lines` now also runs `_metric_anomalies`, a
+    generic z-score outlier check over EVERY tracked METRICS key
+    (n>=15 history), not just the hand-picked sleep/neglect/drought
+    checks already there.
+  - real bug fixed in passing: `_dl_projection`'s landing-date calc
+    used real `dt.date.today()` instead of `self.today` — same bug
+    class v9.36/#154 fixed at one site and deliberately left elsewhere;
+    this was the next site that actually bit (a date-dependent test
+    flake). Fixed at just this site, same narrow scope as before.
+  - 74/74 selftest green.
+
 New in v9.66 (#205 — day archetypes now cluster on real sleep too,
 not just work shape, 2026-08-08, direct owner ask: "WE SHOULD CONSIDER
 HEALTH MORE!!! like worklife balance health metrics etc"):
@@ -3654,6 +3676,55 @@ def _kmeans(points, k, iters=50, restarts=5, seed=42):
     return best[1], best[2]
 
 
+def _linreg(xs, ys):
+    """Backlog #191: plain least-squares linear regression — slope,
+    intercept, and R² — the textbook closed-form sums-of-products
+    formula, pure Python, no numpy needed for sums of x, y, xy, x².
+    R² is what makes this useful beyond just the slope: it names how
+    much of the actual variation in `ys` the straight line explains,
+    the real statistic behind "reliable trend" vs "noisy pace."
+    Returns None when there isn't enough data to fit a line (fewer
+    than 2 points) or `xs` has zero variance (a vertical line isn't a
+    function of x, undefined here) or `ys` has zero variance (nothing
+    to explain — R² is 0/0, not a free 1.0)."""
+    n = len(xs)
+    if n < 2 or n != len(ys):
+        return None
+    mean_x, mean_y = sum(xs) / n, sum(ys) / n
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    if var_x == 0:
+        return None
+    ss_tot = sum((y - mean_y) ** 2 for y in ys)
+    if ss_tot == 0:
+        return None
+    cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    slope = cov / var_x
+    intercept = mean_y - slope * mean_x
+    ss_res = sum((y - (slope * x + intercept)) ** 2 for x, y in zip(xs, ys))
+    return slope, intercept, 1 - ss_res / ss_tot
+
+
+def _zscore(value, history):
+    """Backlog #194: how many standard deviations `value` sits from the
+    mean of `history` — the actual statistic behind "unusual for you,"
+    not a threshold hand-picked per metric. Sample stdev (n-1 divisor),
+    the same convention the stdlib's own `statistics.stdev` uses.
+    Returns (mean, stdev, z) or None when there's nothing real to
+    compare against (fewer than 2 history points) or history has zero
+    variance — a perfectly constant history has no meaningful "how far
+    off," since one exact repeated value isn't an outlier, it's the
+    only norm that's ever been seen."""
+    n = len(history)
+    if n < 2:
+        return None
+    mean = sum(history) / n
+    var = sum((h - mean) ** 2 for h in history) / (n - 1)
+    if var == 0:
+        return None
+    stdev = math.sqrt(var)
+    return mean, stdev, (value - mean) / stdev
+
+
 def _free_from_busy(win_start, win_end, busy):
     """Free (start, end) time ranges inside [win_start, win_end) once
     `busy` intervals are merged and subtracted — the pure core of
@@ -7246,6 +7317,53 @@ class App(tk.Tk):
                 "active_frac": active / window,
                 "active_days": active, "window": window}
 
+    def _dl_projection_confidence(self, dl, days=21):
+        """Backlog #191: `_dl_projection` already extrapolates a landing
+        date from recent pace, but that number arrives bare — no sense
+        of how NOISY the underlying pace actually is, so a wildly
+        erratic week and a rock-steady one read equally confident. A
+        real least-squares linear regression (`_linreg` above) of
+        cumulative hours worked on this deadline's lens against
+        calendar day, over the same trailing window `_dl_velocity`
+        already uses — R² alongside the trend names how much of the
+        actual day-to-day variation the straight line explains, the
+        real statistic behind "reliable trend" vs "noisy pace." None
+        when there isn't enough real data (same 5-interval honesty
+        gate `_dl_velocity` already uses) or fewer than 3 distinct
+        active days — a line through 2 points is definitionally a
+        perfect fit, meaningless as a confidence signal."""
+        kws = self._match_kws(dl.get("match", ""))
+        cutoff = self.today - dt.timedelta(days=days - 1)
+        per_day, intervals = {}, 0
+        for r in read_rows():
+            if r[1] == "break":
+                continue
+            if kws and not task_matches(r[5], kws):
+                continue
+            try:
+                d = dt.date.fromisoformat(r[0])
+                m = int(r[4])
+            except ValueError:
+                continue
+            if cutoff <= d <= self.today:
+                per_day[d] = per_day.get(d, 0) + m
+                intervals += 1
+        if intervals < 5 or len(per_day) < 3:
+            return None
+        days_sorted = sorted(per_day)
+        start = days_sorted[0]
+        cum = 0.0
+        xs, ys = [], []
+        for d in days_sorted:
+            cum += per_day[d] / 60
+            xs.append((d - start).days)
+            ys.append(cum)
+        reg = _linreg(xs, ys)
+        if reg is None:
+            return None
+        slope, _intercept, r2 = reg
+        return {"slope_h_per_day": slope, "r2": r2, "active_days": len(per_day)}
+
     def _dl_projection(self, dl, days=21):
         """When you ACTUALLY land vs the due date, extrapolated from real
         recent pace — not the 'needed h/day' figure, which silently
@@ -7268,7 +7386,7 @@ class App(tk.Tk):
         rem = p["remaining_h"]
         d1 = math.ceil(rem / rate)
         d2 = math.ceil(rem / (rate + 1.0))               # if +1h/day from now
-        land = dt.date.today() + dt.timedelta(days=d1)
+        land = self.today + dt.timedelta(days=d1)
         return {"land": land, "delta": (land - p["due"]).days, "rate": rate,
                 "avg_active_h": v["avg_active_h"],
                 "active_frac": v["active_frac"], "due": p["due"],
@@ -7295,6 +7413,11 @@ class App(tk.Tk):
                 f"(due {pr['due']:%d.%m})")
         if pr["delta"] > 0 and 0 < pr["sooner"] <= 90:
             line += f".  +1h/day from now → {pr['sooner']}d sooner"
+        conf = self._dl_projection_confidence(dl)
+        if conf is not None:
+            note = ("a reliable trend" if conf["r2"] >= 0.6 else
+                    "noisy pace, treat this loosely")
+            line += f"  (R²={conf['r2']:.2f} — {note})"
         return line
 
     def _locked_vs_worked_hours(self, dl):
@@ -10338,8 +10461,51 @@ class App(tk.Tk):
         if drought >= 3:
             out.append((2.5, f"{drought} straight tracked days at ~0% signal "
                         "— the work's happening, just not on what you named"))
+        # --- backlog #194: every tracked METRICS key, not just the
+        # hand-picked checks above — a real z-score outlier vs its own
+        # history, priority scaled with severity into the same 2.0-3.0
+        # band the neglect/drought checks above already use
+        for key, value, mean, _stdev, z, n in self._metric_anomalies():
+            direction = "above" if z > 0 else "below"
+            out.append((2.0 + min(abs(z) - 2.0, 2.0) / 2.0,
+                       f"{key}: today's {value:g} is {abs(z):.1f}σ "
+                       f"{direction} your {mean:.1f} norm (n={n})"))
         out.sort(key=lambda x: -x[0])
         return [t for _p, t in out][:4]
+
+    def _metric_anomalies(self, days=90, min_n=15, z_thresh=2.0):
+        """Backlog #194: the generalized counterpart to `_anomaly_lines`'
+        hand-picked checks above — the sleep-week extremity check up
+        there is itself just a z-score with extra steps, named in
+        advance for one specific metric. Extended here to EVERY tracked
+        METRICS key via #189's own `_metric_series`, not just the ones
+        a developer thought to write a bespoke check for — the "one
+        parser, no new code per metric" idea #189 already applied to
+        correlation, applied once more to anomaly-watching. For each
+        key with a real value logged TODAY and >= min_n days of prior
+        history to compare against (today itself excluded from its own
+        baseline, so it can't inflate the very norm it's being judged
+        against), a plain z-score beyond z_thresh standard deviations
+        is a real statistical outlier. Returns [(key, value, mean,
+        stdev, z, n), ...] sorted by |z| descending."""
+        series = self._metric_series(days)
+        today_iso = self.today.isoformat()
+        out = []
+        for key, vals in series.items():
+            if today_iso not in vals:
+                continue
+            history = [v for iso, v in vals.items() if iso != today_iso]
+            if len(history) < min_n:
+                continue
+            z = _zscore(vals[today_iso], history)
+            if z is None:
+                continue
+            mean, stdev, zscore = z
+            if abs(zscore) >= z_thresh:
+                out.append((key, vals[today_iso], mean, stdev, zscore,
+                           len(history)))
+        out.sort(key=lambda t: -abs(t[4]))
+        return out
 
     def _copilot_note(self):
         """The single most important proactive line for the morning header
@@ -11653,12 +11819,23 @@ class App(tk.Tk):
         in), and keeps days with at least `min_hours` in one sitting.
         Ranked biggest-block-first: a full open weekend day naturally
         outranks a fragmented weekday, the same way eyeballing a
-        calendar would — no separate peak-hour weighting, deliberately
-        kept simple."""
+        calendar would. Backlog #193: two slots with the SAME hour
+        count used to be presented as equivalent, tie-broken only by
+        earliest-first — but #189's correlation engine already proved
+        the data can say more than that. Ties now break by
+        `_hour_signal_scores` — the historical signal% of work that
+        started around that slot's own start hour — so a slot that
+        opens during your historically strongest hours outranks an
+        equal-length slot during a historically weak one; earliest-
+        first remains the final tiebreak when even that's equal (or
+        when there's no SIGNAL declared / not enough history to score
+        by, the same silent no-op degrade every other honesty-gated
+        feature here uses)."""
         try:
             due = dt.date.fromisoformat(dl["date"])
         except (KeyError, ValueError, TypeError):
             return []
+        scores = self._hour_signal_scores()
         out = []
         d = self.today
         while d <= due:
@@ -11667,10 +11844,44 @@ class App(tk.Tk):
                 s, e = max(slots, key=lambda se: _time_span_hours(*se))
                 hours = _time_span_hours(s, e)
                 if hours >= min_hours:
-                    out.append({"date": d, "start": s, "end": e, "hours": hours})
+                    score = scores.get(s.hour) if scores else None
+                    out.append({"date": d, "start": s, "end": e,
+                               "hours": hours, "historical_score": score})
             d += dt.timedelta(days=1)
-        out.sort(key=lambda w: -w["hours"])
+        out.sort(key=lambda w: (-w["hours"], -(w["historical_score"] or 0.0)))
         return out
+
+    def _hour_signal_scores(self, days=90, min_minutes=180):
+        """Backlog #193: average SIGNAL fraction of work that started in
+        each hour of the day, learned from history — a different axis
+        than `_hour_quality`, which measures raw work VOLUME by hour.
+        This measures QUALITY: of the work that happened starting in a
+        given hour, how much of it actually landed on today's declared
+        SIGNAL (`_signal_kws`), not just how much work happened at
+        all. {hour: signal_fraction in [0, 1]}; an hour with under
+        `min_minutes` tracked in it is left out entirely — nothing
+        reliable to report for it, not a misleading 0%. None when no
+        SIGNAL is declared at all, or nothing anywhere clears the
+        gate."""
+        kws = self._signal_kws()
+        if not kws:
+            return None
+        cutoff = (self.today - dt.timedelta(days=days)).isoformat()
+        by_hour_total, by_hour_signal = {}, {}
+        for r in read_rows():
+            if r[1] == "break" or r[0] < cutoff:
+                continue
+            try:
+                h = int(r[2].split(":")[0]) % 24
+                m = int(r[4])
+            except (ValueError, IndexError):
+                continue
+            by_hour_total[h] = by_hour_total.get(h, 0) + m
+            if task_matches(r[5], kws):
+                by_hour_signal[h] = by_hour_signal.get(h, 0) + m
+        scores = {h: by_hour_signal.get(h, 0) / total
+                 for h, total in by_hour_total.items() if total >= min_minutes}
+        return scores or None
 
     def _auto_plan_week(self, start=None, max_block_h=4.0, weeks=1):
         """Backlog #153 + #162: "auto-plan my week" — the owner's own
