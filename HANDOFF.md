@@ -497,6 +497,45 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.68** (#185 + #186 + #187 + #188 + #196 + reminders evolution
+  #214/#215/#216, 2026-08-08, DONE). Second batch from the mobile
+  branch continuation (see the v9.67 entry's "Mobile branch
+  continuation" note). #185: `resolve_ics_source` now snapshots the
+  cache to a `.prev` sibling right before each real refetch;
+  `_calendar_delta`/`_calendar_delta_lines` diff old vs new by
+  (date, summary) and surface "CALENDAR CHANGES since last check" in
+  the morning header. #196: `_locked_calendar_collisions` reuses that
+  diff to flag a locked window that now overlaps an added/moved
+  event — a real gap #145's "locked window passed unworked" check
+  never covered (a lock created BEFORE the conflicting event existed).
+  #186: `_multiweek_digest_lines` folds in recurring reminders (due-
+  that-day) and the #184 unconfirmed-plan tag, previously daily-header
+  only. #188: a reminder's optional `est_h` now subtracts from that
+  day's counted free hours in the digest, floored at 0. #187:
+  `_repeating_calendar_event_suggestion`/`_line` mirrors #169's
+  repeating-plan detection for subscribed-calendar events ("Trivia
+  night" showing up 3 Tuesdays running gets a quiet FYI), surfaced in
+  the Free Evenings window. The recurring-reminders subsystem itself
+  was substantially evolved and re-landed as one coherent unit rather
+  than three separately-numbered items, since master's own #204/#207/
+  #208 were already claimed by different (already-shipped) features —
+  renumbered on landing: **#214** reliability ledger (`_reminder_
+  lateness_stats`, a "X.Xd late on avg" mirror on each row, same
+  spirit as #33's commitment-reliability ledger), **#215** next-
+  occurrence live preview in the editor (`_reminder_next_occurrences`,
+  updates as interval/last-done fields change), **#216** a "Snooze 3d"
+  action distinct from "Mark done" (defers the daily nudge only,
+  never touches last_done/interval, so it can't corrupt #214's
+  lateness math). All ported by hand from the branch's final
+  implementation (not per-commit cherry-pick — see v9.67's note on
+  why), verified, with 5 new selftest suites (calendar-delta, locked-
+  calendar-collisions, repeating-calendar-event, metric-anomalies,
+  hour-signal-scores) plus the existing multiweek-digest/recurring-
+  reminders suites extended to cover the fold-ins. Also fixed in
+  passing: selftest's exec sandbox was missing `hashlib` (needed by
+  `_source_cache_key`) — added to the namespace `fresh()` builds.
+  79/79 green.
+
 - **v9.67** (#191 + #193 + #194, 2026-08-08, DONE). Ported from the
   Claude Code cloud mobile session's continued branch work (audited:
   correct author, no AI trailers/mentions, no personal-data leaks,
@@ -4551,63 +4590,39 @@ polish — the three NOT chosen this round) when continuing this work.
 184. ~~**Plan confirmation staleness nudge.**~~ — DONE v9.60. See the
     v9.60 version-history entry above.
 
-185. **Calendar change/delta digest — "what's new since I last
-    checked" (PLANNING; new idea 2026-08-08).** #178's ICS cache
-    already re-fetches a subscribed calendar on an interval and keeps
-    the previous fetch on disk until the new one lands — but nothing
-    ever DIFFS the two. The owner still has to re-scan the whole
-    calendar by eye to notice a meeting got added, moved, or cancelled
-    since they last looked, which is exactly the manual-checking
-    overhead this whole session's push has been chipping away at. Fix:
-    before `resolve_ics_source` overwrites the cached file with a
-    fresh fetch, parse both old and new with `parse_ics_events` over
-    the same window and diff by (uid or date+summary) — "2 new: Team
-    sync 11.08 14:00; Dentist moved 12.08 09:00→11:00" — surfaced once
-    in the morning header, same silent-unless-something-changed
-    posture as everything else here.
+~~185. **Calendar change/delta digest — "what's new since I last
+    checked".**~~ — DONE v9.68. See the v9.68 version-history entry
+    above.
 
-186. **Multi-week digest gains recurring reminders + the stale-plan
-    nudge inline (PLANNING; new idea 2026-08-08).** #182/#183/#184 all
-    shipped this session but don't talk to each other yet — the
-    digest's day-by-day lines show free hours, locked windows, and
-    plans, but a recurring admin reminder due that day or an
-    unconfirmed plan inside 48h only ever show in the daily header,
-    not in the multi-week glance that's supposed to be the one place
-    "everything weeks ahead" lives. Fix: `_multiweek_digest_lines`
-    folds in `_recurring_reminders_due` and the same confirmed-check
-    `_stale_plan_line` uses, per day — no new data, the exact primitives
-    both already-shipped features already compute.
+~~186. **Multi-week digest gains recurring reminders + the stale-plan
+    nudge inline.**~~ — DONE v9.68. See the v9.68 version-history
+    entry above.
 
-187. **Detect a repeating event on a subscribed display-only calendar,
-    same idea as #169 but for events instead of one-off plans
-    (PLANNING; new idea 2026-08-08).** #169 already notices when a
-    hand-typed one-off PLAN repeats weekly and offers to convert it to
-    a real recurring commitment. #181's event overlay pulls in a
-    display-only calendar's events but treats every occurrence as a
-    fresh surprise — if "Trivia night @ The Pub" shows up via
-    `_calendar_events` on three Tuesdays running, that's the owner
-    re-noticing the same recurring thing by hand each week, exactly
-    the "still manually checking" pattern the whole #181 line of work
-    exists to remove. Fix: reuse #169's own grouping logic
-    (`_repeating_plan_suggestion`'s (label, weekday) + tolerance
-    approach) over `_calendar_events` output instead of
-    `protected_windows`, surfaced as a plain FYI note, not an
-    auto-added commitment.
+~~187. **Detect a repeating event on a subscribed display-only
+    calendar, same idea as #169 but for events instead of one-off
+    plans.**~~ — DONE v9.68. See the v9.68 version-history entry
+    above.
 
-188. **Recurring admin reminders can carry an optional time cost that
-    feeds the week's capacity math (PLANNING; new idea 2026-08-08).**
-    #183 shipped reminders as pure date nudges — zero duration, by
-    design, since most admin chores are quick. But some aren't ("file
-    taxes" can eat a real afternoon), and right now #182's digest and
-    #42's week-ahead line have no way to know that — the hour gets
-    "remembered" but never actually PLANNED for, silently eating into
-    whatever else that day's free hours were counted toward. Fix: an
-    optional `est_h` field on a `recurring_reminders` entry; when set
-    and the reminder is due inside the current week, subtract it from
-    that day's counted free hours in the digest/week-ahead lines, same
-    "compose, don't recompute" pattern as every other capacity
-    adjustment here. Omit the field entirely and behavior is unchanged
-    — a quiet chore stays a quiet nudge.
+~~188. **Recurring admin reminders can carry an optional time cost
+    that feeds the week's capacity math.**~~ — DONE v9.68. See the
+    v9.68 version-history entry above.
+
+~~214. **A reliability ledger for recurring admin reminders — same
+    idea as #33's commitment-reliability ledger.**~~ — DONE v9.68 (was
+    #204 on the mobile branch; renumbered on landing since master's
+    own #204 was already claimed by the health-staleness check). See
+    the v9.68 version-history entry above.
+
+~~215. **A live next-occurrence preview in the recurring-reminders
+    editor.**~~ — DONE v9.68 (was #207 on the mobile branch;
+    renumbered — master's own #207 was already the crash-recovery
+    heartbeat fix). See the v9.68 version-history entry above.
+
+~~216. **A "Snooze" action for recurring reminders, distinct from
+    "Mark done".**~~ — DONE v9.68 (was #208 on the mobile branch;
+    renumbered — master's own #208 is the still-open read_rows cache
+    staleness investigation, unrelated). See the v9.68 version-history
+    entry above.
 
 189. ~~**A real metric correlation engine — Pearson r across every
     tracked daily metric, not another hand-picked heuristic.**~~ —
@@ -4671,23 +4686,9 @@ polish — the three NOT chosen this round) when continuing this work.
     yet — worth an Auto-plan pass?" No new primitive, just naming the
     zero case the same honesty-gate machinery already tracks.
 
-196. **Locked windows re-checked against freshly-detected calendar
-    changes (PLANNING — connects #185's still-open calendar-delta
-    digest with #136's locked-window credit and #145's missed-lock
-    nudge, a genuinely new failure mode neither covers; new idea
-    2026-08-08).** #145 catches a locked window that quietly passed
-    unworked; #185 (open) would catch a calendar event appearing/
-    moving/vanishing since the last fetch — but nothing connects them
-    yet: a locked window created BEFORE a new calendar event showed up
-    can now silently collide in the real world, and the app has no way
-    to notice since `_free_slots` only re-checks busy time going
-    FORWARD from locking, never re-validates an existing lock against
-    calendar data that arrived after. Fix: when #185's diff finds a
-    new/moved event, check it against every FUTURE `locked_windows`
-    entry for real overlap; if one exists, one line — "TUTA's locked
-    Thu 14:00-18:00 now overlaps a newly added 'Team sync' — re-lock?"
-    Reuses #185's diff and #136's own overlap-check shape, no new
-    concept.
+~~196. **Locked windows re-checked against freshly-detected calendar
+    changes.**~~ — DONE v9.68. See the v9.68 version-history entry
+    above.
 
 197. **Correlate social-plan density against next-day output — turn
     #168's assumed threshold into a measured one (PLANNING — connects

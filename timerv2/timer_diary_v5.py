@@ -60,6 +60,26 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.68 (#185 + #186 + #187 + #188 + #196 + reminder evolution
+#214/#215/#216 — calendar-change awareness, digest/reminder fold-ins,
+2026-08-08, ported from the mobile session's continued branch work):
+  - #185: calendar sources now snapshot before every real refetch;
+    "CALENDAR CHANGES since last check" appears in the morning header
+    when something was added/removed/moved on a subscribed calendar.
+  - #196: locked windows are re-checked against those same changes —
+    a lock made before a conflicting event showed up now gets flagged
+    ("TUTA's locked 11:30-12:30 now overlaps 'Dentist' — re-lock?").
+  - #186 + #188: the multi-week digest now shows recurring reminders
+    due that day, the #184 unconfirmed-plan tag, and subtracts a
+    reminder's optional est_h from that day's counted free hours.
+  - #187: a calendar event repeating on the same weekday 3+ times gets
+    a quiet FYI in Free Evenings, same idea as #169's plan detection.
+  - the recurring-reminders editor gained a reliability ledger
+    ("2.1d late on avg, n=5"), a live next-3-occurrences preview as
+    you type, and a "Snooze 3d" action kept deliberately separate from
+    "Mark done" so it can't corrupt the lateness math.
+  - 5 new selftest suites; 79/79 green.
+
 New in v9.67 (#191 + #193 + #194 — regression confidence, historical
 lock-window ranking, generalized anomaly detection, 2026-08-08, ported
 from the mobile session's continued branch work):
@@ -3566,6 +3586,43 @@ def _time_span_hours(s, e):
             - dt.datetime.combine(dt.date.min, s)).total_seconds() / 3600
 
 
+def _reminder_lateness_stats(history):
+    """Backlog #204: same idea as #33's commitment-reliability ledger,
+    applied to recurring admin reminders (#183) — an honest mirror of
+    how consistently a reminder actually gets done relative to when it
+    was due, no scoring, no gating. `history`: [{"due": iso, "done":
+    iso}, ...], one entry appended by the "Mark done" flow each time a
+    cycle completes, BEFORE last_done gets overwritten (so the due
+    date recorded is always the real one that cycle was measured
+    against, not a value already reset by the click itself). Returns
+    (avg_days_late, n), or None with no valid entries — positive means
+    late on average, negative means early."""
+    deltas = []
+    for h in history:
+        try:
+            due = dt.date.fromisoformat(h["due"])
+            done = dt.date.fromisoformat(h["done"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        deltas.append((done - due).days)
+    if not deltas:
+        return None
+    return sum(deltas) / len(deltas), len(deltas)
+
+
+def _reminder_next_occurrences(last_done, interval_days, n=3):
+    """Backlog #207: the next `n` computed due dates for a recurring
+    admin reminder — the exact same date arithmetic
+    `_recurring_reminders_all` already does, run eagerly against
+    whatever's currently typed in the editor (not just after Save) so
+    a typo (interval 90 meant as 9, a last_done a year stale) shows
+    its consequence immediately instead of surfacing later as a
+    confusing nudge. Pure: no settings, no self, just the arithmetic —
+    the editor calls it live as the fields change."""
+    return [last_done + dt.timedelta(days=interval_days * i)
+           for i in range(1, n + 1)]
+
+
 def _pearson_r(xs, ys):
     """Backlog #189: plain Pearson correlation coefficient between two
     equal-length numeric series — the actual statistic behind "these
@@ -3825,6 +3882,17 @@ def resolve_ics_source(raw, force=False, cache_key=None, refresh_min=None):
         try:
             with urllib.request.urlopen(url, timeout=10) as resp:
                 data = resp.read()
+            # backlog #185: snapshot what the cache held right before
+            # this fetch overwrites it — the raw material the calendar
+            # change/delta digest diffs against, so "what's new since
+            # I last checked" has an actual "before" to compare to.
+            # Only on a REAL refetch (not every call — most calls hit
+            # the not-stale path above and change nothing).
+            if os.path.exists(cache_path):
+                try:
+                    shutil.copy2(cache_path, cache_path + ".prev")
+                except OSError:
+                    pass
             with open(cache_path, "wb") as f:
                 f.write(data)
         except (urllib.error.URLError, OSError, ValueError):
@@ -6276,6 +6344,62 @@ class App(tk.Tk):
                         "dates": [d.isoformat() for d, _m, _l, _e in items]}
         return best
 
+    def _repeating_calendar_event_suggestion(self, days=60, n_min=3,
+                                             tolerance_min=45):
+        """Backlog #187: the exact same idea as #169's repeating-plan
+        detection, applied to EVENTS pulled from a subscribed calendar
+        (#114/#181) instead of hand-typed one-off plans — if "Trivia
+        night @ The Pub" shows up via `_calendar_events` on three
+        Tuesdays running, that's the owner re-noticing the same
+        recurring thing by hand each week, exactly the "still manually
+        checking" pattern #181's event overlay exists to remove.
+        Groups PAST calendar events (the last `days` days, so it only
+        ever reflects things that actually happened, not a partial
+        future pattern) by (normalized summary, weekday); a group with
+        >=n_min occurrences whose start times all land within
+        `tolerance_min` minutes of each other is a real pattern, same
+        n>=3 honesty-gate sample size #126/#169 already use. Returns a
+        dict describing the strongest match — {"summary", "weekday",
+        "count", "avg_start", "end", "dates"} — or None. Never adds
+        anything itself, same "suggest, don't auto-apply" posture as
+        #169 — a genuine pattern is worth naming, not silently turning
+        into a standing commitment behind the owner's back."""
+        start = self.today - dt.timedelta(days=days)
+        events = self._calendar_events(start, self.today)
+        groups = {}
+        for d, st, en, summary in events:
+            summary = (summary or "").strip()
+            if not summary:
+                continue
+            key = (summary.lower(), d.weekday())
+            groups.setdefault(key, []).append(
+                (d, st.hour * 60 + st.minute, summary, f"{en:%H:%M}"))
+        best = None
+        for (_summary_lc, wd), items in groups.items():
+            if len(items) < n_min:
+                continue
+            mins = [m for _d, m, _s, _e in items]
+            if max(mins) - min(mins) > tolerance_min:
+                continue
+            n = len(items)
+            if best is None or n > best["count"]:
+                items.sort()
+                avg_min = round(sum(mins) / n)
+                best = {"summary": items[0][2], "weekday": wd, "count": n,
+                        "avg_start": f"{avg_min // 60:02d}:{avg_min % 60:02d}",
+                        "end": items[-1][3],
+                        "dates": [d.isoformat() for d, _m, _s, _e in items]}
+        return best
+
+    def _repeating_calendar_event_line(self):
+        rep = self._repeating_calendar_event_suggestion()
+        if not rep:
+            return None
+        wd_name = self._WEEKDAY_NAMES[rep["weekday"]]
+        return (f"FYI: '{rep['summary']}' seems to repeat every {wd_name} "
+               f"~{rep['avg_start']} ({rep['count']}x recently) — worth "
+               "checking each time, or basically routine now?")
+
     _PTO_KEYWORDS = ("vacation", "loma", "pto", "out of office", "ooo",
                      "sick", "sairas", "holiday")
 
@@ -6535,38 +6659,131 @@ class App(tk.Tk):
         Deadlines. "Mark done today" only fills today's date into that
         row's Last-done entry; Save is still what actually persists it
         — same edit-then-save discipline every suggestion button in
-        this app already follows (#126/#169/#171's skip suggestions)."""
+        this app already follows (#126/#169/#171's skip suggestions).
+        Backlog #208: "Snooze 3d" is deliberately a SEPARATE action
+        from "Mark done" — sometimes the honest answer isn't "done,"
+        it's "not now, ask me again in a few days," and lying by
+        marking it done early would corrupt #204's lateness tracking
+        the moment that ships. Snoozing only fills the Snoozed-until
+        column; it never touches Last done or the interval. Backlog
+        #207: a small live preview under each row shows the next 3
+        computed due dates as interval/last-done change — a typo
+        (interval 90 meant as 9, a last_done a year stale) shows its
+        consequence immediately instead of surfacing later as a
+        confusing nudge, reusing `_reminder_next_occurrences`'s exact
+        arithmetic against the in-progress form, not just after Save.
+        Backlog #204: same idea as #33's commitment-reliability
+        ledger, applied here — "Mark done" now records {"due", "done"}
+        into the entry's own `history` before overwriting last_done,
+        and a plain "X.Xd late on avg (n=N)" label shows the honest
+        mirror right on the row, no scoring, no gating. Backlog #188:
+        an optional "Est. hours" column — blank means "quick, costs
+        nothing" (unchanged default behavior); a real number subtracts
+        from that day's counted free hours in the multi-week digest on
+        the reminder's own due day, for the rare chore that actually
+        eats real time."""
         win = tk.Toplevel(self)
         win.title("Recurring admin reminders (visa renewal, subscription review...)")
         win.resizable(False, False)
         win.grab_set()
         cols = ("Name", "Every N days", "Last done (YYYY-MM-DD, blank=today)",
-                "Remind N days ahead")
+                "Remind N days ahead", "Snoozed until (YYYY-MM-DD, blank=none)",
+                "Est. hours (blank=quick)")
         for c, lbl in enumerate(cols):
             ttk.Label(win, text=lbl).grid(row=0, column=c, padx=4, pady=(8, 2))
         cur = self.settings.get("recurring_reminders", [])
         n_rows = max(6, len(cur))
         grid = []
+        previews = []
+        lateness_labels = []
+        histories = [list((cur[i] if i < len(cur) else {}).get("history", []))
+                    for i in range(n_rows)]
         for i in range(n_rows):
             r = cur[i] if i < len(cur) else {}
             row = []
             for c, key in enumerate(("name", "interval_days", "last_done",
-                                     "lookahead_days")):
+                                     "lookahead_days", "snoozed_until",
+                                     "est_h")):
                 e = ttk.Entry(win, width=24 if c == 0 else 14)
                 e.insert(0, str(r.get(key, "")) if r.get(key, "") != "" else "")
                 e.grid(row=i + 1, column=c, padx=4, pady=2)
                 row.append(e)
 
             def mark_done(i=i):
+                # backlog #204: record the cycle that's ending — the
+                # due date this click is actually satisfying, computed
+                # from the CURRENT (about-to-be-overwritten) fields —
+                # before last_done gets reset, so #204's lateness
+                # ledger has something real to measure against.
+                try:
+                    interval = int(grid[i][1].get().strip())
+                    last_raw = grid[i][2].get().strip()
+                    last_done = (dt.date.fromisoformat(last_raw) if last_raw
+                                else self.today)
+                    due = last_done + dt.timedelta(days=interval)
+                    histories[i].append({"due": due.isoformat(),
+                                        "done": self.today.isoformat()})
+                except (ValueError, TypeError):
+                    pass   # malformed row: nothing sane to record, skip silently
                 grid[i][2].delete(0, "end")
                 grid[i][2].insert(0, self.today.isoformat())
+                grid[i][4].delete(0, "end")   # a completed chore isn't snoozed
+                refresh_preview(i)
             ttk.Button(win, text="Mark done today", command=mark_done).grid(
-                row=i + 1, column=4, padx=4, pady=2)
+                row=i + 1, column=6, padx=4, pady=2)
+
+            def snooze(i=i):
+                grid[i][4].delete(0, "end")
+                grid[i][4].insert(0, (self.today + dt.timedelta(days=3)).isoformat())
+            ttk.Button(win, text="Snooze 3d", command=snooze).grid(
+                row=i + 1, column=7, padx=4, pady=2)
+
+            preview = ttk.Label(win, text="", foreground="#2e6da4",
+                               font=("Segoe UI", 8))
+            preview.grid(row=i + 1, column=8, sticky="w", padx=(8, 4))
+            previews.append(preview)
+
+            lateness = ttk.Label(win, text="", foreground="#777777",
+                                font=("Segoe UI", 8))
+            lateness.grid(row=i + 1, column=9, sticky="w", padx=(8, 4))
+            lateness_labels.append(lateness)
+            stats = _reminder_lateness_stats(histories[i])
+            if stats:
+                avg, n = stats
+                verb = "late" if avg > 0 else "early" if avg < 0 else "on time"
+                lateness.config(text=f"{abs(avg):.1f}d {verb} on avg (n={n})")
+
             grid.append(row)
+
+        def refresh_preview(i):
+            interval_raw = grid[i][1].get().strip()
+            last_raw = grid[i][2].get().strip()
+            try:
+                interval = int(interval_raw)
+                last_done = (dt.date.fromisoformat(last_raw) if last_raw
+                            else self.today)
+                assert interval > 0
+            except (ValueError, AssertionError):
+                previews[i].config(text="")
+                return
+            next3 = _reminder_next_occurrences(last_done, interval)
+            previews[i].config(text="next: " + ", ".join(
+                f"{d:%d.%m}" for d in next3))
+            stats = _reminder_lateness_stats(histories[i])
+            if stats:
+                avg, n = stats
+                verb = "late" if avg > 0 else "early" if avg < 0 else "on time"
+                lateness_labels[i].config(
+                    text=f"{abs(avg):.1f}d {verb} on avg (n={n})")
+
+        for i in range(n_rows):
+            grid[i][1].bind("<KeyRelease>", lambda e, i=i: refresh_preview(i))
+            grid[i][2].bind("<KeyRelease>", lambda e, i=i: refresh_preview(i))
+            refresh_preview(i)
 
         def save():
             out = []
-            for row in grid:
+            for i, row in enumerate(grid):
                 name = row[0].get().strip()
                 if not name:
                     continue
@@ -6594,14 +6811,39 @@ class App(tk.Tk):
                         APP_NAME, f"'{name}'s lookahead must be a whole "
                                  "number of days.", parent=win)
                     return
-                out.append({"name": name, "interval_days": interval,
-                           "last_done": last_done, "lookahead_days": lookahead})
+                entry = {"name": name, "interval_days": interval,
+                        "last_done": last_done, "lookahead_days": lookahead}
+                snooze_raw = row[4].get().strip()
+                if snooze_raw:
+                    try:
+                        entry["snoozed_until"] = dt.date.fromisoformat(
+                            snooze_raw).isoformat()
+                    except ValueError:
+                        messagebox.showerror(
+                            APP_NAME, f"Use YYYY-MM-DD for '{name}'s "
+                                     "snoozed-until date.", parent=win)
+                        return
+                est_raw = row[5].get().strip()
+                if est_raw:
+                    try:
+                        est_h = float(est_raw.replace(",", "."))
+                        assert est_h > 0
+                    except (ValueError, AssertionError):
+                        messagebox.showerror(
+                            APP_NAME, f"'{name}'s estimated hours must be a "
+                                     "positive number, or leave it blank.",
+                            parent=win)
+                        return
+                    entry["est_h"] = est_h
+                if histories[i]:
+                    entry["history"] = histories[i]
+                out.append(entry)
             self.settings["recurring_reminders"] = out
             save_settings(self.settings)
             win.destroy()
 
         ttk.Button(win, text="Save", command=save).grid(
-            row=n_rows + 1, column=3, sticky="e", padx=4, pady=8)
+            row=n_rows + 1, column=4, sticky="e", padx=4, pady=8)
 
     def _set_target(self):
         cur = self.settings.get("target_min", 0)
@@ -8523,6 +8765,12 @@ class App(tk.Tk):
         stale_line = self._stale_plan_line()
         if stale_line:
             parts.append(stale_line)
+        delta_lines = self._calendar_delta_lines()
+        if delta_lines:
+            parts += ["", *delta_lines]
+        collision_lines = self._locked_calendar_collisions()
+        if collision_lines:
+            parts += collision_lines
         parts += self._day_schedule_lines()
         if self.today.weekday() == 0:
             parts += self._week_review_block()
@@ -11692,6 +11940,52 @@ class App(tk.Tk):
                           for _d, s, e, name in sorted(windows, key=lambda w: w[1]))
         return f"locked today: {parts}"
 
+    def _recurring_reminders_all(self):
+        """Backlog #186: every recurring reminder's own due date,
+        before any lookahead filtering — the raw material both
+        `_recurring_reminders_due` (gated to each entry's own
+        lookahead_days, for the daily nudge) and the multi-week digest
+        (which IS the lookahead — a reminder due in 3 weeks belongs on
+        its own day in a 3-week digest even if its lookahead_days is
+        7) build from, without duplicating the date arithmetic twice.
+        Returns [(name, due_date, lookahead_days, snoozed_until,
+        est_h), ...] — snoozed_until is a date or None (backlog #208);
+        est_h is a float or None (backlog #188: most admin chores are
+        quick and shouldn't claim real capacity, but some genuinely
+        aren't — "file taxes" can eat a real afternoon — so an entry
+        MAY optionally declare how many hours it actually costs, for
+        the digest/week-ahead capacity math to subtract on its due
+        day). Malformed entries silently skipped; a malformed snooze
+        or est_h just reads as "not set" rather than dropping the
+        whole entry."""
+        out = []
+        for r in self.settings.get("recurring_reminders", []):
+            try:
+                interval = int(r["interval_days"])
+                last_done = dt.date.fromisoformat(r["last_done"])
+                lookahead = int(r.get("lookahead_days", 7))
+            except (KeyError, ValueError, TypeError):
+                continue
+            snoozed_until = None
+            su = r.get("snoozed_until")
+            if su:
+                try:
+                    snoozed_until = dt.date.fromisoformat(su)
+                except ValueError:
+                    snoozed_until = None
+            est_h = None
+            eh = r.get("est_h")
+            if eh not in (None, ""):
+                try:
+                    est_h = float(eh)
+                    if est_h <= 0:
+                        est_h = None
+                except (TypeError, ValueError):
+                    est_h = None
+            out.append((r.get("name", ""), last_done + dt.timedelta(days=interval),
+                       lookahead, snoozed_until, est_h))
+        return out
+
     def _recurring_reminders_due(self):
         """Backlog #183: direct response to "planning etc ADMIN
         generally takes a big chunk of my life" — a recurring admin
@@ -11705,19 +11999,21 @@ class App(tk.Tk):
         could ever lock time against. Returns [(name, due_date,
         days_left), ...] soonest-first, only entries already inside
         their own lookahead window (days_left <= lookahead — negative
-        means overdue, still shown, not dropped)."""
+        means overdue, still shown, not dropped). Backlog #208: an
+        entry with a real `snoozed_until` in the future is skipped
+        here entirely, a plain defer that touches neither
+        interval_days nor last_done — the multi-week digest (via
+        `_recurring_reminders_all` directly) deliberately does NOT
+        respect a snooze, since a snooze defers the daily NAG, not the
+        real due date a forward-looking digest should keep showing
+        honestly."""
         out = []
-        for r in self.settings.get("recurring_reminders", []):
-            try:
-                interval = int(r["interval_days"])
-                last_done = dt.date.fromisoformat(r["last_done"])
-                lookahead = int(r.get("lookahead_days", 7))
-            except (KeyError, ValueError, TypeError):
+        for name, due, lookahead, snoozed_until, _est_h in self._recurring_reminders_all():
+            if snoozed_until and self.today < snoozed_until:
                 continue
-            due = last_done + dt.timedelta(days=interval)
             days_left = (due - self.today).days
             if days_left <= lookahead:
-                out.append((r.get("name", ""), due, days_left))
+                out.append((name, due, days_left))
         out.sort(key=lambda x: x[1])
         return out
 
@@ -12872,6 +13168,116 @@ class App(tk.Tk):
             return ICS_REFRESH_MIN
         return v if v > 0 else ICS_REFRESH_MIN
 
+    def _calendar_delta(self, window_days=14):
+        """Backlog #185: the raw structured diff `_calendar_delta_lines`
+        (the text digest) builds from. `resolve_ics_source` snapshots
+        the cache's previous content to a `.prev` sibling right before
+        each REAL refetch (#178's refresh interval decides when that
+        happens — most calls don't refetch at all and change nothing);
+        this diffs that snapshot against the fresh fetch, matching
+        events by (date, summary) since a VEVENT's UID isn't reliably
+        exposed through `parse_ics_events`. Empty when no `.prev`
+        snapshot exists yet (the very first fetch has nothing to diff
+        against) or nothing genuinely changed. Only looks `window_days`
+        ahead — a change to an event 3 months out isn't worth a daily
+        nudge. Returns [{"kind": "added"/"removed"/"moved", "date",
+        "summary", "start", "end", "label", ...}] — "start"/"end" are
+        the CURRENT (post-change) time for "added"/"moved", None for
+        "removed" (nothing left to overlap-check against a cancelled
+        event); "moved" also carries "old_start"/"old_end"."""
+        start = self.today
+        end = start + dt.timedelta(days=window_days)
+        out = []
+        for s in self._calendar_source_list():
+            path = resolve_ics_source(
+                s["url"], cache_key=_source_cache_key(s["url"]),
+                refresh_min=self._ics_refresh_min())
+            if not path:
+                continue
+            prev_path = path + ".prev"
+            if not os.path.exists(path) or not os.path.exists(prev_path):
+                continue
+            reader = (parse_csv_events if path.lower().endswith(".csv")
+                     else parse_ics_events)
+            old_by_key = {(d, summary): (st, en) for d, st, en, summary
+                          in reader(prev_path, start, end)}
+            new_by_key = {(d, summary): (st, en) for d, st, en, summary
+                          in reader(path, start, end)}
+            added = sorted(k for k in new_by_key if k not in old_by_key)
+            removed = sorted(k for k in old_by_key if k not in new_by_key)
+            moved = sorted(k for k in new_by_key if k in old_by_key
+                           and new_by_key[k] != old_by_key[k])
+            label = s.get("label") or ""
+            for d, summary in added:
+                st, en = new_by_key[(d, summary)]
+                out.append({"kind": "added", "date": d, "summary": summary,
+                           "start": st, "end": en, "label": label})
+            for d, summary in removed:
+                out.append({"kind": "removed", "date": d, "summary": summary,
+                           "start": None, "end": None, "label": label})
+            for d, summary in moved:
+                old_st, old_en = old_by_key[(d, summary)]
+                new_st, new_en = new_by_key[(d, summary)]
+                out.append({"kind": "moved", "date": d, "summary": summary,
+                           "start": new_st, "end": new_en,
+                           "old_start": old_st, "old_end": old_en,
+                           "label": label})
+        return out
+
+    def _calendar_delta_lines(self, window_days=14):
+        """Backlog #185: "what's new since I last checked" — the
+        legitimate answer to manually re-scanning the whole calendar
+        by eye every time. Plain formatting over `_calendar_delta`'s
+        own structured diff."""
+        changes = self._calendar_delta(window_days)
+        if not changes:
+            return []
+        lines = []
+        for c in changes:
+            prefix = f"[{c['label']}] " if c["label"] else ""
+            if c["kind"] == "added":
+                lines.append(f"  + {prefix}{c['summary']} {c['date']:%d.%m} "
+                            f"{c['start']:%H:%M}-{c['end']:%H:%M}")
+            elif c["kind"] == "removed":
+                lines.append(f"  - {prefix}{c['summary']} {c['date']:%d.%m}")
+            else:
+                lines.append(f"  ~ {prefix}{c['summary']} {c['date']:%d.%m} "
+                            f"{c['old_start']:%H:%M}-{c['old_end']:%H:%M} → "
+                            f"{c['start']:%H:%M}-{c['end']:%H:%M}")
+        return ["CALENDAR CHANGES since last check:"] + lines
+
+    def _locked_calendar_collisions(self, window_days=14):
+        """Backlog #196: #145 catches a locked window that quietly
+        passed unworked; #185 catches a calendar event appearing or
+        moving since the last fetch — but nothing connects them yet.
+        A locked window created BEFORE a new calendar event showed up
+        can now silently collide in the real world: `_free_slots` only
+        ever re-checks busy time going FORWARD from the moment of
+        locking, it never re-validates an EXISTING lock against
+        calendar data that arrived after. Checks every added/moved
+        event from #185's own diff against every FUTURE `locked_
+        windows` entry for real time overlap — a "removed" event can't
+        collide with anything, there's no new time to check against.
+        Reuses `_calendar_delta` and `_locked_windows_for_range`, no
+        new concept, no new data."""
+        changes = self._calendar_delta(window_days)
+        if not changes:
+            return []
+        locked = self._locked_windows_for_range(
+            self.today, self.today + dt.timedelta(days=window_days))
+        lines = []
+        for c in changes:
+            if c["kind"] not in ("added", "moved"):
+                continue
+            for ld, ls, le, name in locked:
+                if ld != c["date"]:
+                    continue
+                if c["start"] < le and ls < c["end"]:
+                    lines.append(f"  {name}'s locked {ls:%H:%M}-{le:%H:%M} "
+                                f"({ld:%d.%m}) now overlaps "
+                                f"'{c['summary']}' — re-lock?")
+        return lines
+
     def _evening_window(self):
         """Backlog #175: the free-evenings finder's evening window,
         customizable via Tools > "Evening window…" (default 18:00-
@@ -12965,7 +13371,18 @@ class App(tk.Tk):
         day across a configurable multi-week horizon — same "compose,
         don't recompute" discipline every digest-style feature here
         follows. Every day in range gets a line, even a bare one —
-        this is a full outlook, not a filtered insight."""
+        this is a full outlook, not a filtered insight. Backlog #186:
+        #183's recurring reminders and #184's confirmed-plan flag both
+        only ever showed up in the DAILY header, not in the multi-week
+        glance meant to be the one place "everything weeks ahead"
+        lives — folded in here too, same primitives, no new
+        computation. Backlog #188: most admin chores are quick and
+        correctly cost nothing here — but some genuinely aren't ("file
+        taxes" can eat a real afternoon), and an entry's optional
+        `est_h` now subtracts from that day's counted free hours on
+        its due day, so the hour gets PLANNED for, not just
+        remembered. Omit the field entirely and behavior is exactly
+        what it always was."""
         start = self.today
         end = start + dt.timedelta(days=weeks * 7 - 1)
         locked_by_day = {}
@@ -12981,13 +13398,24 @@ class App(tk.Tk):
                 label = w.get("label", "")
                 s, e = w.get("start", ""), w.get("end", "")
                 when = f"{s}-{e}" if s or e else ""
-                plans_by_day.setdefault(d, []).append(f"{label} {when}".strip())
+                tag = "" if w.get("confirmed") else " (unconfirmed)"
+                plans_by_day.setdefault(d, []).append(
+                    f"{label} {when}".strip() + tag)
+        reminders_by_day = {}
+        reminder_cost_by_day = {}
+        for name, due, _lookahead, _snoozed, est_h in self._recurring_reminders_all():
+            if start <= due <= end:
+                reminders_by_day.setdefault(due, []).append(f"{name} due")
+                if est_h:
+                    reminder_cost_by_day[due] = reminder_cost_by_day.get(due, 0.0) + est_h
         lines = [f"MULTI-WEEK DIGEST — {start:%d.%m} to {end:%d.%m}:"]
         d = start
         while d <= end:
-            items = [f"{self._day_capacity(d):.1f}h free"]
+            free_h = max(0.0, self._day_capacity(d) - reminder_cost_by_day.get(d, 0.0))
+            items = [f"{free_h:.1f}h free"]
             items += locked_by_day.get(d, [])
             items += plans_by_day.get(d, [])
+            items += reminders_by_day.get(d, [])
             lines.append(f"  {d:%a %d.%m}: " + " · ".join(items))
             d += dt.timedelta(days=1)
         return lines
@@ -13011,7 +13439,10 @@ class App(tk.Tk):
         model. Backlog #181: now also names anything already on a
         subscribed display-only calendar source that lands inside one
         of those free evenings, closing the loop the owner described
-        manually doing by hand."""
+        manually doing by hand. Backlog #187: also flags a recurring
+        calendar event the owner's likely re-noticing by hand each
+        week, same idea as #169 but for calendar events instead of
+        hand-typed plans."""
         win = tk.Toplevel(self)
         win.title("Free evenings")
         txt = tk.Text(win, wrap="word", font=("Consolas", 10),
@@ -13025,6 +13456,9 @@ class App(tk.Tk):
         event_lines = self._evening_event_lines(weeks=3)
         if event_lines:
             lines = lines + [""] + event_lines
+        rep_line = self._repeating_calendar_event_line()
+        if rep_line:
+            lines = lines + ["", rep_line]
         txt.insert("1.0", "\n".join(lines))
         txt.config(state="disabled")
 

@@ -4,6 +4,18 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.68 — calendar-change awareness, richer recurring reminders
+
+The app now notices when a subscribed calendar changes since you last
+checked — "CALENDAR CHANGES since last check" in the morning header —
+and cross-checks that against your locked windows, flagging one that
+now overlaps a newly added or moved event. The multi-week digest gains
+recurring reminders and the unconfirmed-plan tag inline. The recurring
+reminders editor (Tools menu) gained a reliability ledger, a live
+preview of the next few due dates as you type, and a "Snooze 3d"
+button kept separate from "Mark done" so a snooze can't be mistaken
+for completion.
+
 ### v9.67 — projection confidence, historical slot ranking, generalized anomalies
 
 Three ML follow-ons: deadline landing dates now come with an R²

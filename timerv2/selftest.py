@@ -15,6 +15,7 @@ as any new pure-logic feature — this file is the durable form of the
 """
 import ast
 import csv
+import hashlib
 import json
 import math
 import os
@@ -39,7 +40,9 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "_pick_one_less", "_parse_milestones",
        "_parse_rrule", "_rrule_occurrences", "parse_ics_intervals",
        "parse_ics_events", "_parse_exdates", "_pearson_r",
-       "_sqdist", "_standardize", "_kmeans", "_linreg", "_zscore"}
+       "_sqdist", "_standardize", "_kmeans", "_linreg", "_zscore",
+       "_reminder_lateness_stats", "_reminder_next_occurrences",
+       "_source_cache_key"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -91,14 +94,17 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_one_less_candidates", "_one_less_line", "_sensor_health_lines",
         "_planned_hours_from_file", "_planner_realism_factor",
         "_dl_projection_confidence", "_metric_anomalies",
-        "_hour_signal_scores", "_lock_window_candidates"}
+        "_hour_signal_scores", "_lock_window_candidates",
+        "_recurring_reminders_all", "_calendar_delta", "_calendar_delta_lines",
+        "_locked_calendar_collisions", "_repeating_calendar_event_suggestion",
+        "_repeating_calendar_event_line"}
 STATIC = {"_match_kws", "_pull_level", "_parse_time_loose"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
                "_WORD_STOPWORDS", "_DECAY_BUCKETS", "_CAPSULE_RE",
                "_COMMIT_RE", "_FOCUS_SIG_WD", "_WEEKDAY_ABBR", "_PLAN_RE",
                "_ICS_HINT_PATTERNS", "_EVENING_START", "_EVENING_END",
-               "_SOCIAL_DENSITY_THRESHOLD", "_PTO_KEYWORDS"}
+               "_SOCIAL_DENSITY_THRESHOLD", "_PTO_KEYWORDS", "_WEEKDAY_NAMES"}
 # module-level (not class) constants some TOP/METH functions reference —
 # extracted from the real source so a value change there can't silently
 # drift from what the tests assert against
@@ -138,7 +144,7 @@ def fresh():
     with its own temp csv and cache — full isolation per suite."""
     tmp = tempfile.mkdtemp()
     ns = {"csv": csv, "os": os, "dt": dt, "re": re, "math": math,
-          "json": json, "random": random,
+          "json": json, "random": random, "hashlib": hashlib,
           "SESSIONS_CSV": os.path.join(tmp, "sessions.csv"),
           "SETTINGS_JSON": os.path.join(tmp, "settings.json"),
           "CSV_HEADER": ["date", "type", "start", "end", "minutes",
@@ -365,6 +371,112 @@ def suite_anomaly():
     d._sleep_h = lambda iso: 7.0
     an2 = D._anomaly_lines(d)
     assert any("straight tracked days at ~0% signal" in x for x in an2), an2
+
+
+def suite_metric_anomalies():
+    D, ns = fresh()
+
+    # ---- backlog #194: pure z-score math ----
+    assert ns["_zscore"](5.0, [3]) is None                # n < 2 history
+    assert ns["_zscore"](5.0, [3, 3, 3]) is None           # zero variance
+    mean, stdev, z = ns["_zscore"](10.0, [4, 6, 5, 5, 6, 4, 5])
+    assert abs(mean - 5.0) < 1e-9, mean
+    assert z > 0
+
+    TODAY = dt.date(2026, 8, 10)
+    # master's _metric_series (#203) walks EVERY day in the window and
+    # calls _day_metrics(d) directly — unlike the mobile branch this
+    # suite came from, it does NOT gate METRICS-derived keys on a
+    # tracked-work day (that gate was deliberately lifted so a METRICS:
+    # line typed on a rest day still counts). So history size here is
+    # controlled purely by which isos the _day_metrics stub answers
+    # for, not by seeded csv rows.
+    tracked = {(TODAY - dt.timedelta(days=i)).isoformat() for i in range(1, 22)}
+
+    def fake_metrics(day):
+        if day == TODAY:
+            return {"focus": 20.0}          # way outside the n=21 norm of 5.0
+        if day.isoformat() in tracked:
+            return {"focus": [4.0, 5.0, 6.0][(TODAY - day).days % 3]}
+        return {}
+
+    d = _mk(D, today=TODAY, _day_metrics=fake_metrics, settings={},
+           goals=lambda: [], domains=lambda: [],
+           _sleep_h=lambda iso: 7.5,
+           _day_signal=lambda day, *a, **k: (0, 0),
+           _health_data=lambda: {})
+    anomalies = D._metric_anomalies(d, days=90, min_n=15)
+    assert anomalies, anomalies
+    key, value, mean2, _stdev2, z2, n2 = anomalies[0]
+    assert key == "focus" and value == 20.0, anomalies
+    assert abs(mean2 - 5.0) < 1e-9, anomalies
+    assert z2 > 2.0, anomalies
+    assert n2 == 21, anomalies
+
+    an = D._anomaly_lines(d)
+    assert any("focus:" in x and "above your 5.0 norm" in x for x in an), an
+
+    # ---- silence: too little history for the key ----
+    tracked_sparse = {(TODAY - dt.timedelta(days=i)).isoformat()
+                      for i in range(1, 6)}
+
+    def fake_metrics_sparse(day):
+        if day == TODAY:
+            return {"focus": 20.0}
+        if day.isoformat() in tracked_sparse:
+            return {"focus": 5.0}
+        return {}
+    d2 = _mk(D, today=TODAY, _day_metrics=fake_metrics_sparse, settings={},
+            _health_data=lambda: {})
+    assert D._metric_anomalies(d2, days=90, min_n=15) == []
+
+    # ---- silence: no METRICS value logged today at all ----
+    def fake_metrics_none_today(day):
+        if day == TODAY:
+            return {}
+        return {"focus": 5.0} if day.isoformat() in tracked else {}
+    d3 = _mk(D, today=TODAY, _day_metrics=fake_metrics_none_today, settings={},
+            _health_data=lambda: {})
+    assert D._metric_anomalies(d3, days=90, min_n=15) == []
+
+
+def _row_at(d0, start, mins, task):
+    return [d0, "work", start, "23:59", str(mins), task, ""]
+
+
+def suite_hour_signal_scores():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 7, 13)
+    rows = [
+        # hour 9: 180min signal (thesis) + 60min non-signal (email) = 75%
+        _row_at("2026-06-01", "09:00", 60, "thesis"),
+        _row_at("2026-06-02", "09:00", 60, "thesis"),
+        _row_at("2026-06-03", "09:00", 60, "thesis"),
+        _row_at("2026-06-04", "09:15", 60, "email"),
+        # hour 20: 180min, all signal = 100%
+        _row_at("2026-06-10", "20:00", 60, "thesis"),
+        _row_at("2026-06-11", "20:00", 60, "thesis"),
+        _row_at("2026-06-12", "20:00", 60, "thesis"),
+        # hour 14: only 60min tracked -- under the min_minutes gate, excluded
+        _row_at("2026-06-15", "14:00", 60, "thesis"),
+    ]
+    seed(ns, rows)
+    d = _mk(D, today=TODAY, _signal_kws=lambda day=None: ["thesis"])
+
+    scores = D._hour_signal_scores(d, days=90, min_minutes=180)
+    assert scores is not None
+    assert abs(scores[9] - 0.75) < 1e-9, scores
+    assert abs(scores[20] - 1.0) < 1e-9, scores
+    assert 14 not in scores, scores    # under min_minutes, left out entirely
+
+    # ---- no SIGNAL declared at all -> None ----
+    d2 = _mk(D, today=TODAY, _signal_kws=lambda day=None: [])
+    assert D._hour_signal_scores(d2, days=90, min_minutes=180) is None
+
+    # ---- nothing clears the min_minutes gate anywhere -> None ----
+    seed(ns, [_row_at("2026-06-15", "14:00", 60, "thesis")])
+    d3 = _mk(D, today=TODAY, _signal_kws=lambda day=None: ["thesis"])
+    assert D._hour_signal_scores(d3, days=90, min_minutes=180) is None
 
 
 def suite_recommend_now():
@@ -2494,7 +2606,12 @@ def suite_multiweek_digest():
         {"date": "2026-08-11", "start": "09:00", "end": "13:00"}]}]
     settings = {"protected_windows": [
         {"label": "Dinner", "date": "2026-08-12", "start": "19:00",
-         "end": "21:00"}]}
+         "end": "21:00", "confirmed": True},
+        {"label": "Maybe brunch", "date": "2026-08-13", "start": "11:00",
+         "end": "12:00"}],                    # not confirmed
+        "recurring_reminders": [
+            {"name": "Backup check", "interval_days": 7,
+             "last_done": "2026-08-08"}]}     # due 2026-08-15
     caps = {dt.date(2026, 8, 10): 3.0, dt.date(2026, 8, 11): 2.5,
             dt.date(2026, 8, 12): 5.0}
     d = _mk(D, today=TODAY, deadlines=lambda: deadlines, settings=settings,
@@ -2504,16 +2621,51 @@ def suite_multiweek_digest():
     assert lines[1] == "  Mon 10.08: 3.0h free", lines
     assert lines[2] == "  Tue 11.08: 2.5h free · TUTA 09:00-13:00", lines
     assert lines[3] == "  Wed 12.08: 5.0h free · Dinner 19:00-21:00", lines
-    assert lines[4] == "  Thu 13.08: 4.0h free", lines
+    # backlog #186: an unconfirmed plan (#184) gets tagged right in the digest
+    assert lines[4] == ("  Thu 13.08: 4.0h free · Maybe brunch 11:00-12:00 "
+                        "(unconfirmed)"), lines
+    # backlog #186: a recurring reminder (#183) due that day shows up too
+    assert lines[6] == "  Sat 15.08: 4.0h free · Backup check due", lines
     assert len(lines) == 8, lines           # header + 7 days
 
     # ---- a plan with no start/end still shows, just no time suffix ----
     settings2 = {"protected_windows": [
-        {"label": "Trip", "date": "2026-08-14"}]}
+        {"label": "Trip", "date": "2026-08-14", "confirmed": True}]}
     d2 = _mk(D, today=TODAY, deadlines=lambda: [], settings=settings2,
             _day_capacity=lambda dd: 4.0)
     lines2 = D._multiweek_digest_lines(d2, weeks=1)
     assert lines2[5] == "  Fri 14.08: 4.0h free · Trip", lines2
+
+    # ---- backlog #188: an est_h reminder subtracts from that day's
+    # counted free hours, floored at 0 ----
+    settings3 = {"protected_windows": [],
+                "recurring_reminders": [
+                    {"name": "File taxes", "interval_days": 7,
+                     "last_done": "2026-08-08", "est_h": 6.0}]}   # due 15.08
+    d3 = _mk(D, today=TODAY, deadlines=lambda: [], settings=settings3,
+            _day_capacity=lambda dd: 4.0)
+    lines3 = D._multiweek_digest_lines(d3, weeks=1)
+    assert lines3[6] == "  Sat 15.08: 0.0h free · File taxes due", lines3
+
+    # ---- a small est_h just subtracts normally, no flooring needed ----
+    settings4 = {"protected_windows": [],
+                "recurring_reminders": [
+                    {"name": "Quarterly review", "interval_days": 7,
+                     "last_done": "2026-08-08", "est_h": 1.5}]}
+    d4 = _mk(D, today=TODAY, deadlines=lambda: [], settings=settings4,
+            _day_capacity=lambda dd: 4.0)
+    lines4 = D._multiweek_digest_lines(d4, weeks=1)
+    assert lines4[6] == "  Sat 15.08: 2.5h free · Quarterly review due", lines4
+
+    # ---- a reminder with no est_h costs nothing, exactly as before ----
+    settings5 = {"protected_windows": [],
+                "recurring_reminders": [
+                    {"name": "Backup check", "interval_days": 7,
+                     "last_done": "2026-08-08"}]}
+    d5 = _mk(D, today=TODAY, deadlines=lambda: [], settings=settings5,
+            _day_capacity=lambda dd: 4.0)
+    lines5 = D._multiweek_digest_lines(d5, weeks=1)
+    assert lines5[6] == "  Sat 15.08: 4.0h free · Backup check due", lines5
 
 
 def suite_social_density():
@@ -2641,6 +2793,43 @@ def suite_weekly_target():
     # ---- silence: no deadline has target_h set ----
     d2 = _mk(D, today=TODAY, deadlines=lambda: [{"name": "Thesis"}])
     assert D._weekly_target_lines(d2) == []
+
+
+def suite_repeating_calendar_event():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 11)      # Tuesday
+    events = [
+        (dt.date(2026, 7, 21), dt.time(19, 0), dt.time(21, 0),
+         "Trivia night @ The Pub"),
+        (dt.date(2026, 7, 28), dt.time(19, 5), dt.time(21, 0),
+         "Trivia night @ The Pub"),
+        (dt.date(2026, 8, 4), dt.time(18, 55), dt.time(21, 0),
+         "Trivia night @ The Pub"),
+        (dt.date(2026, 7, 22), dt.time(12, 0), dt.time(13, 0),
+         "Lunch with Sam"),               # unrelated, only 1x
+    ]
+    d = _mk(D, today=TODAY, _calendar_events=lambda start, end: events)
+    rep = D._repeating_calendar_event_suggestion(d)
+    assert rep is not None
+    assert rep["summary"] == "Trivia night @ The Pub" and rep["count"] == 3, rep
+    assert rep["weekday"] == dt.date(2026, 7, 21).weekday(), rep
+    assert rep["avg_start"] == "19:00", rep
+    assert rep["end"] == "21:00", rep
+    assert sorted(rep["dates"]) == [
+        "2026-07-21", "2026-07-28", "2026-08-04"], rep
+
+    line = D._repeating_calendar_event_line(d)
+    assert line is not None
+    assert "Trivia night @ The Pub" in line and "3x recently" in line, line
+
+    # ---- silence: fewer than 3 occurrences ----
+    d2 = _mk(D, today=TODAY, _calendar_events=lambda start, end: events[:2])
+    assert D._repeating_calendar_event_suggestion(d2) is None
+    assert D._repeating_calendar_event_line(d2) is None
+
+    # ---- silence: no calendar events at all ----
+    d3 = _mk(D, today=TODAY, _calendar_events=lambda start, end: [])
+    assert D._repeating_calendar_event_suggestion(d3) is None
 
 
 def suite_pto_skip():
@@ -3041,6 +3230,107 @@ def suite_locked_today():
     assert D._locked_today_line(d3) is None
 
 
+def suite_calendar_delta():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    cache_path = os.path.join(tmp, "calendar_cache_x.ics")
+    prev_path = cache_path + ".prev"
+    TODAY = dt.date(2026, 8, 9)
+
+    def write_ics(path, events):
+        lines = ["BEGIN:VCALENDAR"]
+        for summary, d0, s, e in events:
+            lines += ["BEGIN:VEVENT", f"SUMMARY:{summary}",
+                     f"DTSTART:{d0:%Y%m%d}T{s.replace(':', '')}00",
+                     f"DTEND:{d0:%Y%m%d}T{e.replace(':', '')}00",
+                     "END:VEVENT"]
+        lines.append("END:VCALENDAR")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+    write_ics(prev_path, [
+        ("Standup", dt.date(2026, 8, 10), "09:00", "09:30"),
+        ("Team sync", dt.date(2026, 8, 11), "14:00", "15:00"),
+        ("Dentist", dt.date(2026, 8, 12), "09:00", "10:00"),
+    ])
+    write_ics(cache_path, [
+        ("Standup", dt.date(2026, 8, 10), "09:00", "09:30"),
+        ("Dentist", dt.date(2026, 8, 12), "11:00", "12:00"),
+        ("New meeting", dt.date(2026, 8, 13), "10:00", "11:00"),
+    ])
+    ns["resolve_ics_source"] = lambda *a, **kw: cache_path
+    d = _mk(D, today=TODAY, settings={},
+           _calendar_source_list=lambda: [{"url": "https://x", "label": ""}])
+    lines = D._calendar_delta_lines(d, window_days=14)
+    assert lines[0] == "CALENDAR CHANGES since last check:", lines
+    assert any("+ New meeting 13.08 10:00-11:00" in ln for ln in lines), lines
+    assert any("- Team sync 11.08" in ln for ln in lines), lines
+    assert any("~ Dentist 12.08 09:00-10:00 → 11:00-12:00" in ln
+              for ln in lines), lines
+    assert not any("Standup" in ln for ln in lines), lines
+
+    # ---- silence: no .prev snapshot yet (the very first fetch) ----
+    os.remove(prev_path)
+    assert D._calendar_delta_lines(d, window_days=14) == []
+
+    # ---- silence: identical content, nothing actually changed ----
+    write_ics(prev_path, [
+        ("Standup", dt.date(2026, 8, 10), "09:00", "09:30"),
+        ("Dentist", dt.date(2026, 8, 12), "11:00", "12:00"),
+        ("New meeting", dt.date(2026, 8, 13), "10:00", "11:00"),
+    ])
+    assert D._calendar_delta_lines(d, window_days=14) == []
+
+
+def suite_locked_calendar_collisions():
+    D, ns = fresh()
+    tmp = os.path.dirname(ns["SESSIONS_CSV"])
+    cache_path = os.path.join(tmp, "calendar_cache_y.ics")
+    prev_path = cache_path + ".prev"
+    TODAY = dt.date(2026, 8, 9)
+
+    def write_ics(path, events):
+        lines = ["BEGIN:VCALENDAR"]
+        for summary, d0, s, e in events:
+            lines += ["BEGIN:VEVENT", f"SUMMARY:{summary}",
+                     f"DTSTART:{d0:%Y%m%d}T{s.replace(':', '')}00",
+                     f"DTEND:{d0:%Y%m%d}T{e.replace(':', '')}00",
+                     "END:VEVENT"]
+        lines.append("END:VCALENDAR")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+    write_ics(prev_path, [("Dentist", dt.date(2026, 8, 12), "09:00", "10:00")])
+    write_ics(cache_path, [("Dentist", dt.date(2026, 8, 12), "11:00", "12:00")])
+    ns["resolve_ics_source"] = lambda *a, **kw: cache_path
+
+    # ---- a locked window overlapping the event's NEW (moved) time ----
+    deadlines = [{"name": "TUTA", "locked_windows": [
+        {"date": "2026-08-12", "start": "11:30", "end": "12:30"}]}]
+    d = _mk(D, today=TODAY, settings={},
+           _calendar_source_list=lambda: [{"url": "https://y", "label": ""}],
+           deadlines=lambda: deadlines)
+    lines = D._locked_calendar_collisions(d, window_days=14)
+    assert len(lines) == 1, lines
+    assert ("TUTA's locked 11:30-12:30 (12.08) now overlaps 'Dentist'"
+           in lines[0]), lines
+
+    # ---- no real overlap -> silence ----
+    deadlines2 = [{"name": "TUTA", "locked_windows": [
+        {"date": "2026-08-12", "start": "07:00", "end": "08:00"}]}]
+    d2 = _mk(D, today=TODAY, settings={},
+            _calendar_source_list=lambda: [{"url": "https://y", "label": ""}],
+            deadlines=lambda: deadlines2)
+    assert D._locked_calendar_collisions(d2, window_days=14) == []
+
+    # ---- silence: no calendar changes at all ----
+    write_ics(prev_path, [("Dentist", dt.date(2026, 8, 12), "11:00", "12:00")])
+    d3 = _mk(D, today=TODAY, settings={},
+            _calendar_source_list=lambda: [{"url": "https://y", "label": ""}],
+            deadlines=lambda: deadlines)
+    assert D._locked_calendar_collisions(d3, window_days=14) == []
+
+
 def suite_metric_correlations():
     D, ns = fresh()
     tmp = os.path.dirname(ns["SESSIONS_CSV"])
@@ -3268,6 +3558,8 @@ def suite_stale_plan():
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
+          ("metric-anomalies", suite_metric_anomalies),
+          ("hour-signal-scores", suite_hour_signal_scores),
           ("recommend-now", suite_recommend_now),
           ("energy-place", suite_energy_place),
           ("last-context", suite_last_context),
@@ -3318,6 +3610,7 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("free-evenings", suite_free_evenings),
           ("social-density", suite_social_density),
           ("repeating-plan", suite_repeating_plan),
+          ("repeating-calendar-event", suite_repeating_calendar_event),
           ("locked-this-week", suite_locked_this_week),
           ("weekly-target", suite_weekly_target),
           ("pto-skip", suite_pto_skip),
@@ -3335,7 +3628,9 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("stale-plan", suite_stale_plan),
           ("metric-correlations", suite_metric_correlations),
           ("kmeans", suite_kmeans),
-          ("day-archetypes", suite_day_archetypes)]
+          ("day-archetypes", suite_day_archetypes),
+          ("calendar-delta", suite_calendar_delta),
+          ("locked-calendar-collisions", suite_locked_calendar_collisions)]
 
 
 def main():
