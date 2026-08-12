@@ -99,14 +99,16 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_locked_calendar_collisions", "_repeating_calendar_event_suggestion",
         "_repeating_calendar_event_line", "_plan_density_output_correlation",
         "_plan_density_output_line", "_stale_plan_data_scan",
-        "_clean_stale_plan_data"}
+        "_clean_stale_plan_data", "_week_was_rough", "_recovery_evening_line",
+        "_capacity"}
 STATIC = {"_match_kws", "_pull_level", "_parse_time_loose"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
                "_WORD_STOPWORDS", "_DECAY_BUCKETS", "_CAPSULE_RE",
                "_COMMIT_RE", "_FOCUS_SIG_WD", "_WEEKDAY_ABBR", "_PLAN_RE",
                "_ICS_HINT_PATTERNS", "_EVENING_START", "_EVENING_END",
-               "_SOCIAL_DENSITY_THRESHOLD", "_PTO_KEYWORDS", "_WEEKDAY_NAMES"}
+               "_SOCIAL_DENSITY_THRESHOLD", "_PTO_KEYWORDS", "_WEEKDAY_NAMES",
+               "DEFAULT_CAP"}
 # module-level (not class) constants some TOP/METH functions reference —
 # extracted from the real source so a value change there can't silently
 # drift from what the tests assert against
@@ -1060,6 +1062,58 @@ def suite_week_ahead():
     assert not any("deadlines need" in x for x in out5), out5   # no needs -> omitted
 
     d.settings = {}   # restore for any suite that reuses d below this point
+
+
+def suite_recovery_evening():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 24)                  # Monday
+    week1_mon = TODAY - dt.timedelta(days=14)      # 2026-08-10
+    week2_mon = TODAY - dt.timedelta(days=7)       # 2026-08-17
+    cap = [4.0] * 7                                # 28h/week
+
+    # ---- both weeks overworked (35h tracked > 28*1.1=30.8h) ----
+    settings = {"capacity": cap, "protected_windows": []}
+    rows = []
+    for wk_mon in (week1_mon, week2_mon):
+        for i in range(7):
+            rows.append(row((wk_mon + dt.timedelta(days=i)).isoformat(),
+                            300, "solo"))
+    seed(ns, rows)
+    d = _mk(D, today=TODAY, settings=settings)
+    assert D._week_was_rough(d, week1_mon) is True
+    assert D._week_was_rough(d, week2_mon) is True
+    line = D._recovery_evening_line(d)
+    assert line and "last two weeks both ran rough" in line, line
+
+    # ---- only one of the two weeks rough -> silence ----
+    settings2 = {"capacity": cap, "protected_windows": []}
+    rows2 = [row((week1_mon + dt.timedelta(days=i)).isoformat(), 300, "solo")
+            for i in range(7)]
+    rows2 += [row((week2_mon + dt.timedelta(days=i)).isoformat(), 200, "solo")
+             for i in range(7)]                    # 23.3h, not overworked
+    seed(ns, rows2)
+    d2 = _mk(D, today=TODAY, settings=settings2)
+    assert D._week_was_rough(d2, week1_mon) is True
+    assert D._week_was_rough(d2, week2_mon) is False
+    assert D._recovery_evening_line(d2) is None
+
+    # ---- a social-heavy (not overworked) week still counts as rough ----
+    settings3 = {"capacity": cap, "social_density_threshold": 0.2,
+                "protected_windows": [
+                    {"date": (week1_mon + dt.timedelta(days=2)).isoformat(),
+                     "start": "18:00", "end": "22:00", "label": "Party"},
+                    {"date": (week1_mon + dt.timedelta(days=4)).isoformat(),
+                     "start": "18:00", "end": "22:00", "label": "Dinner"}]}
+    rows3 = [row((week1_mon + dt.timedelta(days=i)).isoformat(), 60, "solo")
+            for i in range(7)]                     # low tracked work
+    seed(ns, rows3)
+    d3 = _mk(D, today=TODAY, settings=settings3)
+    assert D._week_was_rough(d3, week1_mon) is True   # 8h plans / 28h = 0.29 >= 0.2
+
+    # ---- silence: no real capacity configured ----
+    d4 = _mk(D, today=TODAY,
+            settings={"capacity": [0] * 7, "protected_windows": []})
+    assert D._week_was_rough(d4, week1_mon) is False
 
 
 def suite_break_budget():
@@ -3675,6 +3729,7 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("ask-diary", suite_ask_diary),
           ("lag", suite_lag),
           ("week-ahead", suite_week_ahead),
+          ("recovery-evening", suite_recovery_evening),
           ("break-budget", suite_break_budget),
           ("lens-overlap", suite_lens_overlap),
           ("health-extras", suite_health_extras),

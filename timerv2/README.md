@@ -4,6 +4,13 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.71 — a recovery-evening nudge
+
+Every planning feature so far only ever suggested filling more time.
+Now, when the last two calendar weeks both came back rough (overworked
+or social-heavy), one quiet Monday note suggests reserving an evening
+next week as explicitly off-limits.
+
 ### v9.70 — data-doctor cleanup, an automated digest.txt
 
 Data Doctor can now clean out one-off plans and locked windows whose

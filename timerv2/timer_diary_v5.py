@@ -60,6 +60,18 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.71 (#217 — a recovery-evening nudge, 2026-08-08, ported from
+the mobile session's continued branch work):
+  - every planning feature this whole calendar/planning arc shipped —
+    free evenings, the event overlay, auto-plan, the quiet-week nudge
+    — only ever suggested filling MORE time. `_week_was_rough` replays
+    the overworked/social-heavy checks WEEK AHEAD already uses
+    forward, backward against a week that's already happened; when
+    the last two calendar weeks both come back rough, one quiet
+    Monday-morning line suggests reserving an evening next week as
+    explicitly off-limits.
+  - 82/82 selftest green.
+
 New in v9.70 (#199 + #200 — data-doctor stale-plan cleanup,
 credential-free digest.txt via Task Scheduler, 2026-08-08, ported
 from the mobile session's continued branch work):
@@ -8898,6 +8910,9 @@ class App(tk.Tk):
         if self.today.weekday() == 0:
             parts += self._week_review_block()
             parts += self._week_ahead_lines()
+            recovery_line = self._recovery_evening_line()
+            if recovery_line:
+                parts.append(recovery_line)
             parts += self._graveyard_lines()
         parts.append(f"SIGNAL: {self._carry_signal()}")
         sig2 = self._carry_signal2()
@@ -9391,6 +9406,62 @@ class App(tk.Tk):
             lines.append(density)
         lines += weekly_targets
         return lines
+
+    def _week_was_rough(self, monday):
+        """Backlog #217 (mobile branch's own #201 — renumbered, master's
+        #201 was already a different open idea): a backward-looking
+        cousin of `_week_ahead_lines`'s own overbooked/social-heavy
+        checks, applied to a week that's ALREADY happened. Deadlines
+        don't carry a point-in-time snapshot of remaining_h, so this
+        can't literally replay "was this week overbooked" the same way
+        that check works looking forward — instead it checks what's
+        actually still knowable after the fact: real tracked hours
+        against real weekday capacity, and real plan hours against the
+        exact same social-density threshold #168 already uses. True if
+        either crossed."""
+        sunday = monday + dt.timedelta(days=6)
+        idx = day_index()
+        tracked_h = sum((idx.get((monday + dt.timedelta(days=i)).isoformat())
+                         or {"work": 0})["work"] for i in range(7)) / 60
+        cap_h = sum(self._capacity())
+        if cap_h <= 0:
+            return False
+        overworked = tracked_h > cap_h * 1.1
+        plan_h = 0.0
+        for w in self.settings.get("protected_windows", []):
+            d_s = w.get("date")
+            if not d_s:
+                continue
+            try:
+                d = dt.date.fromisoformat(d_s)
+                sh, sm = map(int, w["start"].split(":"))
+                eh, em = map(int, w["end"].split(":"))
+            except (KeyError, ValueError, TypeError):
+                continue
+            if monday <= d <= sunday:
+                plan_h += _time_span_hours(dt.time(sh, sm), dt.time(eh, em))
+        threshold = self.settings.get("social_density_threshold",
+                                      self._SOCIAL_DENSITY_THRESHOLD)
+        social_heavy = plan_h / cap_h >= threshold
+        return overworked or social_heavy
+
+    def _recovery_evening_line(self):
+        """Backlog #217: every planning feature this arc shipped — free
+        evenings (#167), the event overlay (#181), auto-plan (#153),
+        the quiet-week nudge (#195) — only ever suggests filling MORE
+        time. Nothing proactively protects downtime. When the last TWO
+        weeks both came back rough (`_week_was_rough`), one quiet
+        Monday-morning nudge suggests reserving an evening next week as
+        explicitly off-limits — same "observe, don't auto-apply"
+        posture as everywhere else; adding the actual block is just
+        File > "Add a plan…", nothing new to build for the action
+        itself."""
+        if not (self._week_was_rough(self.today - dt.timedelta(days=14))
+               and self._week_was_rough(self.today - dt.timedelta(days=7))):
+            return None
+        return ("  the last two weeks both ran rough (overworked or "
+               "social-heavy) — worth reserving one evening next week "
+               "as explicitly off-limits?")
 
     def _weekly_target_lines(self):
         """Backlog #144: deadlines can optionally set `target_h` — a

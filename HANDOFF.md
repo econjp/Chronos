@@ -497,6 +497,20 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.71** (#217, 2026-08-08, DONE). Fifth batch from the mobile
+  branch continuation — a recovery-evening nudge. `_week_was_rough`
+  checks a past week against the same overworked (tracked hours vs
+  weekday capacity) and social-heavy (#168's threshold) signals
+  `_week_ahead_lines` already uses looking forward, just replayed
+  backward. When the last TWO calendar weeks both come back rough,
+  `_recovery_evening_line` adds one quiet Monday-morning nudge
+  suggesting an explicitly off-limits evening next week — every
+  planning feature this whole arc shipped only ever suggested filling
+  MORE time; nothing protected downtime until this. Renumbered from
+  the branch's own #201 (master's #201 was already a different open
+  idea — the day-outcome predictor reusing archetype features). 1 new
+  selftest suite; 82/82 green.
+
 - **v9.70** (#199 + #200, 2026-08-08, DONE). Fourth batch from the
   mobile branch continuation. #199: Data Doctor gains a "Clean stale
   plans/locked windows (90d+)" button — `_stale_plan_data_scan`/
@@ -4656,6 +4670,12 @@ polish — the three NOT chosen this round) when continuing this work.
     "Mark done".**~~ — DONE v9.68 (was #208 on the mobile branch;
     renumbered — master's own #208 is the still-open read_rows cache
     staleness investigation, unrelated). See the v9.68 version-history
+    entry above.
+
+~~217. **A recovery-evening nudge when the last two weeks both ran
+    rough.**~~ — DONE v9.71 (was #201 on the mobile branch; renumbered
+    — master's own #201 is the still-open day-outcome-predictor-
+    reuses-archetype idea, unrelated). See the v9.71 version-history
     entry above.
 
 189. ~~**A real metric correlation engine — Pearson r across every
