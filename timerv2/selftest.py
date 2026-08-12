@@ -98,7 +98,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_recurring_reminders_all", "_calendar_delta", "_calendar_delta_lines",
         "_locked_calendar_collisions", "_repeating_calendar_event_suggestion",
         "_repeating_calendar_event_line", "_plan_density_output_correlation",
-        "_plan_density_output_line"}
+        "_plan_density_output_line", "_stale_plan_data_scan",
+        "_clean_stale_plan_data"}
 STATIC = {"_match_kws", "_pull_level", "_parse_time_loose"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -3614,6 +3615,48 @@ def suite_stale_plan():
     assert D._stale_plan_line(d3) is None
 
 
+def suite_stale_plan_data():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 10)
+    old_plan_date = (TODAY - dt.timedelta(days=100)).isoformat()
+    recent_plan_date = (TODAY - dt.timedelta(days=10)).isoformat()
+    settings = {"protected_windows": [
+        {"label": "Old dinner", "date": old_plan_date, "start": "19:00",
+         "end": "21:00"},
+        {"label": "Recent dinner", "date": recent_plan_date, "start": "19:00",
+         "end": "21:00"},
+        {"label": "Recurring", "start": "09:00", "end": "10:00"},   # no date
+    ]}
+    deadlines = [{"name": "TUTA", "locked_windows": [
+        {"date": (TODAY - dt.timedelta(days=95)).isoformat(), "start": "09:00",
+         "end": "10:00"},
+        {"date": (TODAY - dt.timedelta(days=5)).isoformat(), "start": "09:00",
+         "end": "10:00"},
+    ]}]
+    d = _mk(D, today=TODAY, settings=settings, deadlines=lambda: deadlines)
+
+    n_plans, n_locked = D._stale_plan_data_scan(d, cutoff_days=90)
+    assert (n_plans, n_locked) == (1, 1), (n_plans, n_locked)
+
+    removed_plans, removed_locked = D._clean_stale_plan_data(d, cutoff_days=90)
+    assert (removed_plans, removed_locked) == (1, 1), (removed_plans, removed_locked)
+    assert settings["protected_windows"] == [
+        {"label": "Recent dinner", "date": recent_plan_date, "start": "19:00",
+         "end": "21:00"},
+        {"label": "Recurring", "start": "09:00", "end": "10:00"},
+    ], settings["protected_windows"]
+    assert deadlines[0]["locked_windows"] == [
+        {"date": (TODAY - dt.timedelta(days=5)).isoformat(), "start": "09:00",
+         "end": "10:00"}], deadlines
+
+    # ---- silence: nothing stale ----
+    settings2 = {"protected_windows": [
+        {"label": "Recent", "date": recent_plan_date, "start": "19:00",
+         "end": "21:00"}]}
+    d2 = _mk(D, today=TODAY, settings=settings2, deadlines=lambda: [])
+    assert D._stale_plan_data_scan(d2, cutoff_days=90) == (0, 0)
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -3685,6 +3728,7 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("locked-today", suite_locked_today),
           ("recurring-reminders", suite_recurring_reminders),
           ("stale-plan", suite_stale_plan),
+          ("stale-plan-data", suite_stale_plan_data),
           ("metric-correlations", suite_metric_correlations),
           ("plan-density-correlation", suite_plan_density_correlation),
           ("kmeans", suite_kmeans),

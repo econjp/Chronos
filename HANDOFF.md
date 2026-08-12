@@ -497,6 +497,26 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.70** (#199 + #200, 2026-08-08, DONE). Fourth batch from the
+  mobile branch continuation. #199: Data Doctor gains a "Clean stale
+  plans/locked windows (90d+)" button — `_stale_plan_data_scan`/
+  `_clean_stale_plan_data` count and remove `protected_windows`/
+  per-deadline `locked_windows` entries whose date is 90+ days past,
+  same backup-first/confirm-first posture as the existing csv clean.
+  #200: a `--digest` CLI flag mirrors #177's `--backup` exactly — a
+  new `_HeadlessDigest` stand-in class (binds the real, unmodified
+  `_multiweek_digest_lines` and its dependencies onto a non-Tk stub,
+  same "lift real methods onto a plain object" trick the selftest
+  harness already used) writes a 3-week digest.txt next to the data
+  folder when Task Scheduler fires it — no LLM, no email, no
+  credentials, the legitimate version of #180's declined AI/email
+  digest. Caught and fixed a real gap while smoke-testing the actual
+  `--digest`/`--backup` entry points end to end (selftest never
+  exercises `__main__`): `_HeadlessDigest` was missing a `DEFAULT_CAP`
+  binding that `_day_capacity`'s call chain needs, which the branch's
+  own version apparently never hit either — added. 1 new selftest
+  suite (stale-plan-data); 81/81 green.
+
 - **v9.69** (#195 + #197, 2026-08-08, DONE). Third batch from the
   mobile branch continuation. #195: `_week_ahead_lines` gains one more
   OR condition — a week with real open deadlines but genuinely ZERO
@@ -4711,38 +4731,13 @@ polish — the three NOT chosen this round) when continuing this work.
     training, no new concept — #190's own model, asked a forward
     question instead of only a backward one.
 
-199. **Data-doctor cleanup for expired one-off plans and stale locked
-    windows (PLANNING — the hygiene instinct #173 already named for
-    CODE, applied to the DATA this whole arc's features accumulate;
-    new idea 2026-08-08).** `protected_windows` now holds one-off
-    dated entries (#159/#161/#163) that never get cleaned up once
-    their date passes — after a few months of real use (this app's
-    own stated design horizon), the Recurring Commitments editor and
-    `_upcoming_plans_win` (#164) both silently accumulate dead rows
-    that only ever return `[]` from `_protected_intervals_named` again
-    once past. Fix: fold into the existing "Data doctor — check &
-    clean history" flow — count one-off `protected_windows` entries
-    (and `locked_windows` per deadline) whose date is well in the
-    past (e.g., over 90 days), offer to remove them in one confirmed
-    batch, same "observe, then ask, never auto-delete" posture as
-    everything else the app already offers to clean up.
+~~199. **Data-doctor cleanup for expired one-off plans and stale
+    locked windows.**~~ — DONE v9.70. See the v9.70 version-history
+    entry above.
 
-200. **A credential-free "digest to file" Task Scheduler mode — the
-    legitimate version of #180's declined AI/email digest (PLANNING —
-    reuses #177's exact opt-in mechanism, sidesteps every security
-    concern #180 was declined over; new idea 2026-08-08).** #180 was
-    correctly declined — an LLM API key and SMTP app-password living
-    in plain-JSON settings is a real security question nobody signed
-    off on. But the actual WANT underneath it (a report waiting for
-    you without opening the app) doesn't need either: #177 already
-    proved a `<app> --flag` headless run via Task Scheduler works
-    safely, opt-in, no new attack surface. Fix: a `--digest` flag
-    alongside the existing `--backup` one, running #182's own
-    multi-week digest function headlessly and writing it to a plain
-    `.txt` file next to the app (or a chosen folder) on the same daily
-    schedule #177 already registers — no LLM, no email, no
-    credentials anywhere, the file's just there when you open your
-    laptop.
+~~200. **A credential-free "digest to file" Task Scheduler mode — the
+    legitimate version of #180's declined AI/email digest.**~~ — DONE
+    v9.70. See the v9.70 version-history entry above.
 
 201. **The day-outcome predictor should reuse the day-archetype
     model's feature extraction, not duplicate it (HYGIENE — spotted

@@ -4,6 +4,16 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.70 — data-doctor cleanup, an automated digest.txt
+
+Data Doctor can now clean out one-off plans and locked windows whose
+date is 90+ days past (backs up settings first, same as its csv
+clean). Also new: an optional Task Scheduler entry (Tools → Data &
+backup) that writes a fresh multi-week digest.txt daily, with no
+credentials or network calls involved — the plain-file answer to
+"could an AI just email me a report" without the security tradeoffs
+that idea was declined over.
+
 ### v9.69 — quiet-week nudge, measured social-density correlation
 
 Week Ahead now speaks up when a week has real open deadlines but

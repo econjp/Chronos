@@ -60,6 +60,25 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.70 (#199 + #200 — data-doctor stale-plan cleanup,
+credential-free digest.txt via Task Scheduler, 2026-08-08, ported
+from the mobile session's continued branch work):
+  - #199: Data Doctor's window gains a "Clean stale plans/locked
+    windows (90d+)" button — one-off plans and per-deadline locked
+    windows whose date is 90+ days in the past get counted, then
+    removed in one confirmed batch (settings.json backed up first).
+  - #200: a new `--digest` flag (alongside the existing `--backup`)
+    runs headlessly via Task Scheduler and writes the multi-week
+    digest to a plain digest.txt next to the data folder — no LLM, no
+    email, no credentials, the legitimate answer to the AI/email
+    digest idea (#180) that was correctly declined over exactly those
+    concerns.
+  - real bug caught by actually running `--digest`/`--backup` end to
+    end (not just selftest, which never touches `__main__`):
+    `_HeadlessDigest` was missing a `DEFAULT_CAP` class-attribute
+    binding that `_day_capacity` needs — fixed.
+  - 81/81 selftest green.
+
 New in v9.69 (#195 + #197 — quiet-week detector, social-density
 correlation, 2026-08-08, ported from the mobile session's continued
 branch work):
@@ -4493,6 +4512,61 @@ def unregister_backup_task():
         return False
 
 
+DIGEST_TASK_NAME = f"{APP_NAME} Digest"
+
+
+def digest_task_registered():
+    """Backlog #200: same schtasks-query pattern as
+    backup_task_registered — True if DIGEST_TASK_NAME already exists."""
+    try:
+        r = subprocess.run(["schtasks", "/query", "/tn", DIGEST_TASK_NAME],
+                           capture_output=True, timeout=10)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def register_digest_task():
+    """Backlog #200: the credential-free version of #180's declined
+    AI/email digest — #180 was correctly declined because an LLM API
+    key and SMTP app-password living in plain-JSON settings is a real
+    security question nobody signed off on. This needs neither: a
+    daily 07:00 task running `<app_command()> --digest`, which writes
+    #182's own multi-week digest to a plain .txt file next to the data
+    folder and exits — no network call beyond the calendar sources
+    already trusted, no credentials anywhere. Exact mirror of
+    register_backup_task, a separate task/flag so backup and digest
+    can be turned on independently."""
+    try:
+        cmd = f"{app_command()} --digest"
+        r = subprocess.run(
+            ["schtasks", "/create", "/tn", DIGEST_TASK_NAME, "/tr", cmd,
+             "/sc", "DAILY", "/st", "07:00", "/f"],
+            capture_output=True, text=True, timeout=10)
+        if r.returncode != 0:
+            messagebox.showerror(
+                APP_NAME, f"Couldn't register the digest task:\n{r.stderr.strip()}")
+            return False
+        return True
+    except Exception as e:
+        messagebox.showerror(APP_NAME, f"Couldn't register the digest task:\n{e}")
+        return False
+
+
+def unregister_digest_task():
+    try:
+        r = subprocess.run(["schtasks", "/delete", "/tn", DIGEST_TASK_NAME, "/f"],
+                           capture_output=True, text=True, timeout=10)
+        if r.returncode != 0 and "cannot find" not in r.stderr.lower():
+            messagebox.showerror(
+                APP_NAME, f"Couldn't remove the digest task:\n{r.stderr.strip()}")
+            return False
+        return True
+    except Exception as e:
+        messagebox.showerror(APP_NAME, f"Couldn't remove the digest task:\n{e}")
+        return False
+
+
 # ---------------- calendar (.ics) export ----------------
 
 def week_to_ics(monday):
@@ -5325,6 +5399,8 @@ class App(tk.Tk):
                           command=self._rebuild_csv_from_diary)
         datam.add_command(label="Automated backup (Task Scheduler)…",
                           command=self._set_backup_task)
+        datam.add_command(label="Automated digest.txt (Task Scheduler)…",
+                          command=self._set_digest_task)
         toolsm.add_cascade(label="Data & backup", menu=datam)
 
         goalm = tk.Menu(toolsm, tearoff=0)
@@ -6121,6 +6197,39 @@ class App(tk.Tk):
                 self.status.config(
                     text=f"'{BACKUP_TASK_NAME}' registered — runs daily "
                         "at 03:00.")
+
+    def _set_digest_task(self):
+        """Backlog #200: the credential-free version of #180's
+        declined AI/email digest. #180 was correctly declined — an LLM
+        API key and SMTP app-password living in plain-JSON settings is
+        a real security question nobody signed off on — but the actual
+        want underneath it (a report waiting for you without opening
+        the app) doesn't need either. Reuses #177's exact opt-in
+        mechanism and dialog shape (a real OS-level escalation, so
+        strictly opt-in, one dialog naming exactly what's about to
+        happen); writes #182's own multi-week digest to a plain .txt
+        file, no LLM, no email, no credentials anywhere."""
+        if digest_task_registered():
+            if messagebox.askyesno(
+                    APP_NAME, f"A '{DIGEST_TASK_NAME}' scheduled task is "
+                              "already registered (runs daily at 07:00, "
+                              "writes a 3-week digest.txt). Remove it?"):
+                if unregister_digest_task():
+                    self.status.config(text="Digest task removed.")
+            return
+        if messagebox.askyesno(
+                APP_NAME, f"Register a Windows Task Scheduler entry named "
+                          f"'{DIGEST_TASK_NAME}'? It will run "
+                          f"{app_command()} --digest daily at 07:00 — "
+                          "writes the same multi-week digest (View > "
+                          "Planning > \"Multi-week digest…\") to a plain "
+                          f"digest.txt next to your data folder, no LLM, "
+                          "no email, no credentials anywhere. Undo any "
+                          "time from this same menu."):
+            if register_digest_task():
+                self.status.config(
+                    text=f"'{DIGEST_TASK_NAME}' registered — runs daily "
+                        "at 07:00, writes digest.txt.")
 
     def _quick_add_plan(self, prefill_date=None, prefill_start=None, on_save=None):
         """Backlog #161: a fast, purpose-built way to jot down a one-
@@ -17186,6 +17295,82 @@ class App(tk.Tk):
             lines.append("Nothing to fix — the history is clean. ✓")
         return lines, rename, junk, dups
 
+    def _stale_plan_data_scan(self, cutoff_days=90):
+        """Backlog #199: the hygiene instinct #173 already named for
+        CODE, applied to the DATA this whole planning arc's features
+        accumulate. `protected_windows` now holds one-off dated
+        entries (#159/#161/#163) that never get cleaned up once their
+        date passes; `locked_windows` (#113/#136, per deadline) has
+        the same shape. Neither `_protected_intervals_named` nor
+        `_locked_windows_for_range` ever returns a PAST entry, so this
+        is pure accumulated dead weight, not a correctness bug — but
+        after months of real use (this app's own stated design
+        horizon) it's real rows nobody's looking at anymore. Returns
+        (n_plans, n_locked) whose date is more than `cutoff_days` in
+        the past."""
+        cutoff = self.today - dt.timedelta(days=cutoff_days)
+        n_plans = 0
+        for w in self.settings.get("protected_windows", []):
+            d_s = w.get("date")
+            if not d_s:
+                continue
+            try:
+                d = dt.date.fromisoformat(d_s)
+            except ValueError:
+                continue
+            if d < cutoff:
+                n_plans += 1
+        n_locked = 0
+        for dl in self.deadlines():
+            for w in dl.get("locked_windows", []):
+                try:
+                    d = dt.date.fromisoformat(w["date"])
+                except (KeyError, ValueError):
+                    continue
+                if d < cutoff:
+                    n_locked += 1
+        return n_plans, n_locked
+
+    def _clean_stale_plan_data(self, cutoff_days=90):
+        """Backlog #199: removes what `_stale_plan_data_scan` counts,
+        one confirmed batch — same "observe, then ask, never auto-
+        delete" posture as `_data_doctor`'s own csv clean. Returns
+        (n_plans, n_locked) actually removed."""
+        cutoff = self.today - dt.timedelta(days=cutoff_days)
+        kept, n_plans = [], 0
+        for w in self.settings.get("protected_windows", []):
+            d_s = w.get("date")
+            d = None
+            if d_s:
+                try:
+                    d = dt.date.fromisoformat(d_s)
+                except ValueError:
+                    d = None
+            if d and d < cutoff:
+                n_plans += 1
+                continue
+            kept.append(w)
+        self.settings["protected_windows"] = kept
+        n_locked = 0
+        for dl in self.deadlines():
+            existing = dl.get("locked_windows")
+            if not existing:
+                continue
+            new_list = []
+            for w in existing:
+                try:
+                    d = dt.date.fromisoformat(w["date"])
+                except (KeyError, ValueError):
+                    new_list.append(w)
+                    continue
+                if d < cutoff:
+                    n_locked += 1
+                    continue
+                new_list.append(w)
+            dl["locked_windows"] = new_list
+        save_settings(self.settings)
+        return n_plans, n_locked
+
     def _data_doctor(self):
         win = tk.Toplevel(self)
         win.title("Data doctor — sessions.csv")
@@ -17196,6 +17381,9 @@ class App(tk.Tk):
         bar.pack(fill="x", padx=8, pady=(0, 8))
         btn = ttk.Button(bar, text="Clean now (backs up first)")
         btn.pack(side="left")
+        stale_btn = ttk.Button(bar, text="Clean stale plans/locked windows "
+                                         "(90d+, backs up first)")
+        stale_btn.pack(side="left", padx=(8, 0))
         note = ttk.Label(bar, text="", foreground="#777777")
         note.pack(side="left", padx=8)
 
@@ -17203,6 +17391,11 @@ class App(tk.Tk):
             lines, rename, junk, dups = self._doctor_scan()
             lines = self._sensor_health_lines() + ["", *lines]
             lines += ["", *self._header_line_adoption_lines()]
+            n_plans, n_locked = self._stale_plan_data_scan()
+            if n_plans or n_locked:
+                lines += ["", f"{n_plans} one-off plan(s) and {n_locked} "
+                             "locked window(s) are 90+ days past their "
+                             "own date — safe to clean up."]
             backup_line = backup_integrity_line()
             if backup_line:
                 lines = [backup_line, ""] + lines
@@ -17212,6 +17405,8 @@ class App(tk.Tk):
             txt.config(state="disabled")
             btn.config(state="normal" if (rename or junk or dups)
                        else "disabled")
+            stale_btn.config(state="normal" if (n_plans or n_locked)
+                             else "disabled")
             return rename
 
         def clean():
@@ -17245,7 +17440,19 @@ class App(tk.Tk):
                              f"{len(out)} rows kept.")
             render()
 
+        def clean_stale():
+            bdir = os.path.join(data_dir(), "backups")
+            os.makedirs(bdir, exist_ok=True)
+            if os.path.exists(SETTINGS_JSON):
+                shutil.copy2(SETTINGS_JSON, os.path.join(
+                    bdir, f"settings_before_doctor_{dt.date.today()}.json"))
+            n_plans, n_locked = self._clean_stale_plan_data()
+            note.config(text=f"Cleaned {n_plans} plan(s), {n_locked} "
+                             "locked window(s) — backup in backups\\.")
+            render()
+
         btn.config(command=clean)
+        stale_btn.config(command=clean_stale)
         render()
 
     def _rebuild_csv_from_diary(self):
@@ -17761,6 +17968,39 @@ class App(tk.Tk):
         self.destroy()
 
 
+class _HeadlessDigest:
+    """Backlog #200: a minimal, non-tkinter stand-in carrying just
+    enough state (settings, today) for #182's own multi-week digest
+    method to run under `--digest` — Task Scheduler has no display to
+    hand a real `tk.Tk()` (App's own base class), which would crash
+    outright the instant it tried to construct, long before any
+    digest logic ran. Same idea the selftest harness already proved
+    safe (lift real methods onto a plain stub instead of duplicating
+    their logic) applied to production code this time. Every method
+    bound below only ever touches `self.settings`/`self.today`/plain
+    instance attributes it sets itself — never a Tk widget — so the
+    real, unmodified App methods run correctly with no GUI at all."""
+    def __init__(self):
+        self.settings = load_settings()
+        self.today = dt.date.today()
+
+    DEFAULT_CAP = App.DEFAULT_CAP
+    deadlines = App.deadlines
+    _capacity = App._capacity
+    _parse_weekdays = App._parse_weekdays
+    _protected_intervals_named = App._protected_intervals_named
+    _protected_intervals = App._protected_intervals
+    _protected_hours = App._protected_hours
+    _calendar_source_list = App._calendar_source_list
+    _ics_refresh_min = App._ics_refresh_min
+    _busy_data = App._busy_data
+    _day_capacity = App._day_capacity
+    _locked_windows_for_range = App._locked_windows_for_range
+    _upcoming_plans = App._upcoming_plans
+    _recurring_reminders_all = App._recurring_reminders_all
+    _multiweek_digest_lines = App._multiweek_digest_lines
+
+
 if __name__ == "__main__":
     if "--backup" in sys.argv:
         # backlog #177: the Task Scheduler entry point — no GUI, no
@@ -17768,6 +18008,16 @@ if __name__ == "__main__":
         # alongside the app), just the existing weekly-gated backup
         # step, then exit immediately
         backup_if_due()
+        sys.exit(0)
+    if "--digest" in sys.argv:
+        # backlog #200: same no-GUI Task Scheduler entry point as
+        # --backup above — writes #182's own multi-week digest to a
+        # plain .txt file and exits, no credentials, no network beyond
+        # the calendar sources already trusted by the app itself
+        lines = _HeadlessDigest()._multiweek_digest_lines(weeks=3)
+        with open(os.path.join(data_dir(), "digest.txt"), "w",
+                  encoding="utf-8") as f:
+            f.write("\n".join(lines))
         sys.exit(0)
     # per-monitor DPI awareness — without this, Tk mis-scales/overlaps
     # widgets on a laptop+external-monitor setup with different scaling
