@@ -60,6 +60,20 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.69 (#195 + #197 — quiet-week detector, social-density
+correlation, 2026-08-08, ported from the mobile session's continued
+branch work):
+  - #195: a week with real open deadlines but genuinely nothing locked
+    or planned now gets a plain nudge in WEEK AHEAD instead of staying
+    silent — the literal failure state ("hard to plan... often endup
+    making plans for next two days") this whole calendar push started
+    from.
+  - #197: METRIC CORRELATIONS now also runs a lagged correlation
+    (evening plan-hours vs the next day's tracked work) — turns #168's
+    hand-picked "social-heavy week" threshold into a real measured
+    finding instead of a guess.
+  - 80/80 selftest green.
+
 New in v9.68 (#185 + #186 + #187 + #188 + #196 + reminder evolution
 #214/#215/#216 — calendar-change awareness, digest/reminder fold-ins,
 2026-08-08, ported from the mobile session's continued branch work):
@@ -9214,8 +9228,16 @@ class App(tk.Tk):
         plans.sort()
         locked_line = self._locked_this_week_line(week)
         weekly_targets = self._weekly_target_lines()
+        # backlog #195: every check above is about doing MORE once
+        # something's already planned — a week with real open deadlines
+        # but genuinely ZERO locked windows and ZERO one-off plans used
+        # to produce no signal at all, even though that's the literal
+        # failure state ("sometimes its kinda hard to plan... often
+        # endup making plans for next two days") this whole feature
+        # exists to catch.
+        quiet_week = bool(needs) and not locked_line and not plans
         if not (overbooked or real_tight_day or behind_names or plans
-               or locked_line or weekly_targets):
+               or locked_line or weekly_targets or quiet_week):
             return []                # a normal week — nothing to flag
         lines = ["", f"WEEK AHEAD: {total_cap:.1f}h free across the next "
                     "7 days"
@@ -9252,6 +9274,9 @@ class App(tk.Tk):
                 lines.append(f"  plans this week: {plan_txt}")
         if locked_line:
             lines.append(locked_line)
+        if quiet_week:
+            lines.append("  nothing locked or planned for next week yet "
+                        "— worth an Auto-plan pass?")
         density = self._social_density_line(total_cap, plans, behind_names)
         if density:
             lines.append(density)
@@ -16199,13 +16224,75 @@ class App(tk.Tk):
         pairs.sort(key=lambda p: -abs(p[2]))
         return pairs
 
+    def _plan_density_output_correlation(self, days=90, min_n=15):
+        """Backlog #197: #168 warns when a week looks "social-heavy"
+        past a configurable threshold (#175) — but that threshold was
+        picked by feel, never measured. #189 just proved this app can
+        run a real Pearson correlation over any two tracked series;
+        this is that same engine turned on #168's own assumption.
+        Correlates "one-off plan hours on a given day" against "the
+        FOLLOWING day's tracked work hours" — a lagged pairing (day,
+        day+1), not same-day, since the whole question is whether an
+        evening out costs the next day something. Every day with real
+        tracked work the next day counts (0 plan-hours included, not
+        just days that had a plan — otherwise the correlation would
+        only ever compare "more plans" to "even more plans," never to
+        a quiet evening). Returns (r, n), or None below `min_n` days."""
+        idx = day_index()
+        cutoff = self.today - dt.timedelta(days=days)
+        plan_hours_by_day = {}
+        for w in self.settings.get("protected_windows", []):
+            if not w.get("date"):
+                continue
+            try:
+                d = dt.date.fromisoformat(w["date"])
+                sh, sm = map(int, w["start"].split(":"))
+                eh, em = map(int, w["end"].split(":"))
+            except (KeyError, ValueError, TypeError):
+                continue
+            plan_hours_by_day[d] = (plan_hours_by_day.get(d, 0.0)
+                                    + _time_span_hours(dt.time(sh, sm),
+                                                       dt.time(eh, em)))
+        xs, ys = [], []
+        d = cutoff
+        while d <= self.today:
+            rec = idx.get((d + dt.timedelta(days=1)).isoformat())
+            if rec and rec["work"] > 0:
+                xs.append(plan_hours_by_day.get(d, 0.0))
+                ys.append(rec["work"] / 60)
+            d += dt.timedelta(days=1)
+        if len(xs) < min_n:
+            return None
+        r = _pearson_r(xs, ys)
+        return (r, len(xs)) if r is not None else None
+
+    def _plan_density_output_line(self, days=90):
+        result = self._plan_density_output_correlation(days)
+        if result is None:
+            return None
+        r, n = result
+        if abs(r) < 0.2:
+            verdict = ("no real correlation — #168's social-density warning "
+                      "may be more caution than this data actually needs")
+        elif r < 0:
+            verdict = "more evening plans tends to mean LESS output the next day"
+        else:
+            verdict = ("more evening plans tends to mean MORE output the "
+                      "next day (worth a second look if this holds up)")
+        return (f"evening plans → next-day output: r={r:+.2f} (n={n}) — "
+               f"{verdict}")
+
     def _correlation_lines(self, days=90, max_n=5):
         """Formatted view of `_metric_correlations` above, capped to
         the strongest `max_n` relationships — a wall of every pair
         that clears the bar isn't more useful than the handful that
-        actually matter."""
+        actually matter. Backlog #197: also appends the one lagged
+        finding (plans vs next-day output) `_metric_correlations`
+        itself can't reach, since that engine only ever compares
+        same-day series."""
         pairs = self._metric_correlations(days)
-        if not pairs:
+        density_line = self._plan_density_output_line(days)
+        if not pairs and not density_line:
             return ["Not enough overlapping tracked data yet to find "
                     "real correlations — needs 15+ days where two "
                     "metrics were both logged."]
@@ -16214,6 +16301,8 @@ class App(tk.Tk):
         for k1, k2, r, n in pairs[:max_n]:
             strength = "strong" if abs(r) >= 0.6 else "moderate"
             lines.append(f"  {k1} ↔ {k2}: r={r:+.2f} ({strength}, n={n})")
+        if density_line:
+            lines.append(f"  {density_line}")
         return lines
 
     def _day_feature_vectors(self, days=90, with_sleep=False):

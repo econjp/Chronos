@@ -497,6 +497,20 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.69** (#195 + #197, 2026-08-08, DONE). Third batch from the
+  mobile branch continuation. #195: `_week_ahead_lines` gains one more
+  OR condition — a week with real open deadlines but genuinely ZERO
+  locked windows and ZERO one-off plans now says so plainly ("nothing
+  locked or planned for next week yet — worth an Auto-plan pass?")
+  instead of staying silent, closing the loop on the very first
+  complaint that started this whole session's calendar/planning push.
+  #197: `_plan_density_output_correlation` runs #189's real Pearson
+  engine over "evening plan-hours" vs "next day's tracked work hours"
+  (a lagged day/day+1 pairing), turning #168's hand-picked social-
+  density threshold into a measured finding appended to METRIC
+  CORRELATIONS. 2 new selftest suites (plan-density-correlation) plus
+  suite_week_ahead extended for the quiet-week case; 80/80 green.
+
 - **v9.68** (#185 + #186 + #187 + #188 + #196 + reminders evolution
   #214/#215/#216, 2026-08-08, DONE). Second batch from the mobile
   branch continuation (see the v9.67 entry's "Mobile branch
@@ -4669,41 +4683,19 @@ polish — the three NOT chosen this round) when continuing this work.
     tracked METRICS key against its own n>=15 history, feeding
     `_anomaly_lines` alongside the hand-picked checks.
 
-195. **A "quiet week" detector — flag when an upcoming week has
-    NOTHING locked or planned at all (PLANNING; new idea 2026-08-08,
-    directly closes the loop on the very first complaint that started
-    this whole arc: "sometimes its kinda hard to plan!!! and often
-    endup making plans for next two days").** Every feature since has
-    been about doing MORE once something's already planned — #133's
-    week-ahead line only speaks when overbooked/tight/behind/has
-    plans; a week with real open deadlines but genuinely ZERO locked
-    windows and ZERO one-off plans currently produces no signal at
-    all, even though that's the literal failure state the owner
-    originally described. Fix: one more OR condition in
-    `_week_ahead_lines` — when a week has open deadlines with real
-    remaining scope but `_locked_hours` and #166's `plans` are both
-    empty, say so plainly: "nothing locked or planned for next week
-    yet — worth an Auto-plan pass?" No new primitive, just naming the
-    zero case the same honesty-gate machinery already tracks.
+~~195. **A "quiet week" detector — flag when an upcoming week has
+    NOTHING locked or planned at all.**~~ — DONE v9.69. See the v9.69
+    version-history entry above. Directly closes the loop on the very
+    first complaint that started this whole arc: "sometimes its kinda
+    hard to plan!!! and often endup making plans for next two days."
 
 ~~196. **Locked windows re-checked against freshly-detected calendar
     changes.**~~ — DONE v9.68. See the v9.68 version-history entry
     above.
 
-197. **Correlate social-plan density against next-day output — turn
-    #168's assumed threshold into a measured one (PLANNING — connects
-    #189's real correlation engine to #168's hand-picked heuristic;
-    new idea 2026-08-08).** #168 warns when a week looks "social-
-    heavy" past a configurable threshold (#175), but that threshold
-    was chosen by feel, not by this owner's own real data — and #189
-    just proved this app can run a real Pearson correlation over any
-    two tracked series. Fix: correlate "plan-hours the evening before"
-    against "next day's tracked work hours," same n>=15 honesty gate,
-    surfaced once as a real finding — "your data shows no real
-    correlation between evening plans and next-day output (r=0.08) —
-    #168's warning may be more caution than this owner actually needs"
-    or the opposite, confirming it. Either way, replaces a guess with
-    a number, the same instinct that justified #189 existing at all.
+~~197. **Correlate social-plan density against next-day output — turn
+    #168's assumed threshold into a measured one.**~~ — DONE v9.69.
+    See the v9.69 version-history entry above.
 
 198. **Predict tomorrow's day-archetype from what's already locked/
     planned, not just cluster PAST days (PLANNING — makes #190's

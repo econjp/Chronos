@@ -4,6 +4,15 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.69 — quiet-week nudge, measured social-density correlation
+
+Week Ahead now speaks up when a week has real open deadlines but
+nothing locked or planned at all — previously silent, now a plain
+"worth an Auto-plan pass?" nudge. Metric Correlations gained a lagged
+check: evening plan-hours vs the next day's tracked work, turning the
+social-density warning's threshold into a real measured number instead
+of a guess.
+
 ### v9.68 — calendar-change awareness, richer recurring reminders
 
 The app now notices when a subscribed calendar changes since you last

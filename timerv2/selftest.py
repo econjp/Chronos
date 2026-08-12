@@ -97,7 +97,8 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_hour_signal_scores", "_lock_window_candidates",
         "_recurring_reminders_all", "_calendar_delta", "_calendar_delta_lines",
         "_locked_calendar_collisions", "_repeating_calendar_event_suggestion",
-        "_repeating_calendar_event_line"}
+        "_repeating_calendar_event_line", "_plan_density_output_correlation",
+        "_plan_density_output_line"}
 STATIC = {"_match_kws", "_pull_level", "_parse_time_loose"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -1009,10 +1010,28 @@ def suite_week_ahead():
     d.deadlines = lambda: []
     assert D._week_ahead_lines(d) == []
 
-    # ---- silence: a normal week — slack, no tight day, ahead of pace ----
+    # ---- backlog #195: a week with a real open deadline but nothing
+    # locked or planned used to be silent — now says so plainly, the
+    # literal failure state ("hard to plan... often endup making plans
+    # for next two days") this whole feature exists to catch ----
     d.deadlines = lambda: [{"name": "Thesis"}]
-    d._dl_projection = lambda dl: {"delta": -2}                # ahead
-    assert D._week_ahead_lines(d) == []
+    d._dl_projection = lambda dl: {"delta": -2}                # ahead of pace
+    out_quiet = D._week_ahead_lines(d)
+    assert out_quiet and any(
+        "nothing locked or planned for next week yet" in x for x in out_quiet
+    ), out_quiet
+    assert not any("overbooked" in x or "tightest day" in x or
+                  "already behind" in x for x in out_quiet), out_quiet
+
+    # ---- but the same deadline WITH a plan already on the books
+    # doesn't ALSO get the quiet-week nudge ----
+    d.settings = {"protected_windows": [
+        {"label": "Dinner", "start": "19:00", "end": "21:00", "days": "",
+         "skip": [], "date": (d.today + dt.timedelta(days=1)).isoformat()}]}
+    out_plan = D._week_ahead_lines(d)
+    assert not any("nothing locked or planned" in x for x in out_plan), out_plan
+    assert any("Dinner" in x for x in out_plan), out_plan
+    d.settings = {}
 
     # ---- #133: overbooked week names real recurring commitments ----
     d.deadlines = lambda: [{"name": "Thesis"}, {"name": "TUTA"}]
@@ -3387,6 +3406,46 @@ def suite_metric_correlations():
                       "metrics were both logged."]
 
 
+def suite_plan_density_correlation():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 7, 21)
+    settings = {"protected_windows": []}
+    rows = []
+    for i in range(20):
+        d0 = dt.date(2026, 7, 1) + dt.timedelta(days=i)
+        next_d = d0 + dt.timedelta(days=1)
+        plan_h = i % 10                       # 0..9, repeating
+        end_t = (dt.datetime.combine(dt.date.min, dt.time(9, 0))
+                + dt.timedelta(hours=plan_h)).time()
+        if plan_h > 0:
+            settings["protected_windows"].append({
+                "date": d0.isoformat(), "start": "09:00",
+                "end": f"{end_t:%H:%M}", "label": "Plan"})
+        work_h = 10 - plan_h                  # exact negative linear relation
+        rows.append(row(next_d.isoformat(), work_h * 60, "solo"))
+    seed(ns, rows)
+    d = _mk(D, today=TODAY, settings=settings)
+
+    result = D._plan_density_output_correlation(d, days=90)
+    assert result is not None
+    r, n = result
+    assert abs(r - (-1.0)) < 1e-9, (r, n)
+    assert n == 20, (r, n)
+
+    line = D._plan_density_output_line(d, days=90)
+    assert line.startswith("evening plans → next-day output: r=-1.00"), line
+    assert "LESS output" in line, line
+
+    # ---- not enough overlapping days ----
+    D2, ns2 = fresh()
+    rows2 = [row((dt.date(2026, 7, 2) + dt.timedelta(days=i)).isoformat(),
+                 60, "solo") for i in range(3)]
+    seed(ns2, rows2)
+    d2 = _mk(D2, today=dt.date(2026, 7, 6), settings={"protected_windows": []})
+    assert D2._plan_density_output_correlation(d2, days=90) is None
+    assert D2._plan_density_output_line(d2, days=90) is None
+
+
 def suite_kmeans():
     _, ns = fresh()
     assert ns["_sqdist"]((0, 0), (3, 4)) == 25
@@ -3627,6 +3686,7 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("recurring-reminders", suite_recurring_reminders),
           ("stale-plan", suite_stale_plan),
           ("metric-correlations", suite_metric_correlations),
+          ("plan-density-correlation", suite_plan_density_correlation),
           ("kmeans", suite_kmeans),
           ("day-archetypes", suite_day_archetypes),
           ("calendar-delta", suite_calendar_delta),
