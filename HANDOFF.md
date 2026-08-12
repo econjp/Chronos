@@ -497,6 +497,36 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.73** (#192 + #219, 2026-08-08, DONE). Seventh and final batch
+  from the mobile branch continuation — the two features that touch
+  #190's day-archetype clustering, ported last and with extra care
+  since they land on top of this session's own #205 (sleep-aware
+  archetypes). Both turned out fully independent of #205's changes on
+  inspection: #192's day-outcome predictor (`_day_outcome_predict`, a
+  from-scratch logistic regression — `_logreg_fit`/`_sigmoid`/
+  `_fit_standardizer`, same stdlib-only posture as #190's k-means)
+  uses its OWN feature set (weekday, hours already committed, recent
+  pace) via `_day_outcome_features`, nothing shared with
+  `_day_feature_vectors`. #219's calendar overlay
+  (`_day_archetype_membership` reshapes whichever `_day_archetypes`
+  output it gets — 3-feature or #205's 4-feature — into a flat
+  {iso: name} lookup, so it works unchanged either way) colors past
+  month-calendar cells by archetype instead of free-time shading, a
+  new "Archetype colors" checkbox in Calendar view. Both verified via
+  a real headless Tk smoke test (not just selftest, which never
+  renders a canvas) — actual `_draw_calendar_month` calls with a real
+  archetype_membership dict, actual `_day_outcome_predict` against
+  seeded csv data. 2 new selftest suites (day-outcome, archetype-
+  overlay); 85/85 green.
+
+  **Mobile branch continuation: complete.** All 43 functions the
+  function-name diff (see v9.67's note) identified as genuinely new
+  are now ported: #185-188, #191, #193-200, #196, #214-219 — 21
+  backlog items across 7 commits (v9.67-v9.73), verified end to end
+  (selftest + real headless Tk/CLI smoke tests where selftest
+  couldn't reach), each landed as its own reviewed, tested, freshly-
+  authored commit per the standing audit-before-landing policy.
+
 - **v9.72** (#218, 2026-08-08, DONE). Sixth batch from the mobile
   branch continuation — "Plan my week," one guided entry point. Five
   separate menu items shipped across this whole calendar/planning arc
@@ -4704,6 +4734,13 @@ polish — the three NOT chosen this round) when continuing this work.
     the already-shipped health-data-correlation feature). See the
     v9.72 version-history entry above.
 
+~~219. **Day-archetype color overlay on the month calendar — past
+    cells shaded by which #190 archetype they clustered into instead
+    of by free time.**~~ — DONE v9.73 (was #202 on the mobile branch;
+    renumbered — master's own #202 is the already-shipped mobile-
+    session UX audit/menu-reorg, unrelated). See the v9.73 version-
+    history entry above.
+
 189. ~~**A real metric correlation engine — Pearson r across every
     tracked daily metric, not another hand-picked heuristic.**~~ —
     DONE v9.61 (owner asked directly: "think if theres like more
@@ -4721,20 +4758,14 @@ polish — the three NOT chosen this round) when continuing this work.
     alongside the projected landing date, e.g. "(R²=0.89 — a reliable
     trend)" vs "noisy pace, treat this loosely."
 
-192. **A day-outcome predictor — logistic regression, pure Python
-    (PLANNING; new idea 2026-08-08).** #189/#190 both look BACKWARD
-    (what correlated, what pattern already happened); nothing yet
-    looks forward from this morning's own known features (day of
-    week, plans already on the books, recent pace) to a probability
-    of hitting today's declared target. A from-scratch logistic
-    regression (gradient descent, a handful of features, trained
-    fresh each time on real history — no persisted model file, no
-    versioning problem) could report "68% chance of hitting today's
-    target, based on 40 similar mornings" right in the header — a
-    genuine prediction, not another rule someone wrote by hand. Needs
-    real sample-size honesty gates (n>=30 comparable mornings) same as
-    every statistical feature here, and should stay silent rather than
-    output a number built on thin data.
+~~192. **A day-outcome predictor — logistic regression, pure
+    Python.**~~ — DONE v9.73. See the v9.73 version-history entry
+    above. #189/#190 both look BACKWARD (what correlated, what
+    pattern already happened); `_day_outcome_predict` looks FORWARD, a
+    from-scratch logistic regression trained fresh each call on real
+    history, reporting a real probability in the morning header —
+    "68% chance of a signal-majority day today, based on 40 similar
+    recent mornings" — not another hand-written rule.
 
 ~~193. **Rank free-time slots by what historically produced good
     signal, not just chronologically.**~~ — DONE v9.67. See the v9.67

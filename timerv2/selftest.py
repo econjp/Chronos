@@ -42,7 +42,9 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "parse_ics_events", "_parse_exdates", "_pearson_r",
        "_sqdist", "_standardize", "_kmeans", "_linreg", "_zscore",
        "_reminder_lateness_stats", "_reminder_next_occurrences",
-       "_source_cache_key"}
+       "_source_cache_key", "_fit_standardizer", "_apply_standardizer",
+       "_sigmoid", "_logreg_fit", "_logreg_predict",
+       "_archetype_cell_color", "_archetype_sort_key"}
 METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_match_kws", "_trajectory_lines", "_outlook_lines",
         "_alignment_lines", "_domain_minutes", "_review_bottom_line",
@@ -100,7 +102,10 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_repeating_calendar_event_line", "_plan_density_output_correlation",
         "_plan_density_output_line", "_stale_plan_data_scan",
         "_clean_stale_plan_data", "_week_was_rough", "_recovery_evening_line",
-        "_capacity", "_plan_my_week_lines"}
+        "_capacity", "_plan_my_week_lines", "_day_outcome_label",
+        "_day_outcome_features", "_day_outcome_dataset",
+        "_day_outcome_predict", "_day_outcome_line",
+        "_day_archetype_membership"}
 STATIC = {"_match_kws", "_pull_level", "_parse_time_loose"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -112,7 +117,8 @@ CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
 # module-level (not class) constants some TOP/METH functions reference —
 # extracted from the real source so a value change there can't silently
 # drift from what the tests assert against
-MODULE_CONSTS = {"ICS_REFRESH_MIN"}
+MODULE_CONSTS = {"ICS_REFRESH_MIN", "_ARCHETYPE_COLORS",
+                 "_ARCHETYPE_NAME_COLOR", "_ARCHETYPE_NAME_ORDER"}
 
 _text = open(SRC, encoding="utf-8").read()
 _tree = ast.parse(_text)
@@ -3541,6 +3547,120 @@ def suite_plan_density_correlation():
     assert D2._plan_density_output_line(d2, days=90) is None
 
 
+def suite_day_outcome():
+    D, ns = fresh()
+
+    # ---- pure primitives ----
+    assert abs(ns["_sigmoid"](0) - 0.5) < 1e-9
+    assert ns["_sigmoid"](100) == 1.0
+    assert ns["_sigmoid"](-100) == 0.0
+
+    means, stdevs = ns["_fit_standardizer"]([[1, 10], [3, 10], [5, 10]])
+    assert abs(means[0] - 3.0) < 1e-9, means
+    assert stdevs[1] == 0.0, stdevs           # zero-variance column
+    scaled = ns["_apply_standardizer"]([3, 10], means, stdevs)
+    assert abs(scaled[0]) < 1e-9 and scaled[1] == 0.0, scaled
+
+    # a cleanly (linearly) separable AND-like dataset
+    X = [[0, 0], [0, 1], [1, 0], [1, 1]] * 5
+    y = [0, 0, 0, 1] * 5
+    w = ns["_logreg_fit"](X, y, iters=500, lr=0.5)
+    assert w is not None
+    assert ns["_logreg_predict"](w, [1, 1]) > 0.6, w
+    assert ns["_logreg_predict"](w, [0, 0]) < 0.4, w
+    assert ns["_logreg_fit"]([[1]], [1]) is None            # n < 2
+    assert ns["_logreg_fit"]([[1], [2]], [1, 1]) is None    # single label
+
+    # ---- backlog #192: day-outcome label/features/predict ----
+    TODAY = dt.date(2026, 8, 10)     # a Monday
+    sig_map = {}
+    for back in range(1, 91):
+        day = TODAY - dt.timedelta(days=back)
+        sig_map[day.isoformat()] = (40, 60) if day.weekday() < 5 else (10, 60)
+    d = _mk(D, today=TODAY,
+           _day_signal=lambda day, *a, **k: sig_map.get(day.isoformat(), (0, 0)),
+           _calendar_events=lambda start, end: [],
+           _locked_windows_for_range=lambda start, end: [])
+
+    yday = TODAY - dt.timedelta(days=1)
+    assert D._day_outcome_label(d, yday) == (1 if yday.weekday() < 5 else 0)
+    empty_day = TODAY - dt.timedelta(days=200)
+    assert D._day_outcome_label(d, empty_day) is None   # no data -> no label
+
+    feats = D._day_outcome_features(d, yday)
+    assert feats[0] == float(yday.weekday()), feats
+    assert feats[1] == 0.0, feats           # no calendar/locked commitments
+    assert feats[2] == 0.0, feats           # no tracked csv rows -> 0 pace
+
+    X_data, y_data = D._day_outcome_dataset(d, days=180)
+    assert len(X_data) == 90 == len(y_data), (len(X_data), len(y_data))
+
+    pred = D._day_outcome_predict(d)
+    assert pred is not None, pred
+    assert pred["n"] == 90, pred
+    assert pred["prob"] > 0.6, pred     # today (Monday) reads as likely
+
+    line = D._day_outcome_line(d)
+    assert line is not None, line
+    assert "chance of a signal-majority day" in line, line
+
+    # ---- honesty gate: too little history -> None ----
+    assert D._day_outcome_predict(d, days=10) is None
+    d2 = _mk(D, today=TODAY,
+            _day_signal=lambda day, *a, **k: (0, 0),
+            _calendar_events=lambda start, end: [],
+            _locked_windows_for_range=lambda start, end: [])
+    assert D._day_outcome_predict(d2) is None       # nothing labelable at all
+    assert D._day_outcome_line(d2) is None
+
+
+def suite_archetype_overlay():
+    D, ns = fresh()
+
+    # ---- backlog #219: stable color per archetype NAME ----
+    assert ns["_archetype_cell_color"]("Light/recovery days") == \
+        ns["_ARCHETYPE_COLORS"][0]
+    assert ns["_archetype_cell_color"]("Steady days") == \
+        ns["_ARCHETYPE_COLORS"][1]
+    assert ns["_archetype_cell_color"]("Deep-focus days") == \
+        ns["_ARCHETYPE_COLORS"][2]
+    # generic "Archetype N" names cycle through the same palette
+    assert ns["_archetype_cell_color"]("Archetype 1") == \
+        ns["_ARCHETYPE_COLORS"][0]
+    n_colors = len(ns["_ARCHETYPE_COLORS"])
+    assert ns["_archetype_cell_color"](f"Archetype {n_colors + 1}") == \
+        ns["_ARCHETYPE_COLORS"][0]     # wraps around
+    assert ns["_archetype_cell_color"]("something unrecognized") == "#dddddd"
+
+    # ---- sort key orders low-effort -> high-effort ----
+    names = ["Deep-focus days", "Light/recovery days", "Steady days"]
+    assert sorted(names, key=ns["_archetype_sort_key"]) == [
+        "Light/recovery days", "Steady days", "Deep-focus days"]
+    assert sorted(["Archetype 3", "Archetype 1", "Archetype 2"],
+                  key=ns["_archetype_sort_key"]) == [
+        "Archetype 1", "Archetype 2", "Archetype 3"]
+
+    # ---- backlog #219: flat iso->name lookup over #190's clustering ----
+    TODAY = dt.date(2026, 8, 30)
+    start = dt.date(2026, 8, 1)
+    hours = [1] * 7 + [5] * 7 + [9] * 7
+    rows = [row((start + dt.timedelta(days=i)).isoformat(), h * 60, "solo")
+           for i, h in enumerate(hours)]
+    seed(ns, rows)
+    d = _mk(D, today=TODAY, settings={})
+    membership = D._day_archetype_membership(d, days=90, k=3)
+    assert membership is not None
+    assert len(membership) == 21, membership
+    assert membership[start.isoformat()] == "Light/recovery days", membership
+    assert membership[(start + dt.timedelta(days=20)).isoformat()] == \
+        "Deep-focus days", membership
+
+    # ---- honesty gate inherited from #190: too few days -> None ----
+    seed(ns, rows[:10])
+    d2 = _mk(D, today=TODAY, settings={})
+    assert D._day_archetype_membership(d2, days=90, k=3) is None
+
+
 def suite_kmeans():
     _, ns = fresh()
     assert ns["_sqdist"]((0, 0), (3, 4)) == 25
@@ -3827,6 +3947,8 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("stale-plan-data", suite_stale_plan_data),
           ("metric-correlations", suite_metric_correlations),
           ("plan-density-correlation", suite_plan_density_correlation),
+          ("day-outcome", suite_day_outcome),
+          ("archetype-overlay", suite_archetype_overlay),
           ("kmeans", suite_kmeans),
           ("day-archetypes", suite_day_archetypes),
           ("calendar-delta", suite_calendar_delta),

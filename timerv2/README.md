@@ -4,6 +4,16 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.73 — a day-outcome predictor, day-archetype calendar colors
+
+Two more: the morning header can now show a real trained probability
+— "68% chance of a signal-majority day today" — a from-scratch
+logistic regression trained on your own history each time, not a
+hand-written rule. And Calendar view's month mode gets an "Archetype
+colors" checkbox: past days shade by which day-archetype (Light/
+recovery, Steady, Deep-focus) they clustered into instead of by free
+time.
+
 ### v9.72 — "Plan my week," one guided entry point
 
 New menu item (View → Planning → "Plan my week…", listed first):

@@ -60,6 +60,27 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.73 (#192 + #219 — a day-outcome predictor, day-archetype
+calendar colors, 2026-08-08, ported from the mobile session's
+continued branch work — the final batch, closing out the mobile-
+branch continuation):
+  - #192: a from-scratch logistic regression (`_day_outcome_predict`)
+    trains fresh on real history each time it's asked and reports a
+    real probability in the morning header — "68% chance of a signal-
+    majority day today, based on 40 similar recent mornings" — looking
+    FORWARD from today's own known features, where #189/#190 only
+    ever looked backward.
+  - #219: Calendar view's month mode gets an "Archetype colors"
+    checkbox — past days get shaded by which #190 day-archetype they
+    clustered into instead of by free time, with a legend naming
+    which archetypes are showing.
+  - both verified with a real headless Tk smoke test in addition to
+    selftest, since canvas rendering isn't exercised by the AST-based
+    harness.
+  - 85/85 selftest green. This closes the mobile-branch-continuation
+    arc: all 43 genuinely-new functions from the branch are now
+    ported (21 backlog items, v9.67-v9.73).
+
 New in v9.72 (#218 — "Plan my week," one guided entry point,
 2026-08-08, ported from the mobile session's continued branch work):
   - View → Planning → "Plan my week…" (now listed first) composes
@@ -3789,6 +3810,47 @@ def _kmeans(points, k, iters=50, restarts=5, seed=42):
     return best[1], best[2]
 
 
+_ARCHETYPE_COLORS = ("#cfe8fb", "#d7f2d5", "#fbd9c7", "#f0d6f7", "#fff3b0")
+_ARCHETYPE_NAME_COLOR = {
+    "Light/recovery days": _ARCHETYPE_COLORS[0],
+    "Steady days": _ARCHETYPE_COLORS[1],
+    "Deep-focus days": _ARCHETYPE_COLORS[2],
+}
+
+
+_ARCHETYPE_NAME_ORDER = {"Light/recovery days": 0, "Steady days": 1,
+                         "Deep-focus days": 2}
+
+
+def _archetype_sort_key(name):
+    """Backlog #219: orders archetype names the same way #190 already
+    orders its own dict — ascending avg_work_h — so a legend built from
+    a plain `set()` of names (unordered) can still be shown low-to-high
+    effort instead of whatever order a hash set happens to iterate in."""
+    if name in _ARCHETYPE_NAME_ORDER:
+        return _ARCHETYPE_NAME_ORDER[name]
+    m = re.match(r"Archetype (\d+)$", name)
+    return int(m.group(1)) if m else 99
+
+
+def _archetype_cell_color(name):
+    """Backlog #219: a stable color per archetype NAME, not per cluster
+    index — #190 already names the common k=3 case with fixed labels
+    ("Light/recovery days" etc.) precisely so downstream consumers like
+    this one can key off a stable string instead of a k-means cluster
+    id that could reshuffle between runs. Falls back to cycling
+    `_ARCHETYPE_COLORS` by the trailing number for the generic
+    "Archetype N" names any other k produces; a truly unknown name
+    (shouldn't happen — #190 only ever emits these two shapes) gets a
+    neutral grey rather than raising."""
+    if name in _ARCHETYPE_NAME_COLOR:
+        return _ARCHETYPE_NAME_COLOR[name]
+    m = re.match(r"Archetype (\d+)$", name)
+    if m:
+        return _ARCHETYPE_COLORS[(int(m.group(1)) - 1) % len(_ARCHETYPE_COLORS)]
+    return "#dddddd"
+
+
 def _linreg(xs, ys):
     """Backlog #191: plain least-squares linear regression — slope,
     intercept, and R² — the textbook closed-form sums-of-products
@@ -3836,6 +3898,82 @@ def _zscore(value, history):
         return None
     stdev = math.sqrt(var)
     return mean, stdev, (value - mean) / stdev
+
+
+def _fit_standardizer(vectors):
+    """Backlog #192: like `_standardize` above, but returns the
+    learned per-column (mean, stdev) instead of already-transformed
+    vectors — so a feature vector seen AFTER training (today's own,
+    not part of the training set) can be scaled against the EXACT
+    same reference the model was trained on, not a separate and
+    single-row-meaningless mean/std of its own."""
+    n = len(vectors)
+    dim = len(vectors[0])
+    means = [sum(v[j] for v in vectors) / n for j in range(dim)]
+    stdevs = []
+    for j in range(dim):
+        var = sum((v[j] - means[j]) ** 2 for v in vectors) / n
+        stdevs.append(math.sqrt(var))
+    return means, stdevs
+
+
+def _apply_standardizer(vector, means, stdevs):
+    """Backlog #192: the applying half of `_fit_standardizer` — scales
+    one vector against an already-learned (means, stdevs), same zero-
+    variance-column-stays-zero behavior `_standardize` uses."""
+    return [(x - m) / s if s > 1e-9 else 0.0
+           for x, m, s in zip(vector, means, stdevs)]
+
+
+def _sigmoid(z):
+    """Backlog #192: the logistic function, clamped against overflow
+    on extreme |z| — `math.exp` on a wildly negative/positive number
+    either underflows harmlessly or raises OverflowError; clamping
+    first means it never gets the chance to do the latter."""
+    if z < -60:
+        return 0.0
+    if z > 60:
+        return 1.0
+    return 1.0 / (1.0 + math.exp(-z))
+
+
+def _logreg_fit(X, y, iters=500, lr=0.1):
+    """Backlog #192: from-scratch logistic regression via plain batch
+    gradient descent on the log-loss — pure Python, no numpy/scikit-
+    learn, same stdlib-only posture as #190's k-means. `X` is a list
+    of already-standardized feature vectors (gradient descent
+    converges reliably only when features share a scale — the same
+    reason k-means needs `_standardize`); `y` is a parallel list of
+    0/1 labels. Returns the learned weight vector with the bias folded
+    in as element 0 (`X` itself carries no bias column). None when
+    there isn't enough data to fit anything real (fewer than 2 rows)
+    or every label is identical — nothing to discriminate; the bias
+    alone already gets that degenerate case's probability exactly
+    right, gradient descent can't improve on a constant."""
+    n = len(X)
+    if n < 2 or n != len(y):
+        return None
+    if len(set(y)) < 2:
+        return None
+    dim = len(X[0])
+    w = [0.0] * (dim + 1)
+    for _ in range(iters):
+        grad = [0.0] * (dim + 1)
+        for xi, yi in zip(X, y):
+            z = w[0] + sum(wj * xj for wj, xj in zip(w[1:], xi))
+            err = _sigmoid(z) - yi
+            grad[0] += err
+            for j, xj in enumerate(xi):
+                grad[j + 1] += err * xj
+        w = [wj - lr * gj / n for wj, gj in zip(w, grad)]
+    return w
+
+
+def _logreg_predict(w, x):
+    """Backlog #192: sigmoid(w · x), bias folded in the same way
+    `_logreg_fit` trains it — the actual forward pass."""
+    z = w[0] + sum(wj * xj for wj, xj in zip(w[1:], x))
+    return _sigmoid(z)
 
 
 def _free_from_busy(win_start, win_end, busy):
@@ -8896,6 +9034,9 @@ class App(tk.Tk):
         forecast = self._energy_forecast_line()
         if forecast:
             parts.append(forecast)
+        outcome_line = self._day_outcome_line()
+        if outcome_line:
+            parts.append(outcome_line)
         plan = self._plan_line()
         if plan:
             parts.append(plan)
@@ -13983,7 +14124,7 @@ class App(tk.Tk):
         b = round(base[2] + ratio * (target[2] - base[2]))
         return f"#{r:02x}{g:02x}{b:02x}"
 
-    def _draw_calendar_month(self, cv, year, month):
+    def _draw_calendar_month(self, cv, year, month, archetype_membership=None):
         """Backlog #120/#131: a real month grid — date numbers, up to a
         few event/work-session names per cell before collapsing to
         "+N more", same shape as Outlook's own month view. Cell
@@ -13992,7 +14133,18 @@ class App(tk.Tk):
         forecast and #113's lock-window candidates already use) —
         one glance answers both "what's on" and "how open is it,"
         instead of needing #118's separate window for the second
-        question."""
+        question. Backlog #219: when the caller opts in (Archetype
+        colors toggle) and passes `archetype_membership` (#219's own
+        `_day_archetype_membership` — an {iso: name} lookup), a day
+        that's already been clustered into one of #190's day
+        archetypes gets that archetype's own color instead of the
+        capacity shade — since it already happened, "how open was it"
+        (a forward-looking question) is less useful there than "what
+        KIND of day was this," discovered from the owner's own
+        history rather than a guess at the time. Future/untracked days
+        always fall back to the capacity shade regardless, since
+        #190's clustering only ever covers days that already
+        happened."""
         cv.delete("all")
         first = dt.date(year, month, 1)
         start_col = first.weekday()
@@ -14044,7 +14196,11 @@ class App(tk.Tk):
             row, col = idx // 7, idx % 7
             x0, y0 = pad + col * cell_w, hdr_h + pad + row * cell_h
             dark = self.settings.get("dark_mode", False)
-            if d == self.today:
+            archetype_name = (archetype_membership.get(d.isoformat())
+                              if archetype_membership else None)
+            if archetype_name:
+                bg = _archetype_cell_color(archetype_name)
+            elif d == self.today:
                 bg = "#2a3f52" if dark else "#eaf2fb"
             else:
                 base = (0x2a, 0x2d, 0x33) if dark else (0xff, 0xff, 0xff)
@@ -14129,6 +14285,7 @@ class App(tk.Tk):
         top = ttk.Frame(win)
         top.pack(fill="x", padx=8, pady=8)
         mode_var = tk.StringVar(value="week")
+        archetype_var = tk.BooleanVar(value=False)
         state = {"anchor": self.today}
 
         def render():
@@ -14138,9 +14295,23 @@ class App(tk.Tk):
                 self._draw_calendar_week(cv, monday)
                 title_lbl.config(text=f"Week of {monday:%d.%m.%Y}")
             else:
+                membership = (self._day_archetype_membership()
+                              if archetype_var.get() else None)
                 self._draw_calendar_month(cv, state["anchor"].year,
-                                          state["anchor"].month)
+                                          state["anchor"].month,
+                                          archetype_membership=membership)
                 title_lbl.config(text=f"{state['anchor']:%B %Y}")
+                if archetype_var.get():
+                    if membership:
+                        names = sorted(set(membership.values()),
+                                       key=_archetype_sort_key)
+                        archetype_legend.config(text="  ".join(
+                            f"■ {n}" for n in names))
+                    else:
+                        archetype_legend.config(
+                            text="not enough tracked days yet for archetypes")
+                else:
+                    archetype_legend.config(text="")
 
         def nav(delta):
             if mode_var.get() == "week":
@@ -14295,6 +14466,8 @@ class App(tk.Tk):
                        command=render).pack(side="left")
         ttk.Radiobutton(top, text="Month", variable=mode_var, value="month",
                        command=render).pack(side="left", padx=(4, 12))
+        ttk.Checkbutton(top, text="Archetype colors", variable=archetype_var,
+                       command=render).pack(side="left", padx=(0, 12))
         ttk.Button(top, text="< Prev", command=lambda: nav(-1)).pack(side="left")
         ttk.Button(top, text="Today", command=go_today).pack(side="left", padx=4)
         ttk.Button(top, text="Next >", command=lambda: nav(1)).pack(side="left")
@@ -14304,12 +14477,17 @@ class App(tk.Tk):
         cv = tk.Canvas(win, background=self._theme_color("cv_bg"), highlightthickness=0)
         cv.pack(padx=8, pady=(0, 8))
         cv.bind("<Button-3>", on_right_click)
+        archetype_legend = ttk.Label(win, text="", font=("Segoe UI", 8))
+        archetype_legend.pack(anchor="w", padx=8)
         render()
         ttk.Label(win, text="blue = imported calendar events · darker = "
                  "your tracked work sessions · ⚑ = a task due that day · "
                  "greener cell (month) = more real free time that day · "
-                 "right-click an hour (week) to lock it for a deadline, "
-                 "or a day (month) to set a task's due date",
+                 "Archetype colors = past days shaded by which kind of day "
+                 "they were (from your own tracked history, k-means) "
+                 "instead of by free time · right-click an hour (week) to "
+                 "lock it for a deadline, or a day (month) to set a task's "
+                 "due date",
                  foreground="#777777", wraplength=700, justify="left"
                  ).pack(anchor="w", padx=8, pady=(0, 8))
 
@@ -16685,6 +16863,112 @@ class App(tk.Tk):
                         f"work, {info['avg_break_ratio'] * 100:.0f}% breaks, "
                         f"{info['avg_switches']:.1f} task switches/day{sleep_part}")
         return lines
+
+    def _day_archetype_membership(self, days=90, k=3):
+        """Backlog #219: the calendar-overlay counterpart to #190's
+        _day_archetypes — same clustering, reshaped from {name: {days:
+        [...]}} into a flat {iso: name} lookup so a canvas can color
+        each cell by which archetype it belongs to in O(1) per cell,
+        without the view itself needing to know anything about
+        k-means. None if #190 itself returns None (not enough tracked
+        days yet — the same honesty gate, just inherited rather than
+        re-checked here)."""
+        archetypes = self._day_archetypes(days, k)
+        if not archetypes:
+            return None
+        return {iso: name for name, info in archetypes.items()
+                for iso in info["days"]}
+
+    def _day_outcome_label(self, day):
+        """Backlog #192: whether `day` ended up SIGNAL-majority — more
+        than half its tracked work minutes on that day's own declared
+        SIGNAL lens. The binary outcome the predictor below learns to
+        forecast. None on a day with no declared SIGNAL or no tracked
+        work at all (`_day_signal` itself returns (0, 0) for either
+        case, since a lens with no keywords can't match anything) —
+        nothing real to label, not a false 'miss'."""
+        sig, work = self._day_signal(day)
+        if work <= 0:
+            return None
+        return 1 if sig / work > 0.5 else 0
+
+    def _day_outcome_features(self, day, recent_days=7):
+        """Backlog #192: the "handful of features, all knowable before
+        the day happens" input to the predictor below — weekday
+        (0=Monday), hours already committed that day (locked windows +
+        calendar events — what's already on the books before a single
+        minute gets worked), and recent pace (average tracked work
+        hours over the `recent_days` strictly BEFORE `day`, so a slow
+        stretch shows up as exactly that, not diluted by the day
+        itself). Always returns a full vector; a fresh history with
+        nothing tracked yet just contributes 0.0 recent pace, the same
+        lenient degrade used everywhere else here."""
+        committed_h = 0.0
+        for _d, s, e, _name in self._calendar_events(day, day):
+            committed_h += _time_span_hours(s, e)
+        for _d, s, e, _name in self._locked_windows_for_range(day, day):
+            committed_h += _time_span_hours(s, e)
+        idx = day_index()
+        prior_total = 0
+        for back in range(1, recent_days + 1):
+            rec = idx.get((day - dt.timedelta(days=back)).isoformat())
+            if rec:
+                prior_total += rec["work"]
+        return [float(day.weekday()), committed_h,
+               prior_total / 60 / recent_days]
+
+    def _day_outcome_dataset(self, days=180, recent_days=7):
+        """Backlog #192: walks every PAST day in the trailing `days`
+        window (today itself excluded — its own outcome isn't known
+        yet) building one (features, label) row per day that clears
+        `_day_outcome_label`'s own gate. Returns (X, y) as parallel
+        lists, ready for `_logreg_fit` once standardized."""
+        X, y = [], []
+        d = self.today - dt.timedelta(days=days)
+        while d < self.today:
+            label = self._day_outcome_label(d)
+            if label is not None:
+                X.append(self._day_outcome_features(d, recent_days))
+                y.append(label)
+            d += dt.timedelta(days=1)
+        return X, y
+
+    def _day_outcome_predict(self, days=180, recent_days=7, min_n=30):
+        """Backlog #192: #189/#190 both look BACKWARD — what
+        correlated, what pattern already happened; this looks FORWARD,
+        from this morning's own known features to a probability of
+        today landing as a SIGNAL-majority day. Trains a fresh from-
+        scratch logistic regression (`_logreg_fit`) on every clean
+        historical day in the trailing window every time this is
+        called — no persisted model file, no versioning problem, no
+        staleness to manage, since fitting 500 gradient-descent
+        iterations over a few hundred rows of 3 numbers each is
+        instant. Same n>=30 honesty gate every other statistical
+        feature here uses; None rather than a number built on thin
+        data. Returns {"prob", "n"}."""
+        X, y = self._day_outcome_dataset(days, recent_days)
+        if len(X) < min_n:
+            return None
+        means, stdevs = _fit_standardizer(X)
+        X_std = [_apply_standardizer(x, means, stdevs) for x in X]
+        w = _logreg_fit(X_std, y)
+        if w is None:
+            return None
+        today_x = _apply_standardizer(
+            self._day_outcome_features(self.today, recent_days),
+            means, stdevs)
+        return {"prob": _logreg_predict(w, today_x), "n": len(X)}
+
+    def _day_outcome_line(self):
+        """Formatted view of `_day_outcome_predict` above — one honest
+        sentence for the morning header, or None below the honesty
+        gate."""
+        pred = self._day_outcome_predict()
+        if pred is None:
+            return None
+        pct = round(100 * pred["prob"])
+        return (f"{pct}% chance of a signal-majority day today, based "
+               f"on {pred['n']} similar recent mornings")
 
     @staticmethod
     def _mood_from_text(text):
