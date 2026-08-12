@@ -497,6 +497,25 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.72** (#218, 2026-08-08, DONE). Sixth batch from the mobile
+  branch continuation — "Plan my week," one guided entry point. Five
+  separate menu items shipped across this whole calendar/planning arc
+  (Free evenings, the event overlay, Multi-week digest, the quiet-week
+  nudge, Auto-plan) — real progress, but "kinda hard to plan... would
+  be great if could kinda plan everything" was never really about a
+  missing feature, it was about not knowing which of five menus to
+  open and in what order. `_plan_my_week_lines`/`_plan_my_week_win`
+  (View → Planning → "Plan my week…", now listed first) compose
+  exactly what those already compute into one guided read, in the
+  sequence that actually answers the question — #185's calendar delta
+  digest leads (a stale mental model should get corrected before
+  planning around it), then this week at a glance, free evenings,
+  anything already on during them, and a direct button into Auto-plan
+  for whatever's left undecided. No new logic, purely assembly.
+  Renumbered from the branch's own #203→#206 evolution (master's own
+  #203 is the already-shipped health-data-correlation feature). 1 new
+  selftest suite; 83/83 green.
+
 - **v9.71** (#217, 2026-08-08, DONE). Fifth batch from the mobile
   branch continuation — a recovery-evening nudge. `_week_was_rough`
   checks a past week against the same overworked (tracked hours vs
@@ -4677,6 +4696,13 @@ polish — the three NOT chosen this round) when continuing this work.
     — master's own #201 is the still-open day-outcome-predictor-
     reuses-archetype idea, unrelated). See the v9.71 version-history
     entry above.
+
+~~218. **"Plan my week" — one guided entry point composing Free
+    evenings, the event overlay, the quiet-week nudge, and Auto-plan
+    instead of five separate menu trips.**~~ — DONE v9.72 (was
+    #203→#206 on the mobile branch; renumbered — master's own #203 is
+    the already-shipped health-data-correlation feature). See the
+    v9.72 version-history entry above.
 
 189. ~~**A real metric correlation engine — Pearson r across every
     tracked daily metric, not another hand-picked heuristic.**~~ —

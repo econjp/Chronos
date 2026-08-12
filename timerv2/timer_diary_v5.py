@@ -60,6 +60,17 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.72 (#218 — "Plan my week," one guided entry point,
+2026-08-08, ported from the mobile session's continued branch work):
+  - View → Planning → "Plan my week…" (now listed first) composes
+    five previously-separate menu items into one guided read, in the
+    sequence that actually answers "how do I plan this week": #185's
+    calendar delta digest leads, then this week at a glance, free
+    evenings, anything already on during them, and a direct button
+    into Auto-plan for whatever's left. No new logic, purely assembly
+    — the "kinda hard to plan" ask was never about a missing feature.
+  - 83/83 selftest green.
+
 New in v9.71 (#217 — a recovery-evening nudge, 2026-08-08, ported from
 the mobile session's continued branch work):
   - every planning feature this whole calendar/planning arc shipped —
@@ -5291,6 +5302,9 @@ class App(tk.Tk):
         viewm.add_separator()
 
         planm = tk.Menu(viewm, tearoff=0)
+        planm.add_command(label="Plan my week…",
+                          command=self._tracked("Plan my week", self._plan_my_week_win))
+        planm.add_separator()
         planm.add_command(label="Free-time forecast (calendar)…",
                           command=self._tracked("Free-time forecast", self._forecast_win))
         planm.add_command(label="Calendar (week/month)…",
@@ -13624,6 +13638,69 @@ class App(tk.Tk):
             lines.append(f"  {d:%a %d.%m}: " + " · ".join(items))
             d += dt.timedelta(days=1)
         return lines
+
+    def _plan_my_week_lines(self):
+        """Backlog #218 (mobile branch's own #203+#206 — renumbered,
+        master's #203 was already the health-data-correlation feature):
+        this session added Free evenings (#167), the event overlay
+        (#181), the Multi-week digest (#182), the quiet-week nudge
+        (#195), and Auto-plan (#153) as five SEPARATE menu items — real
+        progress, but "kinda hard to plan... would be great if could
+        kinda plan everything" was never really about a missing
+        feature, it was about not knowing which of five menus to open
+        and in what order. One guided read composing exactly what
+        those already compute, in the sequence that actually answers
+        the question — no new logic, purely assembly. #185's calendar
+        delta digest ("what's new since I last checked") leads, before
+        anything else — a stale mental model of the calendar should
+        get corrected before planning around it, not folded in
+        afterward as an afterthought."""
+        lines = ["PLAN MY WEEK", ""]
+        delta = self._calendar_delta_lines()
+        if delta:
+            lines.append("0) YOUR CALENDAR CHANGED SINCE LAST CHECK:")
+            lines += [f"  {ln}" for ln in delta[1:]]
+            lines.append("")
+        week_lines = self._week_ahead_lines()
+        lines.append("1) THIS WEEK, AT A GLANCE:")
+        lines += ([f"  {ln}".rstrip() for ln in week_lines[1:]] if week_lines
+                 else ["  a normal week — nothing flagged"])
+        lines.append("")
+        lines.append("2) FREE EVENINGS THIS WEEK:")
+        ev = self._free_evenings_lines(weeks=1)
+        lines += ([f"  {ln}" for ln in ev[1:]] if ev
+                 else ["  nothing clears the bar this week"])
+        events = self._evening_event_lines(weeks=1)
+        if events:
+            lines.append("")
+            lines.append("3) SOMETHING'S ALREADY ON DURING THOSE EVENINGS:")
+            lines += [f"  {ln}" for ln in events[1:]]
+        lines.append("")
+        lines.append("Want to fill in the rest? Use \"Auto-plan the "
+                     "rest\" below.")
+        return lines
+
+    def _plan_my_week_win(self):
+        """Backlog #218: the single guided entry point `_plan_my_week_
+        lines` above builds toward — one dialog instead of five
+        separate menu trips, with a direct button into Auto-plan
+        (#153) for whatever this glance leaves undecided."""
+        win = tk.Toplevel(self)
+        win.title("Plan my week")
+        win.geometry("620x480")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10))
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        txt.insert("1.0", "\n".join(self._plan_my_week_lines()))
+        txt.config(state="disabled")
+        bar = ttk.Frame(win)
+        bar.pack(fill="x", padx=8, pady=(0, 8))
+
+        def open_auto_plan():
+            win.destroy()
+            self._auto_plan_win()
+
+        ttk.Button(bar, text="Auto-plan the rest →",
+                  command=open_auto_plan).pack(side="right")
 
     def _multiweek_digest_win(self):
         """Backlog #182: opens the digest above in a plain scrollable

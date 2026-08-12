@@ -4,6 +4,14 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.72 — "Plan my week," one guided entry point
+
+New menu item (View → Planning → "Plan my week…", listed first):
+composes what's new on your calendar, this week at a glance, free
+evenings, anything already on during them, and a button straight into
+Auto-plan — instead of opening five separate menus to answer "how do I
+plan this week."
+
 ### v9.71 — a recovery-evening nudge
 
 Every planning feature so far only ever suggested filling more time.

@@ -100,7 +100,7 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_repeating_calendar_event_line", "_plan_density_output_correlation",
         "_plan_density_output_line", "_stale_plan_data_scan",
         "_clean_stale_plan_data", "_week_was_rough", "_recovery_evening_line",
-        "_capacity"}
+        "_capacity", "_plan_my_week_lines"}
 STATIC = {"_match_kws", "_pull_level", "_parse_time_loose"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -2742,6 +2742,46 @@ def suite_multiweek_digest():
     assert lines5[6] == "  Sat 15.08: 4.0h free · Backup check due", lines5
 
 
+def suite_plan_my_week():
+    D, ns = fresh()
+    d = _mk(D,
+           _calendar_delta_lines=lambda: [
+               "CALENDAR CHANGES since last check:",
+               "  + New meeting 13.08 10:00-11:00"],
+           _week_ahead_lines=lambda: [
+               "", "WEEK AHEAD: 10.0h free",
+               "  nothing locked or planned for next week yet — worth "
+               "an Auto-plan pass?"],
+           _free_evenings_lines=lambda weeks=1: [
+               "FREE EVENINGS (next 1 week(s)):", "  Mon 10.08: 18-23"],
+           _evening_event_lines=lambda weeks=1: [
+               "EVENTS DURING FREE EVENINGS (next 1 week(s)):",
+               "  Mon 10.08 19:00-21:00: Jazz night"])
+    lines = D._plan_my_week_lines(d)
+    assert lines[0] == "PLAN MY WEEK", lines
+    assert "0) YOUR CALENDAR CHANGED SINCE LAST CHECK:" in lines, lines
+    assert any("New meeting 13.08 10:00-11:00" in ln for ln in lines), lines
+    assert lines.index("0) YOUR CALENDAR CHANGED SINCE LAST CHECK:") < \
+        lines.index("1) THIS WEEK, AT A GLANCE:"), lines
+    assert any("nothing locked or planned" in ln for ln in lines), lines
+    assert "2) FREE EVENINGS THIS WEEK:" in lines, lines
+    assert any("Mon 10.08: 18-23" in ln for ln in lines), lines
+    assert "3) SOMETHING'S ALREADY ON DURING THOSE EVENINGS:" in lines, lines
+    assert any("Jazz night" in ln for ln in lines), lines
+    assert lines[-1].startswith("Want to fill in the rest?"), lines
+
+    # ---- everything silent: a normal, empty week, no calendar changes ----
+    d2 = _mk(D, _calendar_delta_lines=lambda: [],
+            _week_ahead_lines=lambda: [],
+            _free_evenings_lines=lambda weeks=1: [],
+            _evening_event_lines=lambda weeks=1: [])
+    lines2 = D._plan_my_week_lines(d2)
+    assert not any("CALENDAR CHANGED" in ln for ln in lines2), lines2
+    assert any("a normal week — nothing flagged" in ln for ln in lines2), lines2
+    assert any("nothing clears the bar this week" in ln for ln in lines2), lines2
+    assert not any("SOMETHING'S ALREADY ON" in ln for ln in lines2), lines2
+
+
 def suite_social_density():
     D, ns = fresh()
     d = _mk(D, settings={})
@@ -3765,6 +3805,7 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("upcoming-plans", suite_upcoming_plans),
           ("ics-hints", suite_ics_hints),
           ("free-evenings", suite_free_evenings),
+          ("plan-my-week", suite_plan_my_week),
           ("social-density", suite_social_density),
           ("repeating-plan", suite_repeating_plan),
           ("repeating-calendar-event", suite_repeating_calendar_event),
