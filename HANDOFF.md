@@ -5229,6 +5229,60 @@ polish — the three NOT chosen this round) when continuing this work.
     already proven to work for the owner elsewhere, cheap to add to
     every task instead of only opportunity-shaped ones.
 
+243. **Surface the top-ranked decision option in the day file header
+    — #238/#229 currently break the app's own sacred rule (PLANNING —
+    self-caught while shipping v9.74: every other feature here leaves
+    a visible trace in the day file; #238's decision scores and #229's
+    guided view currently only ever live inside a Tk window and
+    settings.json, exactly the "reads as broken" gap CLAUDE.md warns
+    about; new idea 2026-08-16).** One quiet line when scored tasks
+    exist — "#1 ranked option: X (7.8)" — same posture as the
+    deadline countdown's own header trace. Should have shipped with
+    v9.74; didn't, caught immediately after instead of before.
+
+244. **A staleness flag on decision scores, mirroring #204's health-
+    staleness check (PLANNING — a readiness/attractiveness number
+    typed once in July is quietly wrong by September once the real
+    GPA/GMAT/whatever-it-depends-on reality has moved, and nothing
+    currently notices; new idea 2026-08-16).** Same shape as #204:
+    if a task's `readiness`/`attractiveness` hasn't been touched in
+    60+ days, say so plainly next to the decision column instead of
+    silently ranking against a number that's stopped being true.
+
+245. **The loose "same real event, different date" collision check
+    #230 deliberately left out of scope (PLANNING — #230 shipped the
+    precise version (date matches its own history's superseded
+    value); this is the second, fuzzier check named alongside it and
+    intentionally not built yet; new idea 2026-08-16).** Two
+    deadlines/protected_windows/tasks sharing enough of a name match
+    with different dates for what reads like the same real-world
+    thing — ties into #196's collision-checking shape, applied to the
+    app's own data instead of only calendar-import data. Still open
+    on purpose; #230's precise version was the one with real evidence
+    behind it, this one's speculative until it actually bites.
+
+246. **Wire #238's readiness score to real app data once it exists,
+    instead of always hand-typed (PLANNING — direct-entry was the
+    deliberate v1 scope call in #238's own docstring, not an
+    oversight; logging the v2 path so it doesn't get lost; new idea
+    2026-08-16).** Once something like #236's GPA calculator exists,
+    a task's readiness could optionally auto-compute from real
+    tracked numbers instead of a manually-typed 0-10 guess — same
+    "auto where real data already exists, hand-typed only where it
+    doesn't" posture as every other honesty-gated feature here.
+
+247. **A one-line "why" alongside a readiness/attractiveness score,
+    mirroring #242's mandatory-reason discipline and the owner's own
+    spreadsheet's own Notes column (PLANNING — every score cell in
+    the owner's real Program Scorer sits next to a plain-language
+    reason it's that number, not a bare figure; #238 as shipped has
+    no equivalent; new idea 2026-08-16).** A short optional note
+    field alongside readiness/attractiveness, surfaced in the decision
+    column's tooltip or #229's ranked list — so a "9.5 attractiveness"
+    number doesn't float without the one sentence that actually
+    produced it, the same discipline #242 already argues for
+    elsewhere.
+
 ## How to verify changes without Windows
 
 **Run `python3 timerv2/selftest.py`** — the committed, stdlib-only
