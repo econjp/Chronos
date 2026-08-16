@@ -497,6 +497,25 @@ measuring what's already there.
   lost, not just a visual check. Direct response to the owner naming
   the felt "many different features, bit scattered" experience —
   see the reflection added to NORTH STAR below.
+- **v9.74** (#230 + #239 + #238 + #229, 2026-08-16, DONE). Ported from
+  a real personal decision-support spreadsheet the owner had already
+  built and uses for a live decision — the direct payoff of the
+  2026-08-16 career-context review (#220-242). #230: Data Doctor
+  flags a deadline whose `date` matches its own history's last-
+  recorded superseded value — the mechanical version of the #209
+  catch. #239: a deadline can carry `grade_bands` ("10h=3, 20h=4,
+  30h=5"), WEEK AHEAD interpolates real hours against it — sharpened
+  mid-session from "show several GPA scenarios" to this, at the
+  owner's own direct request, grounded in a real exam that went badly
+  from being underprepared. #238: optional readiness/attractiveness
+  fields on any task, a "decision" column, one global Ambition % dial
+  — generalizes the owner's own working spreadsheet model rather than
+  rebuilding its bespoke admissions-specific formula. #229: View >
+  Planning > "Plan my career…" composes #238 + #239 + goal-linked
+  tasks into one guided read, same discipline as #218. Verified with
+  a real headless Tk smoke test (every new/changed window actually
+  opened, not just selftest) in addition to 89/89 selftest green.
+
 - **v9.73** (#192 + #219, 2026-08-08, DONE). Seventh and final batch
   from the mobile branch continuation — the two features that touch
   #190's day-archetype clustering, ported last and with extra care
@@ -4963,6 +4982,252 @@ polish — the three NOT chosen this round) when continuing this work.
     staleness flags active that week) to the same clipboard export —
     zero new manual entry, same "automate, never ask for manual input"
     rule the whole health pipeline was already built under.
+
+220. **An opportunity/application pipeline, as its own shape distinct
+    from Deadlines and the Task library (PLANNING — the owner has a
+    long-running external notes system tracking exactly this with no
+    software behind it, an "AI fit-check tracker" idea he proposed to
+    himself there weeks ago and never built; new idea 2026-08-16).**
+    Deadlines are scoped work with hours; the Task library is a flat
+    undated backlog. Neither fits an application/opportunity: no hours
+    estimate makes sense, what matters is status (drafted / submitted
+    / interviewing / rejected / offer) and how long it's sat since the
+    last real action. Fix: a lightweight status + last-touched field
+    on task-library entries (opt-in, most tasks never set it), with a
+    "no movement in N days" flag reusing #199's exact stale-data
+    pattern. Not a new subsystem — one more field on data that already
+    exists, surfaced the same honest way everything else here is.
+
+221. **A re-litigation detector over the diary's own free text
+    (PLANNING — the owner's external notes explicitly name "re-
+    deciding a question already settled with good reasoning" as a
+    confirmed, repeated pattern; new idea 2026-08-16).** The diary
+    already has word-drift/rank-days machinery (#12) for spotting
+    which words dominate recent writing. Point the same counting logic
+    at a specific flagged phrase or keyword: if it recurs across diary
+    entries 3+ times over 3+ weeks after being marked (once) as
+    settled, surface it — "you've circled back to X on N separate
+    days since it was marked settled" — not a judgment, just naming
+    the pattern the same way a person would if they were watching
+    closely, which is exactly the stated correct response to this
+    pattern in the owner's own words.
+
+222. **A "WIN:" header line, mirroring SIGNAL/AVOID/YEAR (PLANNING —
+    connects a named pattern, minimizing or hiding genuine achievement,
+    to the app's own existing header convention; new idea 2026-08-16).**
+    Same free-text pattern as every other header field, tracked and
+    counted the same way METRICS: keys are. No prompt, no nagging —
+    just a place a real win can go where it won't quietly disappear
+    the way a strong result once did when it got administratively
+    downgraded and dropped off a visible record. A monthly count
+    ("wins logged: N") in the existing review/digest views is the
+    whole feature — visibility, not therapy.
+
+223. **A "CLAIM: ... [unverified]" tag with recurring-style resurfacing
+    (PLANNING — connects a named pattern, acting on one source as
+    settled fact and being wrong once already, to #183's recurring-
+    reminder machinery; new idea 2026-08-16).** Same free-text-tag
+    parsing #158's METRICS: line already does, reusing #183's exact
+    due/lookahead logic but for "still unverified after N days" instead
+    of "still not done." A direct, mechanical version of the app's own
+    standing honesty-gate discipline (never present an estimate as a
+    certainty) turned outward onto the owner's own claims, not just
+    the app's statistics.
+
+224. **External deadlines as a read-only overlay, not a data merge
+    (PLANNING — the owner keeps a second, more detailed deadline
+    timeline entirely outside this app; new idea 2026-08-16).** Don't
+    import or duplicate that system. Instead: a small manually-
+    maintained list of external dates (same shape as `protected_
+    windows`, parsed the same way), shown alongside TUTA/Thesis in
+    the calendar delta digest (#185), the quiet-week detector (#195),
+    and the multi-week digest (#182) — so this app's own planning
+    views see the whole real picture instead of only the two
+    deadlines it happens to own. The actual "how do I integrate the
+    other system" answer: a thin read-only bridge, not a merge.
+
+225. **A task-library kill-rule, ported from a discipline the owner
+    already runs and trusts elsewhere (PLANNING — directly reuses a
+    rule proven in a parallel system: unused after a fixed window,
+    fix it once or drop it, rather than letting it silently accumulate;
+    new idea 2026-08-16).** #104 already flagged task-library staleness
+    as an open idea; this gives it a concrete, already-validated rule
+    instead of inventing one from scratch — higher confidence than a
+    speculative design, since the owner has already tested this exact
+    discipline works for him in a different tool.
+
+226. **Optional decision-criteria fields on a Task/Deadline entry
+    (PLANNING — the owner has a named, reusable, already-battle-tested
+    set of axes for weighing real decisions, applied narratively in a
+    document he has to remember to open; new idea 2026-08-16).**
+    Opt-in structured fields (reversibility, chosen-vs-chased, a
+    financial-ceiling note, whatever axes actually matter to him) on
+    an entry in the tool he already opens every day, instead of a
+    separate document that only gets consulted when he happens to
+    remember it exists. Same rigor, lower friction to actually use it
+    on a live decision.
+
+227. **A weekly "SHIPPED:" line inside the existing WEEK REVIEW block
+    (PLANNING — ports a ritual from a parallel system where it's
+    explicitly used as evidence-of-real-output against a named pattern,
+    performing well under observation and stalling without a witness;
+    new idea 2026-08-16).** One free-text line, once a week, alongside
+    the existing WEEK REVIEW W## block — not hours, not a metric,
+    just "what actually shipped." The app becomes the witness for
+    self-directed work that has none otherwise, the exact gap the
+    pattern describes.
+
+228. **Relationship-tending as its own recurring-reminder category,
+    not admin chores (PLANNING — directly generalizes the "follow up
+    with strong contacts" task just added by hand this week; new idea
+    2026-08-16).** Reuses #183's `_recurring_reminders_all` machinery
+    verbatim, just with a longer default interval (60-90d) and a
+    distinct label so a real relationship-tending nudge doesn't
+    visually compete with "pay rent" for the same slot, but also
+    doesn't just vanish into the task library and never resurface
+    either.
+
+~~229. **"Plan my week," but for the career-context layer instead of
+    the calendar layer.**~~ — DONE v9.74. See the v9.74 version-
+    history entry above. Scoped to what already exists in-app (#238's
+    ranked options, #239's grade estimates, goal-linked tasks) rather
+    than depending on #224's still-open external-deadline overlay
+    landing first.
+
+~~230. **A deadline date-of-record conflict detector — generalizing a
+    bug this exact app already had once.**~~ — DONE v9.74. See the
+    v9.74 version-history entry above. Shipped the precise check
+    (current `date` == history's own last-recorded superseded value);
+    the looser name-match collision pass across deadlines/protected_
+    windows/tasks stayed out of scope for this round, still open if
+    it turns out to matter in practice.
+
+231. **An options-comparison table, extending #226's per-entry
+    decision-criteria fields into an actual side-by-side view
+    (PLANNING — the owner's external decision framework is applied
+    narratively, one option at a time, when several live options
+    genuinely need to be seen next to each other; new idea
+    2026-08-16).** Once #226 exists, this is a read-only view, not new
+    data: every task/deadline with decision-criteria fields set,
+    rendered as one table — same "compose, don't recompute" discipline
+    as #218/#229.
+
+232. **A financial-runway calculator (PLANNING — the owner's own notes
+    state runway as a flat qualitative line despite real, materially
+    different cost scenarios sitting behind different options; new
+    idea 2026-08-16).** A small standalone view: current confirmed
+    savings/income net against a set of named future cost scenarios
+    (rent, tuition, whatever applies), output months-of-runway per
+    scenario instead of one undifferentiated sentence. Genuinely
+    separate from time-tracking, but the same "replace a vague
+    narrative with a real computed number" instinct every statistical
+    feature here already follows.
+
+233. **A "phrasing graveyard" — discarded wording plus the one-line
+    reason it got rejected (PLANNING — CV/LinkedIn text in the
+    owner's notes went through many discarded drafts, each with a real
+    stated reason, none of it preserved anywhere structured, real risk
+    of re-proposing an already-rejected phrase later; new idea
+    2026-08-16).** A small append-only log — text tried, one-line
+    reason it didn't survive — for anything under repeated revision
+    (CV bullets, application essays, a diary line that keeps getting
+    rewritten). Distinct from #223's CLAIM: tag: this is about STYLE
+    choices held loosely on purpose, not FACTS waiting on
+    verification.
+
+234. **A contradiction flag between two tagged claims on the same
+    topic, extending #223 (PLANNING — the owner's research notes show
+    this exact failure more than once: two credible-sounding sources
+    asserting opposite things about the same claim, only caught by
+    chance; new idea 2026-08-16).** Once #223's CLAIM: tag exists,
+    a cheap keyword-overlap pass across logged claims can flag "these
+    two CLAIM: lines share enough words but disagree" — the automated
+    version of the cross-check the owner currently does by memory.
+
+235. **A structured session-handoff export mode for "Copy for AI
+    review" (PLANNING — the owner hand-writes an Asked/Did/Context/
+    Next note every time he needs to resume a thread cold across
+    tools, a real recurring manual habit; new idea 2026-08-16).** An
+    alternate format option on the existing v5.1 clipboard export —
+    same underlying data, formatted as a resumable handoff instead of
+    a weekly totals dump, for the same "paste this into a fresh
+    session" moment the feature already exists for.
+
+236. **A GPA/grade what-if calculator (PLANNING — the owner has
+    manually built this exact calculation more than once, most
+    recently to gauge how much a specific remaining grade could move
+    his real average; new idea 2026-08-16).** Enter current transcript
+    numbers plus one or more hypothetical remaining grades, output the
+    resulting average — a small standalone tool replacing a one-off
+    spreadsheet exercise that's already been redone by hand at least
+    twice.
+
+237. **Confidence tiers on #223's CLAIM: tag, not just a binary
+    (PLANNING — the owner's research notes show single-source
+    overconfidence as a repeat failure, but not all unverified claims
+    are equally shaky; new idea 2026-08-16).** Three tiers instead of
+    one — single-source / corroborated / directly-confirmed — same
+    honesty-gate posture as everywhere else here: never claim more
+    confidence than the data actually has.
+
+~~238. **A general readiness × attractiveness decision-blend scorer.**~~
+    — DONE v9.74. See the v9.74 version-history entry above. Shipped
+    as optional `readiness`/`attractiveness` fields on any task-
+    library entry (right-click > "Set readiness/attractiveness…"), a
+    "decision" column showing the blend, and one global Ambition %
+    dial (Tools). Live-computed readiness from profile metrics (GPA/
+    GMAT auto-pulled the way the owner's own spreadsheet does it)
+    deliberately left for a v2 — direct-entry is simpler, more
+    general, and avoids baking one bespoke admissions formula into
+    the app's own code.
+
+~~239. **Hours-to-grade calibration on a deadline.**~~ — DONE v9.74.
+    See the v9.74 version-history entry above. Evolved from the
+    original "show several GPA scenarios at once" framing to the
+    owner's own sharper request mid-session: an exam-type deadline
+    can carry `grade_bands` ("10h=3, 20h=4, 30h=5"), and WEEK AHEAD
+    interpolates real tracked hours against it — grounded directly in
+    a real bad outcome (an exam gone in underprepared, ~50% score)
+    the owner wants a calibrated confidence read against this time,
+    not just a bare hours-logged number.
+
+240. **A first-class "Decisions Log" — settled calls with a one-line
+    verdict and reason, surfaced when the topic resurfaces (PLANNING —
+    the owner already runs exactly this, by hand, in a spreadsheet
+    tab titled "don't reopen without new information," and it's the
+    single most direct real-world proof #221's underlying instinct is
+    right; new idea 2026-08-16).** Simpler and more direct than #221's
+    fuzzy repetition detector: a short structured list (decision name,
+    verdict, one-line why, date settled) reusing the app's own
+    existing keyword-matching (`_match_kws`) so a related diary
+    mention surfaces the existing verdict instead of staying silent
+    while the question quietly gets re-litigated. Could ship instead
+    of #221, or alongside it as the deliberate companion to the
+    automatic detector.
+
+241. **A shortlist-vs-master-list drift check (PLANNING — generalizes
+    #230; found real, concrete evidence for this exact failure while
+    reviewing the owner's own two linked spreadsheets just now — an
+    option explicitly flagged "apply to ALL" in the strategy notes was
+    simply absent from the live scoring tool by the time it mattered,
+    lost somewhere between an early broad list and a later narrowed
+    one; new idea 2026-08-16).** When a curated, scored shortlist
+    (#238's entries) is meant to be a narrowing of a larger reference
+    list the owner also maintains, a plain diff — everything in the
+    reference list not accounted for in the shortlist — would have
+    caught this specific real miss immediately instead of by chance
+    much later.
+
+242. **TODO/DOING/DONE/SKIP status plus a mandatory one-line "why" on
+    any task-library entry, not just applications (PLANNING —
+    generalizes #220's status field; the owner's own roadmap tracker
+    already runs a working version of exactly this — status column,
+    "why" column, and a genuine SKIP state used deliberately, not just
+    silently dropped; new idea 2026-08-16).** The "why" column is the
+    part worth taking most seriously: forcing one sentence on why
+    something is on the list at all is a small, real discipline
+    already proven to work for the owner elsewhere, cheap to add to
+    every task instead of only opportunity-shaped ones.
 
 ## How to verify changes without Windows
 

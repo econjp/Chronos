@@ -60,6 +60,35 @@ New in v5.2:
   - global hotkey is configurable (Tools menu); default Ctrl+Shift+Space.
   - hours shown with two decimals everywhere (0.25 h = 15 min).
 
+New in v9.74 (#230 + #239 + #238 + #229 — a deadline date-conflict
+detector, hours-to-grade bands, a readiness/attractiveness decision
+scorer, and "Plan my career," 2026-08-16, ported from a real personal
+decision-support spreadsheet the owner already built and uses):
+  - #230: Data Doctor now flags a deadline whose `date` field matches
+    its own history's last-recorded SUPERSEDED value — a real bug
+    this app already had once (#209), caught by chance by a human
+    reading closely; now mechanical.
+  - #239: a deadline can optionally carry `grade_bands` ("10h=3,
+    20h=4, 30h=5" — #36's milestone-DSL convention), and WEEK AHEAD
+    interpolates real tracked hours against them into one honest
+    sentence: how far from the next named band, or which band's
+    already cleared.
+  - #238: any task can optionally carry a readiness score (how likely
+    you'd get it) and an attractiveness score (how much you want it),
+    right-click > "Set readiness/attractiveness…"; a new "decision"
+    column shows the blended rank, tuned by one global Ambition %
+    dial (Tools > Calendar & planning config). Ports a real, working
+    two-axis model the owner already built by hand for one live
+    decision, generalized into a reusable primitive.
+  - #229: View > Planning > "Plan my career…" composes #238's top-
+    ranked options, #239's grade estimates, and open goal-linked
+    tasks into one guided read — same "compose, don't recompute"
+    discipline as #218's Plan my week, for the slower-moving layer.
+  - verified with a real headless Tk smoke test (all four new/changed
+    windows opened and rendered with no exceptions) in addition to
+    selftest, since GUI code isn't exercised by the AST-based harness.
+  - 89/89 selftest green.
+
 New in v9.73 (#192 + #219 — a day-outcome predictor, day-archetype
 calendar colors, 2026-08-08, ported from the mobile session's
 continued branch work — the final batch, closing out the mobile-
@@ -3300,6 +3329,39 @@ def _parse_milestones(spec):
     return out
 
 
+def _parse_grade_bands(spec):
+    """Backlog #239: a self-calibrated "how many hours does each grade
+    actually need" estimate, in the owner's own words after a real
+    exam went badly from being underprepared — a plain 'Nh=grade'
+    list, e.g. '10h=3, 20h=4, 30h=5', parsed the same small-DSL-in-
+    one-field convention #36's milestones already use ('ch4 [15h]').
+    Sorted ascending by hours; malformed/empty text yields an empty
+    list, never an error, since this field is optional."""
+    out = []
+    for m in re.finditer(r"([0-9.]+)h\s*=\s*([^,]+)", spec or ""):
+        grade = m.group(2).strip()
+        if grade:
+            out.append({"h": float(m.group(1)), "grade": grade})
+    out.sort(key=lambda b: b["h"])
+    return out
+
+
+def _decision_blend(readiness, attractiveness, ambition_pct):
+    """Backlog #238: a real, working two-axis decision model the
+    owner already built by hand in a spreadsheet for one live
+    decision — "can I actually get this" (readiness, 0-10) kept
+    deliberately separate from "do I actually want this" (attract-
+    iveness, 0-10), blended by a single dial (`ambition_pct`, 0-100:
+    100 = rank purely by wanting it, 0 = rank purely by how likely
+    it is) instead of collapsing both into one fuzzy number up front.
+    Generalized here as a plain reusable primitive — any opportunity
+    genuinely has both a can-I axis and a want-I axis, not just an
+    MSc program. Pure arithmetic, no gate: both inputs are already
+    validated (0-10) by the caller."""
+    w = max(0.0, min(100.0, ambition_pct)) / 100.0
+    return w * attractiveness + (1 - w) * readiness
+
+
 def already_running():
     """Single-instance guard via a named Windows mutex. Two instances
     logging to different folders is how diary text gets lost."""
@@ -5442,6 +5504,8 @@ class App(tk.Tk):
         planm = tk.Menu(viewm, tearoff=0)
         planm.add_command(label="Plan my week…",
                           command=self._tracked("Plan my week", self._plan_my_week_win))
+        planm.add_command(label="Plan my career…",
+                          command=self._tracked("Plan my career", self._plan_my_career_win))
         planm.add_separator()
         planm.add_command(label="Free-time forecast (calendar)…",
                           command=self._tracked("Free-time forecast", self._forecast_win))
@@ -5597,6 +5661,8 @@ class App(tk.Tk):
                             command=self._set_social_density_threshold)
         calcfgm.add_command(label="Calendar refresh interval…",
                             command=self._set_ics_refresh_interval)
+        calcfgm.add_command(label="Ambition % (decision-blend scoring)…",
+                            command=self._set_ambition_pct)
         toolsm.add_cascade(label="Calendar & planning config", menu=calcfgm)
         m.add_cascade(label="Tools", menu=toolsm)
 
@@ -5658,9 +5724,10 @@ class App(tk.Tk):
         win.grab_set()
         cols = ("Name (empty = off)", "Start (opt)", "Due (YYYY-MM-DD)",
                 "Total h (opt)", "h/week (opt)", "Tasks containing",
-                "Goal (opt)", "Milestones (opt, 'ch4 [15h]*, ch5 [20h]')")
+                "Goal (opt)", "Milestones (opt, 'ch4 [15h]*, ch5 [20h]')",
+                "Grade bands (opt, '10h=3, 20h=4, 30h=5')")
         keys = ("name", "start", "date", "total_h", "target_h", "match",
-               "goal", "milestones")
+               "goal", "milestones", "grade_bands")
         for c, lbl in enumerate(cols):
             ttk.Label(win, text=lbl).grid(row=0, column=c, padx=4, pady=(8, 2))
         cur = self.deadlines()
@@ -5675,7 +5742,7 @@ class App(tk.Tk):
                                      values=goal_names)
                     e.set(d.get("goal") or "")
                 else:
-                    e = ttk.Entry(win, width=24 if key == "milestones"
+                    e = ttk.Entry(win, width=24 if key in ("milestones", "grade_bands")
                                   else 13 if c in (0, 5) else 10)
                     v = d.get(key, "")
                     e.insert(0, str(v) if v else "")
@@ -5705,7 +5772,8 @@ class App(tk.Tk):
                             "date": vals["date"], "total_h": total,
                             "target_h": target, "match": vals["match"],
                             "goal": vals["goal"] or None,
-                            "milestones": vals["milestones"]})
+                            "milestones": vals["milestones"],
+                            "grade_bands": vals["grade_bands"]})
             feas = self._deadline_editor_feasibility_lines(out)
             out = _deadline_revisions_after_save(
                 cur, out, dt.date.today().isoformat())
@@ -6332,6 +6400,24 @@ class App(tk.Tk):
             self.settings["ics_refresh_min"] = v
             save_settings(self.settings)
             self.status.config(text=f"Calendar refresh interval set to {v}min.")
+
+    def _set_ambition_pct(self):
+        """Backlog #238: the single dial #238's decision-blend model
+        turns on. 100 = rank live options purely by how much you want
+        them; 0 = rank purely by how likely you are to get them."""
+        v = simpledialog.askinteger(
+            APP_NAME, "Ambition % for the decision-blend score on tasks "
+                      "with both a readiness and an attractiveness set "
+                      "(right-click a task > Set readiness/"
+                      "attractiveness…): 100 = rank purely by how much "
+                      "you want it, 0 = rank purely by how likely you "
+                      "are to get it:",
+            initialvalue=int(self._ambition_pct()), minvalue=0, maxvalue=100,
+            parent=self)
+        if v is not None:
+            self.settings["ambition_pct"] = v
+            save_settings(self.settings)
+            self.status.config(text=f"Ambition % set to {v}.")
 
     def _set_backup_task(self):
         """Backlog #177: `backup_if_due()` only ever runs when the app
@@ -9515,8 +9601,10 @@ class App(tk.Tk):
         # endup making plans for next two days") this whole feature
         # exists to catch.
         quiet_week = bool(needs) and not locked_line and not plans
+        grade_estimates = self._grade_estimate_lines()
         if not (overbooked or real_tight_day or behind_names or plans
-               or locked_line or weekly_targets or quiet_week):
+               or locked_line or weekly_targets or quiet_week
+               or grade_estimates):
             return []                # a normal week — nothing to flag
         lines = ["", f"WEEK AHEAD: {total_cap:.1f}h free across the next "
                     "7 days"
@@ -9560,6 +9648,7 @@ class App(tk.Tk):
         if density:
             lines.append(density)
         lines += weekly_targets
+        lines += grade_estimates
         return lines
 
     def _week_was_rough(self, monday):
@@ -9662,6 +9751,50 @@ class App(tk.Tk):
             lines.append(f"  {name}: {done_h:.1f}h logged + {locked_h:.1f}h "
                          f"locked = {done_h + locked_h:.1f}h of your own "
                          f"{target:g}h/week target")
+        return lines
+
+    def _dl_grade_estimate_line(self, dl):
+        """Backlog #239: a deadline can optionally carry `grade_bands`
+        (#36's milestone-DSL convention, 'Nh=grade' — e.g. an exam
+        retake where the owner's own estimate, after a real exam went
+        badly from being underprepared, is roughly '10h=3, 20h=4,
+        30h=5'). Interpolates the real tracked hours (`_dl_progress`'s
+        own `done_h`, the exact same number every other deadline line
+        here already uses) against those self-set bands into one
+        honest sentence — how close to the next named band, or which
+        band's already cleared. None when no bands are set (this field
+        is fully optional) or the deadline can't be scoped at all."""
+        bands = _parse_grade_bands(dl.get("grade_bands", ""))
+        if not bands:
+            return None
+        try:
+            p = self._dl_progress(dl)
+        except (ValueError, KeyError):
+            return None
+        done_h = p["done_h"]
+        below = [b for b in bands if b["h"] <= done_h]
+        above = [b for b in bands if b["h"] > done_h]
+        if not below:
+            nxt = above[0]
+            return (f"  grade estimate: {done_h:.1f}h logged, "
+                    f"{nxt['h'] - done_h:.1f}h short of your own "
+                    f"{nxt['h']:g}h → {nxt['grade']} estimate")
+        cur = below[-1]
+        if not above:
+            return (f"  grade estimate: {done_h:.1f}h logged — past your "
+                    f"{cur['h']:g}h → {cur['grade']} estimate, "
+                    "your highest named band")
+        nxt = above[0]
+        return (f"  grade estimate: {done_h:.1f}h logged — past your "
+                f"{cur['h']:g}h → {cur['grade']} estimate, "
+                f"{nxt['h'] - done_h:.1f}h from {nxt['h']:g}h → {nxt['grade']}")
+
+    def _grade_estimate_lines(self):
+        lines = []
+        for dl in self.deadlines():
+            line = self._dl_grade_estimate_line(dl)
+            if line:
+                lines.append(line)
         return lines
 
     def _locked_this_week_line(self, week):
@@ -13843,6 +13976,61 @@ class App(tk.Tk):
         ttk.Button(bar, text="Auto-plan the rest →",
                   command=open_auto_plan).pack(side="right")
 
+    def _plan_my_career_lines(self):
+        """Backlog #229: "Plan my week," but for the slower-moving
+        layer instead of the calendar layer — same composition
+        discipline as #218: assembles what already exists (#238's
+        ranked options, #239's grade estimates, open goal-linked
+        tasks), no new computation. Deliberately not hardcoded to any
+        one real goal name — whatever's actually scored or linked
+        shows up, so this stays generically useful past whichever
+        specific decision prompted building it."""
+        lines = ["PLAN MY CAREER", ""]
+        scored = self._scored_tasks()
+        if scored:
+            lines.append("1) TOP RANKED OPTIONS (readiness/attractiveness "
+                         f"blend, ambition {self._ambition_pct():g}%):")
+            for i, (t, score) in enumerate(scored[:5], 1):
+                lines.append(f"  #{i} {t['name']} — {score:.1f}")
+            lines.append("")
+        grade_lines = self._grade_estimate_lines()
+        if grade_lines:
+            lines.append("2) GRADE ESTIMATES:")
+            lines += grade_lines
+            lines.append("")
+        goal_tasks = [t for t in self.settings.get("tasks", [])
+                     if t.get("goal") and not t.get("blocked_by")]
+        if goal_tasks:
+            lines.append("3) OPEN GOAL-LINKED TASKS:")
+            by_goal = {}
+            for t in goal_tasks:
+                by_goal.setdefault(t["goal"], []).append(t["name"])
+            for goal, names in by_goal.items():
+                lines.append(f"  {goal}:")
+                for n in names[:5]:
+                    lines.append(f"    - {n}")
+                if len(names) > 5:
+                    lines.append(f"    (+{len(names) - 5} more)")
+            lines.append("")
+        if not (scored or grade_lines or goal_tasks):
+            lines.append("Nothing scored or goal-linked yet. Right-click a "
+                         "task in Tasks/Library > \"Set readiness/"
+                         "attractiveness…\" to rank real live options "
+                         "against each other, add grade bands to a "
+                         "deadline, or link a task to a goal.")
+        return lines
+
+    def _plan_my_career_win(self):
+        """Backlog #229: the guided entry point `_plan_my_career_lines`
+        builds toward, same shape as #218's Plan my week window."""
+        win = tk.Toplevel(self)
+        win.title("Plan my career")
+        win.geometry("620x480")
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10))
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        txt.insert("1.0", "\n".join(self._plan_my_career_lines()))
+        txt.config(state="disabled")
+
     def _multiweek_digest_win(self):
         """Backlog #182: opens the digest above in a plain scrollable
         text dialog, same shape as every other on-demand text-report
@@ -14598,12 +14786,14 @@ class App(tk.Tk):
                   command=lambda: (filter_var.set(""), refresh())
                   ).pack(side="left", padx=(4, 0))
 
-        cols = ("pri", "task", "est", "actual", "goal", "deadline", "due", "source")
+        cols = ("pri", "task", "est", "actual", "goal", "deadline", "due",
+                "decision", "source")
         heads = {"pri": "!", "task": "task", "est": "est", "actual": "actual",
                  "goal": "goal", "deadline": "deadline", "due": "due",
-                 "source": "from"}
+                 "decision": "decision", "source": "from"}
         widths = {"pri": 26, "task": 200, "est": 50, "actual": 65,
-                  "goal": 100, "deadline": 90, "due": 60, "source": 120}
+                  "goal": 100, "deadline": 90, "due": 60, "decision": 60,
+                  "source": 120}
         tree = ttk.Treeview(win, columns=cols, show="headings")
         for c in cols:
             tree.heading(c, text=heads[c])
@@ -14648,12 +14838,14 @@ class App(tk.Tk):
                         due_txt = ("⚠ " if due_d < self.today else "") + f"{due_d:%d.%m}"
                     except ValueError:
                         due_txt = t["due"]
+                score = self._task_decision_score(t)
                 tree.insert("", "end", iid=str(i), tags=(tag,), values=(
                     self._PRI_ICON.get(pri, "○"), name,
                     f"{est:g}h" if est else "—",
                     f"{self._task_actual_h(t['name'], t['added']):.2f}h",
                     t.get("goal") or "—", t.get("deadline") or "—",
-                    due_txt, t.get("source") or "—"))
+                    due_txt, f"{score:.1f}" if score is not None else "—",
+                    t.get("source") or "—"))
             # rebuilding the tree drops selection unless we restore it — a
             # priority click on row 2 must not silently un-pick row 2
             keep = [iid for iid in sel if tree.exists(iid)]
@@ -14782,6 +14974,56 @@ class App(tk.Tk):
             save_settings(self.settings)
             refresh(keep_selection=[str(i)])
 
+        def set_decision_scores():
+            """Backlog #238: readiness ("can I actually get this",
+            0-10) and attractiveness ("do I actually want this", 0-10)
+            kept as two separate numbers, same deliberate split as the
+            owner's own spreadsheet model — collapsing them into one
+            fuzzy number up front is exactly what this feature exists
+            to avoid. Either left blank clears the score entirely."""
+            i = picked()
+            if i is None:
+                return
+            t = self.settings["tasks"][i]
+            pop = tk.Toplevel(win)
+            pop.title("Readiness / attractiveness")
+            pop.resizable(False, False)
+            pop.grab_set()
+            ttk.Label(pop, text="Readiness 0-10 (how likely you'd get it, "
+                                "blank = clear)").grid(
+                row=0, column=0, padx=8, pady=(8, 2), sticky="w")
+            r_e = ttk.Entry(pop, width=8)
+            r_e.insert(0, str(t["readiness"]) if t.get("readiness") is not None else "")
+            r_e.grid(row=0, column=1, padx=8, pady=(8, 2))
+            ttk.Label(pop, text="Attractiveness 0-10 (how much you want "
+                                "it, blank = clear)").grid(
+                row=1, column=0, padx=8, pady=2, sticky="w")
+            a_e = ttk.Entry(pop, width=8)
+            a_e.insert(0, str(t["attractiveness"]) if t.get("attractiveness") is not None else "")
+            a_e.grid(row=1, column=1, padx=8, pady=2)
+
+            def ok():
+                for key, e in (("readiness", r_e), ("attractiveness", a_e)):
+                    raw = e.get().strip()
+                    if not raw:
+                        t[key] = None
+                        continue
+                    try:
+                        v = float(raw)
+                        assert 0 <= v <= 10
+                    except (ValueError, AssertionError):
+                        messagebox.showerror(
+                            APP_NAME, "Readiness/attractiveness must each "
+                                     "be 0-10, or blank to clear.", parent=pop)
+                        return
+                    t[key] = v
+                save_settings(self.settings)
+                pop.destroy()
+                refresh(keep_selection=[str(i)])
+
+            ttk.Button(pop, text="OK", command=ok).grid(
+                row=2, column=0, columnspan=2, pady=(4, 8))
+
         def set_due():
             i = picked()
             if i is None:
@@ -14819,6 +15061,8 @@ class App(tk.Tk):
             "deadline", [d["name"] for d in self.deadlines()]))
         menu.add_command(label="Set due date…", command=set_due)
         menu.add_command(label="Set blocked by…", command=set_blocked_by)
+        menu.add_command(label="Set readiness/attractiveness…",
+                         command=set_decision_scores)
 
         def right_click(event):
             row = tree.identify_row(event.y)
@@ -14833,9 +15077,11 @@ class App(tk.Tk):
                            ("Done ✓", done), ("Delete", delete)):
             ttk.Button(bar, text=label, command=cmd).pack(side="left", padx=(4, 0))
         hint = ("Click ! to cycle priority (● signal / ○ normal / ‥ someday), "
-               "right-click a row to set/change its goal or deadline. "
-               "TODO:/SOMEDAY: bullets anywhere (diary, themed writing) land "
-               "here on their own.")
+               "right-click a row to set/change its goal, deadline, or "
+               "readiness/attractiveness (decision column — set both to "
+               "rank real live options against each other; Tools > "
+               "Ambition % sets the blend). TODO:/SOMEDAY: bullets anywhere "
+               "(diary, themed writing) land here on their own.")
         ef = self._estimate_factor()
         if ef:
             hint += f"  Your history: actuals run ×{ef[0]:.1f} your estimates."
@@ -14888,6 +15134,45 @@ class App(tk.Tk):
             return None
         ratios.sort()
         return ratios[len(ratios) // 2], len(ratios)
+
+    def _ambition_pct(self):
+        """Backlog #238: the single dial the whole decision-blend
+        model turns on — 100 = rank purely by attractiveness, 0 =
+        rank purely by readiness. Settings-backed, defaults to 50
+        (an even split) same lenient-degrade posture as every other
+        settings-backed number here."""
+        try:
+            v = float(self.settings.get("ambition_pct", 50))
+        except (TypeError, ValueError):
+            return 50.0
+        return max(0.0, min(100.0, v))
+
+    def _task_decision_score(self, t):
+        """Backlog #238: a task's blended decision score, or None when
+        either axis isn't set — both are optional, most tasks never
+        need this at all, it only activates for the handful of real
+        live options actually being weighed against each other."""
+        r, a = t.get("readiness"), t.get("attractiveness")
+        if r is None or a is None:
+            return None
+        try:
+            r, a = float(r), float(a)
+        except (TypeError, ValueError):
+            return None
+        return _decision_blend(r, a, self._ambition_pct())
+
+    def _scored_tasks(self):
+        """Backlog #238: every task with both axes set, ranked by
+        decision score descending — the generalized counterpart to
+        the owner's own spreadsheet "#1 program right now" cell.
+        Returns [(task, score), ...]."""
+        out = []
+        for t in self.settings.get("tasks", []):
+            score = self._task_decision_score(t)
+            if score is not None:
+                out.append((t, score))
+        out.sort(key=lambda ts: -ts[1])
+        return out
 
     def _estimate_factor(self, kws=None):
         """(median actual/estimate ratio, sample count) from '--- Done: x
@@ -17803,6 +18088,38 @@ class App(tk.Tk):
         save_settings(self.settings)
         return n_plans, n_locked
 
+    def _deadline_date_history_conflicts(self):
+        """Backlog #230: a real bug this app already had once (#209) —
+        a deadline's `date` field silently drifted back to a value its
+        own `history` had already recorded as superseded, with no new
+        history entry explaining the reversion. `history` (backlog
+        #46, `_deadline_revisions_after_save`) is append-only: each
+        entry holds the OLD date/total_h right before a real edit
+        changed it. So under normal use the current `date` should
+        never again equal `history`'s own last-recorded OLD date —
+        if it does, either something reverted the field by hand
+        outside the normal edit dialog (bypassing history entirely) or
+        a later edit never got saved through the tracked path. Same
+        mechanical check that would have caught #209 immediately
+        instead of by a human reading closely, once. Deliberately
+        checks `date` only, not `total_h` on its own — an edit that
+        only touches one field leaves the other matching its own prior
+        value completely normally, that's not an anomaly, only a
+        reverted DATE with no new history trace is. Returns
+        [(name, current_date, superseded_date, as_of), ...]."""
+        out = []
+        for dl in self.deadlines():
+            hist = dl.get("history") or []
+            if not hist:
+                continue
+            last = hist[-1]
+            cur_date = dl.get("date")
+            old_date = last.get("date")
+            if cur_date and old_date and cur_date == old_date:
+                out.append((dl.get("name", ""), cur_date, old_date,
+                           last.get("as_of", "")))
+        return out
+
     def _data_doctor(self):
         win = tk.Toplevel(self)
         win.title("Data doctor — sessions.csv")
@@ -17828,6 +18145,15 @@ class App(tk.Tk):
                 lines += ["", f"{n_plans} one-off plan(s) and {n_locked} "
                              "locked window(s) are 90+ days past their "
                              "own date — safe to clean up."]
+            conflicts = self._deadline_date_history_conflicts()
+            if conflicts:
+                lines.append("")
+                lines.append("⚠ deadline date looks reverted (matches its "
+                             "own history's superseded value — check before "
+                             "trusting it):")
+                for name, cur, old, as_of in conflicts:
+                    lines.append(f"  {name}: date is {cur}, the same value "
+                                 f"recorded superseded as of {as_of}")
             backup_line = backup_integrity_line()
             if backup_line:
                 lines = [backup_line, ""] + lines

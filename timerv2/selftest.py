@@ -37,7 +37,8 @@ TOP = {"read_rows", "day_index", "task_matches", "matched_minutes",
        "_free_from_busy", "_deep_capacity_minutes", "_merge_time_intervals",
        "_pinned_after_add", "_pinned_after_remove", "day_totals",
        "load_settings", "save_settings", "_deadline_revisions_after_save",
-       "_pick_one_less", "_parse_milestones",
+       "_pick_one_less", "_parse_milestones", "_parse_grade_bands",
+       "_decision_blend",
        "_parse_rrule", "_rrule_occurrences", "parse_ics_intervals",
        "parse_ics_events", "_parse_exdates", "_pearson_r",
        "_sqdist", "_standardize", "_kmeans", "_linreg", "_zscore",
@@ -105,7 +106,10 @@ METH = {"_dl_progress", "_dl_velocity", "_dl_projection", "_projection_line",
         "_capacity", "_plan_my_week_lines", "_day_outcome_label",
         "_day_outcome_features", "_day_outcome_dataset",
         "_day_outcome_predict", "_day_outcome_line",
-        "_day_archetype_membership"}
+        "_day_archetype_membership", "_deadline_date_history_conflicts",
+        "_dl_grade_estimate_line", "_grade_estimate_lines",
+        "_ambition_pct", "_task_decision_score", "_scored_tasks",
+        "_plan_my_career_lines"}
 STATIC = {"_match_kws", "_pull_level", "_parse_time_loose"}  # extraction drops @staticmethod
 CLASS_ATTRS = {"_BREAK_MOVE", "_BREAK_SCROLL", "METRICS_RE",
                "METRICS_BARE_RE", "_LINE_TAG_RULES", "_WORD_RE",
@@ -3871,6 +3875,161 @@ def suite_stale_plan_data():
     assert D._stale_plan_data_scan(d2, cutoff_days=90) == (0, 0)
 
 
+def suite_deadline_date_history_conflicts():
+    D, ns = fresh()
+
+    # ---- backlog #230: current date == history's own last-recorded
+    # OLD date -> a real, silent reversion, same shape as #209 ----
+    deadlines = [{"name": "Thesis", "date": "2026-03-10", "total_h": 48.0,
+                 "history": [
+                     {"date": "2026-07-23", "total_h": 45.0, "as_of": "2026-07-19"},
+                     {"date": "2026-03-10", "total_h": 48.0, "as_of": "2026-03-01"},
+                 ]}]
+    d = _mk(D, deadlines=lambda: deadlines)
+    conflicts = D._deadline_date_history_conflicts(d)
+    assert conflicts == [("Thesis", "2026-03-10", "2026-03-10", "2026-03-01")], conflicts
+
+    # ---- silence: date moved on (legitimately different from history's
+    # own last-recorded old value) even though total_h happens to match
+    # the same old snapshot -- an unrelated field being unchanged across
+    # a date-only edit is completely normal, not an anomaly ----
+    deadlines2 = [{"name": "Thesis", "date": "2026-03-31", "total_h": 48.0,
+                  "history": [
+                      {"date": "2026-03-10", "total_h": 48.0, "as_of": "2026-03-01"},
+                  ]}]
+    d2 = _mk(D, deadlines=lambda: deadlines2)
+    assert D._deadline_date_history_conflicts(d2) == []
+
+    # ---- silence: no history at all yet ----
+    deadlines3 = [{"name": "TUTA", "date": "2026-08-26", "total_h": 30.0}]
+    d3 = _mk(D, deadlines=lambda: deadlines3)
+    assert D._deadline_date_history_conflicts(d3) == []
+
+
+def suite_grade_bands():
+    D, ns = fresh()
+
+    # ---- backlog #239: pure parsing ----
+    bands = ns["_parse_grade_bands"]("10h=3, 20h=4, 30h=5")
+    assert bands == [{"h": 10.0, "grade": "3"}, {"h": 20.0, "grade": "4"},
+                     {"h": 30.0, "grade": "5"}], bands
+    assert ns["_parse_grade_bands"]("") == []
+    assert ns["_parse_grade_bands"]("just text, no bands") == []
+    # out of order input still sorts ascending
+    assert ns["_parse_grade_bands"]("30h=5, 10h=3") == [
+        {"h": 10.0, "grade": "3"}, {"h": 30.0, "grade": "5"}]
+
+    TODAY = dt.date(2026, 8, 16)
+    rows = [row("2026-08-14", 12 * 60, "tuta")]     # 12h logged so far
+    seed(ns, rows)
+    dl = {"name": "TUTA", "date": "2026-08-26", "match": "tuta",
+         "grade_bands": "10h=3, 20h=4, 30h=5"}
+    d = _mk(D, today=TODAY, deadlines=lambda: [dl])
+
+    line = D._dl_grade_estimate_line(d, dl)
+    assert line is not None
+    assert "12.0h logged" in line, line
+    assert "past your 10h → 3 estimate" in line, line
+    assert "8.0h from 20h → 4" in line, line
+
+    lines = D._grade_estimate_lines(d)
+    assert lines == [line], lines
+
+    # ---- below every band ----
+    rows2 = [row("2026-08-14", 5 * 60, "tuta")]
+    seed(ns, rows2)
+    d2 = _mk(D, today=TODAY, deadlines=lambda: [dl])
+    line2 = D._dl_grade_estimate_line(d2, dl)
+    assert "5.0h short of your own 10h → 3" in line2, line2
+
+    # ---- past every band ----
+    rows3 = [row("2026-08-14", 35 * 60, "tuta")]
+    seed(ns, rows3)
+    d3 = _mk(D, today=TODAY, deadlines=lambda: [dl])
+    line3 = D._dl_grade_estimate_line(d3, dl)
+    assert "your highest named band" in line3, line3
+
+    # ---- silence: no grade_bands set at all ----
+    dl_none = {"name": "TUTA", "date": "2026-08-26", "match": "tuta"}
+    d4 = _mk(D, today=TODAY, deadlines=lambda: [dl_none])
+    assert D._dl_grade_estimate_line(d4, dl_none) is None
+    assert D._grade_estimate_lines(d4) == []
+
+
+def suite_decision_blend():
+    D, ns = fresh()
+
+    # ---- backlog #238: pure blend math ----
+    assert abs(ns["_decision_blend"](6.0, 9.0, 100) - 9.0) < 1e-9   # pure attract.
+    assert abs(ns["_decision_blend"](6.0, 9.0, 0) - 6.0) < 1e-9     # pure readiness
+    assert abs(ns["_decision_blend"](6.0, 9.0, 50) - 7.5) < 1e-9    # even split
+    assert abs(ns["_decision_blend"](4.0, 8.0, 25) - 5.0) < 1e-9
+    # out-of-range dial clamps rather than extrapolating
+    assert abs(ns["_decision_blend"](6.0, 9.0, 150) - 9.0) < 1e-9
+    assert abs(ns["_decision_blend"](6.0, 9.0, -10) - 6.0) < 1e-9
+
+    d = _mk(D, settings={"ambition_pct": 50})
+    assert D._ambition_pct(d) == 50.0
+    d_default = _mk(D, settings={})
+    assert D._ambition_pct(d_default) == 50.0    # default when unset
+    d_bad = _mk(D, settings={"ambition_pct": "not a number"})
+    assert D._ambition_pct(d_bad) == 50.0         # lenient degrade
+
+    tasks = [
+        {"name": "LSE-ish", "readiness": 4.0, "attractiveness": 9.5},
+        {"name": "safety net", "readiness": 10.0, "attractiveness": 5.5},
+        {"name": "unscored", "readiness": 7.0},            # attractiveness unset
+        {"name": "also unscored"},                          # neither set
+    ]
+    d2 = _mk(D, settings={"ambition_pct": 50, "tasks": tasks})
+    assert D._task_decision_score(d2, tasks[0]) == 6.75, D._task_decision_score(d2, tasks[0])
+    assert D._task_decision_score(d2, tasks[1]) == 7.75
+    assert D._task_decision_score(d2, tasks[2]) is None
+    assert D._task_decision_score(d2, tasks[3]) is None
+
+    scored = D._scored_tasks(d2)
+    assert [t["name"] for t, _s in scored] == ["safety net", "LSE-ish"], scored
+    assert scored[0][1] == 7.75 and scored[1][1] == 6.75, scored
+
+    # ---- silence: an unparseable stored value doesn't score ----
+    d3 = _mk(D, settings={})
+    bad_task = {"readiness": "x", "attractiveness": 5.0}
+    assert D._task_decision_score(d3, bad_task) is None
+
+
+def suite_plan_my_career():
+    D, ns = fresh()
+    TODAY = dt.date(2026, 8, 16)
+    tasks = [
+        {"name": "LSE-ish", "readiness": 4.0, "attractiveness": 9.5},
+        {"name": "safety net", "readiness": 10.0, "attractiveness": 5.5},
+        {"name": "email a reference", "goal": "MSc admissions"},
+        {"name": "book GMAT", "goal": "MSc admissions"},
+        {"name": "blocked one", "goal": "MSc admissions", "blocked_by": "x"},
+    ]
+    dl = [{"name": "TUTA", "date": "2026-08-26", "match": "tuta",
+          "grade_bands": "10h=3, 20h=4, 30h=5"}]
+    seed(ns, [row("2026-08-14", 12 * 60, "tuta")])
+    d = _mk(D, today=TODAY, settings={"ambition_pct": 50, "tasks": tasks},
+           deadlines=lambda: dl)
+    lines = D._plan_my_career_lines(d)
+    assert lines[0] == "PLAN MY CAREER", lines
+    assert any("TOP RANKED OPTIONS" in ln for ln in lines), lines
+    assert any("#1 safety net — 7.8" in ln for ln in lines), lines
+    assert any("GRADE ESTIMATES" in ln for ln in lines), lines
+    assert any("12.0h logged" in ln for ln in lines), lines
+    assert any("OPEN GOAL-LINKED TASKS" in ln for ln in lines), lines
+    assert any("MSc admissions" in ln for ln in lines), lines
+    assert any("email a reference" in ln for ln in lines), lines
+    assert not any("blocked one" in ln for ln in lines), lines
+
+    # ---- silence-ish: nothing scored/estimated/linked -> the explanatory line ----
+    d2 = _mk(D, today=TODAY, settings={"tasks": []}, deadlines=lambda: [])
+    lines2 = D._plan_my_career_lines(d2)
+    assert lines2[0] == "PLAN MY CAREER", lines2
+    assert any("Nothing scored or goal-linked yet" in ln for ln in lines2), lines2
+
+
 SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("outlook", suite_outlook), ("alignment", suite_alignment),
           ("review", suite_review), ("anomaly", suite_anomaly),
@@ -3945,6 +4104,10 @@ SUITES = [("projection", suite_projection), ("trajectory", suite_trajectory),
           ("recurring-reminders", suite_recurring_reminders),
           ("stale-plan", suite_stale_plan),
           ("stale-plan-data", suite_stale_plan_data),
+          ("deadline-date-history-conflicts", suite_deadline_date_history_conflicts),
+          ("grade-bands", suite_grade_bands),
+          ("decision-blend", suite_decision_blend),
+          ("plan-my-career", suite_plan_my_career),
           ("metric-correlations", suite_metric_correlations),
           ("plan-density-correlation", suite_plan_density_correlation),
           ("day-outcome", suite_day_outcome),

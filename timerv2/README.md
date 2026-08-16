@@ -4,6 +4,19 @@ The old timer's workflow (timer lines + free diary notes in one .txt per day),
 with the bottlenecks removed. Run `dist\TimerDiary.exe` — or rebuild it any
 time with `build_exe.bat`.
 
+### v9.74 — deadline conflict detection, grade estimates, a decision scorer, "Plan my career"
+
+Data Doctor now catches a deadline whose date has silently drifted
+back to a value already recorded as superseded. A deadline (great for
+an exam retake) can carry hours-to-grade bands like "10h=3, 20h=4,
+30h=5" — Week Ahead interpolates your real logged hours against them
+into an honest estimate. Any task can now carry a readiness score (how
+likely you'd get it) and an attractiveness score (how much you want
+it) — right-click a task, "Set readiness/attractiveness…" — ranked by
+one Ambition % dial (Tools menu). New menu item, View → Planning →
+"Plan my career…", composes the ranked options, grade estimates, and
+open goal-linked tasks into one guided read.
+
 ### v9.73 — a day-outcome predictor, day-archetype calendar colors
 
 Two more: the morning header can now show a real trained probability
