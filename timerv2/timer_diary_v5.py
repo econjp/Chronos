@@ -228,32 +228,31 @@ HEALTH MORE!!! like worklife balance health metrics etc"):
     clustering.
 
 New in v9.65 (#207 — crash recovery no longer inflates hours by the
-gap until you happen to reopen the app, 2026-08-08 — a real incident:
-(a real incident, details genericized
-
-):
-  - real bug found and fixed: the app crashed mid-session at an earlier point
-    with no clean Stop ever recorded. Reopened a day later
-    , the recovery dialog's "No = log it (until now)"
-    path used `datetime.now()` — the moment the dialog finally got
-    ANSWERED — as the session's end time, logging the entire multi-hour gap
-    as tracked work instead of the real, much shorter session.
+gap until you happen to reopen the app, 2026-08-08 — a real incident
+where a stalled tracking session inflated a deadline's hours):
+  - real bug found and fixed: the app crashed mid-session with no
+    clean Stop ever recorded. Reopened a day later, the recovery
+    dialog's "No = log it (until now)" path used `datetime.now()` —
+    the moment the dialog finally got ANSWERED — as the session's end
+    time, logging the entire multi-hour gap as tracked work instead of
+    the real, much shorter session.
   - fixed at the root: a lightweight heartbeat (`_save_state`, already
     the exact write `_recover_if_needed` reads) now refreshes every 5
     minutes while actively working/on break — cheap, already-tested
     code, just called more often. Recovery uses that heartbeat's own
     timestamp as the true "last confirmed alive" moment instead of
     "whenever this dialog gets answered," and tells you plainly when
-    it's doing so: "Last confirmed alive ~40 min in — the rest
-    since then look like a crash/sleep gap, not real tracked time."
+    it's doing so: "Last confirmed alive ~40 min in — the rest since
+    then looks like a crash/sleep gap, not real tracked time."
     Degrades gracefully to the old behavior when no heartbeat data
     exists (e.g. a crash inside the first 5 minutes, or old data from
     before this fix).
-  - the real, already-corrupted affected-day data was corrected directly:
-    the day file now closes that session honestly (the
-    owner's own recollection) instead of an orphaned Start with a
-    fabricated multi-hour recovery the next day; sessions.csv's one affected
-    row corrected to match. Both backed up before editing.
+  - the real, already-corrupted affected-day data was corrected
+    directly: the day file now closes that session honestly (the
+    owner's own recollection of the real end time) instead of an
+    orphaned Start with a fabricated multi-hour recovery the next day;
+    sessions.csv's one affected row corrected to match. Both backed up
+    before editing.
 
 New in v9.64 (#203 + #204 — health finally reaches the correlation
 engine, plus a check that the pipeline feeding it is actually alive,
