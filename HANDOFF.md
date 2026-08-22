@@ -713,21 +713,20 @@ measuring what's already there.
   enough of it. `_day_archetypes_lines` labels sleep-aware output
   ("incl. sleep") and shows each archetype's avg sleep_h. New selftest
   coverage for both the sleep-aware path and the sparse-data fallback.
-- **v9.65** (#207, 2026-08-08, DONE). Real incident: a crash on
-  an earlier date, mid-afternoon with no clean Stop, recovered a day later, and the
-  old recovery logic ("No = log it until now") logged the entire
-  ~24h gap as tracked Thesis work — inflating the deadline's status
-  bar to "63.0/48h" instead of the real 40.0h. Root cause fixed: a
-  5-minute heartbeat (reusing `_save_state`, already-tested) gives
-  recovery a real "last confirmed alive" timestamp instead of trusting
-  whenever the dialog happens to get answered; degrades gracefully
-  with no heartbeat data. Real affected-day data corrected directly (day
-  file + the one affected sessions.csv row), both backed up first.
-  Separately noticed and NOT auto-fixed: Thesis's `date` field shows
-  an earlier date but its own `history` shows a change to a later date
-  recorded as of an earlier date — a real inconsistency, flagged to the owner
-  rather than guessed at, matching the standing "never touch deadline
-  scope without asking" rule.
+- **v9.65** (#207, 2026-08-08, DONE). Real incident: a crash with no
+  clean Stop, recovered a day later, and the old recovery logic
+  ("No = log it until now") logged the entire multi-hour gap as
+  tracked deadline work — inflating the status bar well past the
+  scoped total. Root cause fixed: a 5-minute heartbeat (reusing
+  `_save_state`, already-tested) gives recovery a real "last confirmed
+  alive" timestamp instead of trusting whenever the dialog happens to
+  get answered; degrades gracefully with no heartbeat data. The real
+  affected day's data corrected directly (day file + the one affected
+  sessions.csv row), both backed up first. Separately noticed and NOT
+  auto-fixed: a deadline's `date` field showed a past date but its own
+  `history` showed a change to a later one — a real inconsistency,
+  flagged to the owner rather than guessed at, matching the standing
+  "never touch deadline scope without asking" rule.
 - **v9.64** (#203 + #204, 2026-08-08, DONE). Direct owner ask: "WE
   SHOULD CONSIDER HEALTH MORE!!! worklife balance health metrics."
   #203: `_metric_series` (feeds #189's real Pearson correlation
