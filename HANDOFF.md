@@ -4914,16 +4914,17 @@ polish — the three NOT chosen this round) when continuing this work.
     folder) rather than an app-level bug, but unconfirmed — flagged
     for verification, not assumed either way.
 
-209. **The Thesis deadline's `date` field didn't match
-    its own `history`'s last recorded change (as of
-    ) — owner's call, not a guess (PLANNING — a real data
-    inconsistency spotted while investigating #207's status-bar
-    report; new idea 2026-08-08).** Either the date got reverted after
-    being extended, or a later edit changed it back without going
-    through the path that records history — worth asking the owner
-    directly which date is actually real before touching anything,
-    same "never split/archive a deadline without confirming" standing
-    rule from earlier this session. Not fixed, not guessed at.
+209. **A deadline's `date` field didn't match its own `history`'s
+    last recorded change — owner's call, not a guess (PLANNING — a
+    real data inconsistency spotted while investigating #207's
+    status-bar report; new idea 2026-08-08).** Either the date got
+    reverted after being extended, or a later edit changed it back
+    without going through the path that records history — worth
+    asking the owner directly which date is actually real before
+    touching anything, same "never split/archive a deadline without
+    confirming" standing rule from earlier this session. Not fixed,
+    not guessed at at the time — see #230 for the general detector
+    this became.
 
 210. **The running-hot detector should suggest a real day, not just say
     one (PLANNING — connects the existing `_running_hot_line` copilot
@@ -5018,9 +5019,9 @@ polish — the three NOT chosen this round) when continuing this work.
     Same free-text pattern as every other header field, tracked and
     counted the same way METRICS: keys are. No prompt, no nagging —
     just a place a real win can go where it won't quietly disappear
-    the way a strong result once did when it got administratively
-    downgraded and dropped off a visible record. A monthly count
-    ("wins logged: N") in the existing review/digest views is the
+    the way a good result can when nothing keeps a visible record of
+    it. A monthly count ("wins logged: N") in the existing review/
+    digest views is the
     whole feature — visibility, not therapy.
 
 223. **A "CLAIM: ... [unverified]" tag with recurring-style resurfacing
