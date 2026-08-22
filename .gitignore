@@ -7,6 +7,7 @@ CLAUDE.md
 HANDOFF-private-notes.md
 .claude/
 *.pst
+tailored contex/
 
 # build artifacts
 timerv2/dist/

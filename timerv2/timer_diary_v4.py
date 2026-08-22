@@ -11,7 +11,7 @@ v4 additions:
 - ADD PAST SESSION (File menu): forgot to start the timer during a meeting?
   Add it after the fact in one small form
 - AUTO-BACKUP: sessions.csv copied to backups\\ once a week, silently
-- CATEGORIES: name tasks like "day job: ppa memo" or "thesis: ch4" and the
+- CATEGORIES: name tasks like "day job: memo" or "thesis: ch4" and the
   summaries also group totals by the prefix before ":"
 
 v3 features kept: auto diary timestamps ("09:00-09:45  thesis (45m)"),

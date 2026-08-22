@@ -3882,7 +3882,7 @@ def suite_deadline_date_history_conflicts():
     # OLD date -> a real, silent reversion, same shape as #209 ----
     deadlines = [{"name": "Thesis", "date": "2026-03-10", "total_h": 48.0,
                  "history": [
-                     {"date": "2026-07-23", "total_h": 45.0, "as_of": "2026-07-19"},
+                     {"date": "2026-02-20", "total_h": 45.0, "as_of": "2026-02-15"},
                      {"date": "2026-03-10", "total_h": 48.0, "as_of": "2026-03-01"},
                  ]}]
     d = _mk(D, deadlines=lambda: deadlines)
